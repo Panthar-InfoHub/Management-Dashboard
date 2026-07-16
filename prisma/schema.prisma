@@ -1,0 +1,353 @@
+// ── Panthar Teams — Prisma Schema ──
+// Single-org team operations platform
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  ON_LEAVE
+  INACTIVE
+}
+
+enum TaskStatus {
+  BACKLOG
+  TODO
+  IN_PROGRESS
+  REVIEW
+  TESTING
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+enum ProjectHealth {
+  GOOD
+  AT_RISK
+  CRITICAL
+}
+
+enum LeaveType {
+  CASUAL
+  SICK
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  STATUS_CHANGE
+  ASSIGNMENT
+  APPROVAL
+  REJECTION
+}
+
+// ─────────────────────────────────────────────
+// CORE MODELS
+// ─────────────────────────────────────────────
+
+/// Central entity. Every person in the org is an Employee.
+/// Clerk provides identity (clerkId), our DB provides role/authorization.
+model Employee {
+  id          String         @id @default(cuid())
+  clerkId     String         @unique // Clerk user_xxx ID — set via webhook
+  email       String         @unique
+  firstName   String
+  lastName    String
+  avatarUrl   String?
+  role        Role           @default(EMPLOYEE)
+  status      EmployeeStatus @default(ACTIVE)
+  designation String?        // e.g. "Senior Frontend Engineer"
+  phone       String?
+  joinDate    DateTime       @default(now())
+
+  // ── Team relation ──
+  teamId      String?
+  team        Team?          @relation("TeamMembers", fields: [teamId], references: [id])
+  leadOfTeams Team[]         @relation("TeamLead")
+
+  // ── Task relations ──
+  assignedTasks Task[] @relation("TaskAssignees")
+  createdTasks  Task[] @relation("TaskCreator")
+
+  // ── Project relations ──
+  projectLead   Project[]       @relation("ProjectLead")
+  projectMember ProjectMember[]
+
+  // ── Daily Updates ──
+  dailyUpdates DailyUpdate[]
+
+  // ── Leave & Attendance ──
+  leaveRequests  Leave[]        @relation("LeaveRequester")
+  leaveApprovals Leave[]        @relation("LeaveApprover")
+  leaveBalances  LeaveBalance[]
+  attendance     Attendance[]
+
+  // ── System ──
+  auditLogs     AuditLog[]
+  notifications Notification[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clerkId])
+  @@index([teamId])
+  @@index([role])
+  @@index([status])
+}
+
+model Team {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  description String?
+  color       String? // hex for UI badges
+  icon        String?
+
+  leadId  String
+  lead    Employee @relation("TeamLead", fields: [leadId], references: [id])
+  members Employee[] @relation("TeamMembers")
+
+  projects Project[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([leadId])
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  name        String
+  description String?
+  status      ProjectStatus @default(PLANNING)
+  health      ProjectHealth @default(GOOD)
+  priority    TaskPriority  @default(MEDIUM)
+  progress    Int           @default(0) // 0–100
+
+  startDate DateTime?
+  endDate   DateTime?
+
+  teamId String
+  team   Team     @relation(fields: [teamId], references: [id])
+  leadId String
+  lead   Employee @relation("ProjectLead", fields: [leadId], references: [id])
+
+  tasks   Task[]
+  members ProjectMember[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teamId])
+  @@index([leadId])
+  @@index([status])
+}
+
+model ProjectMember {
+  id         String   @id @default(cuid())
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  joinedAt   DateTime @default(now())
+
+  @@unique([projectId, employeeId])
+}
+
+model Task {
+  id             String       @id @default(cuid())
+  title          String
+  description    String?
+  status         TaskStatus   @default(BACKLOG)
+  priority       TaskPriority @default(MEDIUM)
+  storyPoints    Int?
+  labels         String[]     // e.g. ["backend", "security"]
+
+  startDate      DateTime?
+  dueDate        DateTime?
+  completedAt    DateTime?
+  completionNote String?      // required to move to DONE
+  prLink         String?      // required to move to DONE
+  blockers       String?
+
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignees  Employee[] @relation("TaskAssignees")
+  
+  blockedById String?
+  blockedBy   Task?     @relation("TaskBlocker", fields: [blockedById], references: [id])
+  blocking    Task[]    @relation("TaskBlocker")
+
+  creatorId  String
+  creator    Employee  @relation("TaskCreator", fields: [creatorId], references: [id])
+
+  comments Comment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([status, projectId])  // project board filtering
+}
+
+model Comment {
+  id       String @id @default(cuid())
+  content  String
+  taskId   String
+  task     Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorId String
+
+  createdAt DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────
+// DAILY UPDATES
+// ─────────────────────────────────────────────
+
+model DailyUpdate {
+  id           String   @id @default(cuid())
+  employeeId   String
+  employee     Employee @relation(fields: [employeeId], references: [id])
+  date         DateTime @db.Date // one per employee per day
+  accomplished String
+  blockers     String?
+  plan         String?  // tomorrow's plan
+  progress     Int      @default(0) // 0–100
+  mood         String?  // "productive", "focused", etc.
+  taskRefs     String[] // task IDs worked on
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([employeeId, date])
+  @@index([date])
+}
+
+// ─────────────────────────────────────────────
+// LEAVE & ATTENDANCE (schema ready, UI deferred)
+// ─────────────────────────────────────────────
+
+/// Tracks allocated vs used leave per type per fiscal year (Apr 1 – Mar 31).
+model LeaveBalance {
+  id         String    @id @default(cuid())
+  employeeId String
+  employee   Employee  @relation(fields: [employeeId], references: [id])
+  leaveType  LeaveType
+  fiscalYear Int       // e.g. 2026 means Apr 2026 – Mar 2027
+  total      Int       // allocated for the year
+  used       Int       @default(0)
+  remaining  Int       // maintained on write: total - used
+
+  @@unique([employeeId, leaveType, fiscalYear])
+  @@index([employeeId, fiscalYear])
+}
+
+model Leave {
+  id          String      @id @default(cuid())
+  employeeId  String
+  employee    Employee    @relation("LeaveRequester", fields: [employeeId], references: [id])
+  leaveType   LeaveType
+  status      LeaveStatus @default(PENDING)
+  startDate   DateTime    @db.Date
+  endDate     DateTime    @db.Date
+  totalDays   Float       // supports half-days (0.5)
+  reason      String
+  rejectionNote String?
+
+  approverId String?
+  approver   Employee? @relation("LeaveApprover", fields: [approverId], references: [id])
+  approvedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId])
+  @@index([status])
+  @@index([startDate, endDate])
+}
+
+model Attendance {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  date       DateTime @db.Date
+  present    Boolean  @default(true)
+  checkIn    DateTime?
+  checkOut   DateTime?
+  source     String   @default("system") // "system" | "manual" | "leave"
+  notes      String?
+
+  @@unique([employeeId, date])
+  @@index([employeeId, date])
+}
+
+// ─────────────────────────────────────────────
+// AUDIT & NOTIFICATIONS
+// ─────────────────────────────────────────────
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  action      AuditAction
+  entity      String      // "Task", "Project", "Leave", etc.
+  entityId    String
+  description String
+  metadata    Json?       // flexible payload: { oldStatus, newStatus, ... }
+  actorId     String
+  actor       Employee    @relation(fields: [actorId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([actorId])
+  @@index([createdAt])
+}
+
+model Notification {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  title      String
+  body       String
+  category   String   // "tasks", "leaves", "mentions", etc.
+  read       Boolean  @default(false)
+  linkTo     String?  // URL path to navigate to
+
+  createdAt DateTime @default(now())
+
+  @@index([employeeId, read])
+}

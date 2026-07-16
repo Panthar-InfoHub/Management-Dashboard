@@ -1,16 +1,20 @@
-import { OverviewCards } from "@/components/dashboard/overview-cards";
+import { ActionableWidgets } from "@/components/dashboard/productive-widgets";
 import { InsightsPanel } from "@/components/dashboard/insights-panel";
 import { DashboardCharts } from "@/components/dashboard/dashboard-charts";
 import { ActivityFeed } from "@/components/dashboard/activity-feed";
 import { TodayAgenda } from "@/components/dashboard/today-agenda";
 import { ProjectsSummary } from "@/components/dashboard/projects-summary";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { MessageSquare, Plus } from "lucide-react";
+import { DashboardHeaderActions } from "@/components/dashboard/dashboard-header-actions";
+import { getDashboardActionableMetrics, getDashboardProjectsSummary, getDashboardActivityFeed } from "@/lib/queries/dashboard.queries";
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
   const now = new Date();
   const greeting = now.getHours() < 12 ? "Good morning" : now.getHours() < 17 ? "Good afternoon" : "Good evening";
+
+  // Fetch real data from the DAL
+  const actionableMetrics = await getDashboardActionableMetrics();
+  const projectsSummary = await getDashboardProjectsSummary();
+  const activityFeed = await getDashboardActivityFeed();
 
   return (
     <div className="space-y-6 p-6">
@@ -22,36 +26,21 @@ export default function DashboardPage() {
             Here&apos;s what&apos;s happening across your organization today.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" className="gap-2 text-xs">
-            <MessageSquare className="h-3.5 w-3.5" />
-            Submit Update
-          </Button>
-          <Button size="sm" className="gap-2 text-xs">
-            <Plus className="h-3.5 w-3.5" />
-            Quick Action
-          </Button>
-        </div>
+        <DashboardHeaderActions />
       </div>
 
-      {/* Overview Cards */}
-      <OverviewCards />
+      {/* Actionable Productive Row */}
+      <ActionableWidgets metrics={actionableMetrics} />
 
-      {/* Charts + Insights Row */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <DashboardCharts />
-        </div>
-        <div className="space-y-4">
-          <InsightsPanel />
-          <TodayAgenda />
-        </div>
+      {/* Charts Row */}
+      <div className="grid gap-4">
+        <DashboardCharts />
       </div>
 
       {/* Activity + Projects Row */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <ActivityFeed />
-        <ProjectsSummary />
+        <ActivityFeed activities={activityFeed} />
+        <ProjectsSummary projects={projectsSummary} />
       </div>
     </div>
   );

@@ -1,6 +1,8 @@
 "use client";
 
 import { useTheme } from "@/components/providers/theme-provider";
+import { UserButton, Show } from "@clerk/nextjs";
+import Link from "next/link";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -100,29 +102,21 @@ export function TopNav() {
 
         <Separator orientation="vertical" className="mx-1 h-5" />
 
-        {/* User menu */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="gap-2 px-1.5">
-              <Avatar className="h-6 w-6">
-                <AvatarFallback className="bg-primary/10 text-[10px] font-medium text-primary">SM</AvatarFallback>
-              </Avatar>
-              <span className="hidden text-xs font-medium sm:inline">Shiva</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <div className="px-3 py-2">
-              <p className="text-sm font-medium">Shiva M.</p>
-              <p className="text-xs text-muted-foreground">shiva@panthar.io</p>
-            </div>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>Profile</DropdownMenuItem>
-            <DropdownMenuItem>Settings</DropdownMenuItem>
-            <DropdownMenuItem>Keyboard Shortcuts</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive">Sign Out</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Separator orientation="vertical" className="mx-1 h-5" />
+
+        {/* User menu (Clerk) */}
+        <div className="flex items-center pl-2">
+          <Show 
+            when="signed-in" 
+            fallback={
+              <Button asChild variant="default" size="sm">
+                <Link href="/sign-in">Sign In</Link>
+              </Button>
+            }
+          >
+            <UserButton />
+          </Show>
+        </div>
       </div>
     </header>
   );

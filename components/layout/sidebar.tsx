@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useUser } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -33,6 +34,7 @@ const bottomItems = [
 
 export function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCollapsed: (val: boolean) => void }) {
   const pathname = usePathname();
+  const { user } = useUser();
 
   // A constrained divider that doesn't bleed out in collapsed mode
   const Divider = () => <div className="my-2 h-px bg-border w-[calc(100%-16px)] mx-auto" />;
@@ -188,12 +190,18 @@ export function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCo
       {/* User */}
       <div className={cn("flex items-center gap-2 p-3", collapsed && "justify-center p-2 mb-2")}>
         <Avatar className="h-8 w-8 rounded-md">
-          <AvatarFallback className="bg-primary/10 text-xs font-medium text-primary rounded-md border border-primary/20">SM</AvatarFallback>
+          {user?.imageUrl ? (
+            <AvatarImage src={user.imageUrl} alt={user.fullName ?? ""} />
+          ) : (
+            <AvatarFallback className="bg-primary/10 text-xs font-medium text-primary rounded-md border border-primary/20">
+              {user?.firstName?.charAt(0) || "U"}
+            </AvatarFallback>
+          )}
         </Avatar>
         {!collapsed && (
           <div className="flex flex-1 flex-col overflow-hidden">
-            <span className="truncate text-xs font-medium text-foreground">Shiva M.</span>
-            <span className="truncate text-[10px] text-muted-foreground">Admin</span>
+            <span className="truncate text-xs font-medium text-foreground">{user?.fullName || "User"}</span>
+            <span className="truncate text-[10px] text-muted-foreground">{user?.primaryEmailAddress?.emailAddress || "user@panthar.io"}</span>
           </div>
         )}
       </div>

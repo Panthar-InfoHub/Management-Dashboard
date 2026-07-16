@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
+import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 import { AppShell } from "@/components/layout/app-shell";
 
@@ -30,7 +32,10 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full bg-background text-foreground">
-        <AppShell>{children}</AppShell>
+        <ClerkProvider>
+          {children}
+          <Toaster />
+        </ClerkProvider>
       </body>
     </html>
   );
