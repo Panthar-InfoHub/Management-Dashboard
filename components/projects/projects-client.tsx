@@ -11,41 +11,32 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { Plus, Filter, Search, ArrowUpRight, Calendar, DollarSign, FolderKanban } from "lucide-react";
 import { updateProjectStatusAction } from "@/lib/actions/project.actions";
 
-const healthColors: Record<string, string> = { GOOD: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20", AT_RISK: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/20", CRITICAL: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20 hover:bg-red-500/20" };
 const statusColors: Record<string, string> = { ACTIVE: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20", PLANNING: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20 hover:bg-purple-500/20", ON_HOLD: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20 hover:bg-orange-500/20", COMPLETED: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20", ARCHIVED: "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20 hover:bg-gray-500/20" };
 const priorityColors: Record<string, string> = { CRITICAL: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20 hover:bg-red-500/20", HIGH: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20 hover:bg-orange-500/20", MEDIUM: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20", LOW: "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20 hover:bg-gray-500/20" };
 
 export function ProjectsClient({ initialProjects }: { initialProjects: any[] }) {
   const [projectList, setProjectList] = useState(initialProjects);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [priorityFilter, setPriorityFilter] = useState("ALL");
+  
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
-  const handleDragStart = (e: React.DragEvent, projectId: string) => {
-    e.dataTransfer.setData("projectId", projectId);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-
-  const handleDrop = (e: React.DragEvent, statusId: string) => {
-    e.preventDefault();
-    const projectId = e.dataTransfer.getData("projectId");
+  const filteredProjects = projectList.filter((p) => {
+    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || 
+                          (p.description || "").toLowerCase().includes(search.toLowerCase()) ||
+                          (p.team?.name || "").toLowerCase().includes(search.toLowerCase());
+    const matchesStatus = statusFilter === "ALL" || p.status === statusFilter;
+    const matchesPriority = priorityFilter === "ALL" || p.priority === priorityFilter;
     
-    // Optimistic Update
-    setProjectList((prev) => prev.map(p => p.id === projectId ? { ...p, status: statusId } : p));
-    
-    // Server Action
-    startTransition(() => {
-      updateProjectStatusAction(projectId, statusId).catch(err => {
-        console.error("Failed to update status", err);
-      });
-    });
-  };
+    return matchesSearch && matchesStatus && matchesPriority;
+  });
 
   if (projectList.length === 0) {
     return (
@@ -70,8 +61,8 @@ export function ProjectsClient({ initialProjects }: { initialProjects: any[] }) 
   }
 
   return (
-    <div className="space-y-6 p-6 h-full">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col gap-6 p-6 h-[calc(100vh-64px)] min-w-0 overflow-hidden">
+      <div className="flex items-center justify-between shrink-0">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Projects</h1>
           <p className="text-sm text-muted-foreground">Manage and track all active projects across your organization.</p>
@@ -83,24 +74,56 @@ export function ProjectsClient({ initialProjects }: { initialProjects: any[] }) 
         </Button>
       </div>
 
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
+        <div className="relative flex-1 w-full max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Search projects…" className="pl-9 h-9 text-sm" />
+          <Input 
+            placeholder="Search projects…" 
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9 h-9 text-sm" 
+          />
         </div>
-        <Button variant="secondary" size="sm" className="gap-2 text-xs"><Filter className="h-3.5 w-3.5" /> Filter</Button>
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="h-9 w-[130px] text-xs">
+              <div className="flex items-center gap-2"><Filter className="h-3.5 w-3.5" /> <SelectValue placeholder="Status" /></div>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All Statuses</SelectItem>
+              {Object.keys(statusColors).map(status => (
+                <SelectItem key={status} value={status}>{status.replace("_", " ")}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+            <SelectTrigger className="h-9 w-[130px] text-xs">
+              <div className="flex items-center gap-2"><Filter className="h-3.5 w-3.5" /> <SelectValue placeholder="Priority" /></div>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All Priorities</SelectItem>
+              {Object.keys(priorityColors).map(priority => (
+                <SelectItem key={priority} value={priority}>{priority}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
-      <Tabs defaultValue="grid">
-        <TabsList>
+      <Tabs defaultValue="grid" className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <TabsList className="shrink-0 w-fit">
           <TabsTrigger value="grid" className="text-xs">Grid</TabsTrigger>
           <TabsTrigger value="list" className="text-xs">List</TabsTrigger>
-          <TabsTrigger value="board" className="text-xs">Board</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="grid" className="mt-4">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {projectList.map((project) => {
+        <TabsContent value="grid" className="mt-0 pt-4 flex-1 overflow-y-auto pr-2 pb-4 focus-visible:outline-none focus-visible:ring-0">
+          {filteredProjects.length === 0 ? (
+            <div className="border border-dashed border-border/50 rounded-lg p-12 text-center">
+              <p className="text-sm text-muted-foreground">No projects match your filters.</p>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {filteredProjects.map((project) => {
               const lead = project.lead;
               const membersList = project.members.map((m: any) => m.employee);
               return (
@@ -119,10 +142,13 @@ export function ProjectsClient({ initialProjects }: { initialProjects: any[] }) 
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Badge variant="outline" className={cn("text-[10px]", statusColors[project.status])}>{project.status.replace("_", " ")}</Badge>
-                      <Badge variant="outline" className={cn("text-[10px]", healthColors[project.health])}>{project.health.replace("_", " ")}</Badge>
-                      <Badge variant="outline" className={cn("text-[10px]", priorityColors[project.priority])}>{project.priority}</Badge>
+                    <div className="flex items-center gap-4 flex-wrap mt-2">
+                      <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                        Status: <Badge variant="outline" className={cn("px-1.5 py-0 rounded-sm shadow-none", statusColors[project.status])}>{project.status.replace("_", " ")}</Badge>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                        Priority: <Badge variant="outline" className={cn("px-1.5 py-0 rounded-sm shadow-none", priorityColors[project.priority])}>{project.priority}</Badge>
+                      </div>
                     </div>
                     <div>
                       <div className="flex items-center justify-between mb-1">
@@ -159,82 +185,47 @@ export function ProjectsClient({ initialProjects }: { initialProjects: any[] }) 
               );
             })}
           </div>
+          )}
         </TabsContent>
 
-        <TabsContent value="list" className="mt-4">
-          <div className="border border-border/40 rounded-lg overflow-hidden bg-background">
-            <div className="divide-y divide-border/40">
-              <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_80px] gap-4 px-5 py-3 text-[11px] font-medium text-muted-foreground uppercase tracking-wider bg-muted/20">
-                <span>Project</span><span>Status</span><span>Progress</span><span>Team</span><span>Deadline</span><span>Health</span>
-              </div>
-              {projectList.map((project) => {
+        <TabsContent value="list" className="mt-0 pt-4 flex-1 overflow-y-auto pr-2 pb-4 focus-visible:outline-none focus-visible:ring-0">
+          {filteredProjects.length === 0 ? (
+            <div className="border border-dashed border-border/50 rounded-lg p-12 text-center">
+              <p className="text-sm text-muted-foreground">No projects match your filters.</p>
+            </div>
+          ) : (
+            <div className="border border-border/40 rounded-lg overflow-hidden bg-background">
+              <div className="divide-y divide-border/40">
+                <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-4 px-5 py-3 text-[11px] font-medium text-muted-foreground uppercase tracking-wider bg-muted/20">
+                  <span>Project</span><span>Status</span><span>Progress</span><span>Team</span><span>Deadline</span>
+                </div>
+                {filteredProjects.map((project) => {
                 const lead = project.lead;
                 return (
                   <div 
                     key={project.id} 
                     onClick={() => router.push(`/projects/${project.id}`)}
-                    className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_80px] gap-4 px-5 py-4 items-center hover:bg-muted/30 transition-colors cursor-pointer"
+                    className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-4 px-5 py-4 items-center hover:bg-muted/30 transition-colors cursor-pointer"
                   >
                     <div>
                       <p className="text-sm font-medium text-foreground">{project.name}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">{lead?.firstName} {lead?.lastName}</p>
                     </div>
-                    <Badge variant="outline" className={cn("text-[10px] w-fit", statusColors[project.status])}>{project.status.replace("_", " ")}</Badge>
+                    <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                      Status: <Badge variant="outline" className={cn("px-1.5 py-0 rounded-sm shadow-none", statusColors[project.status])}>{project.status.replace("_", " ")}</Badge>
+                    </div>
                     <div className="flex items-center gap-2">
                       <Progress value={project.computedProgress} className="h-1.5 flex-1" />
                       <span className="text-[10px] font-medium">{project.computedProgress}%</span>
                     </div>
                     <span className="text-xs text-muted-foreground">{project.team?.name || "-"}</span>
                     <span className="text-xs text-muted-foreground">{project.endDate ? new Date(project.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "-"}</span>
-                    <Badge variant="outline" className={cn("text-[10px] w-fit", healthColors[project.health])}>{project.health.replace("_", " ")}</Badge>
                   </div>
                 );
               })}
             </div>
           </div>
-        </TabsContent>
-
-        <TabsContent value="board" className="mt-4">
-          <div className="grid grid-cols-3 gap-4">
-            {["PLANNING", "ACTIVE", "COMPLETED"].map(status => (
-              <div 
-                key={status}
-                className="flex flex-col h-full bg-muted/10 rounded-lg p-3 border border-border/40 min-h-[400px]"
-                onDragOver={handleDragOver}
-                onDrop={(e) => handleDrop(e, status)}
-              >
-                <div className="flex items-center gap-2 mb-3">
-                  <Badge variant="outline" className={cn("text-[10px]", statusColors[status])}>{status.replace("_", " ")}</Badge>
-                  <span className="text-xs text-muted-foreground">{projectList.filter(p => p.status === status).length}</span>
-                </div>
-                <div className="space-y-2 flex-1">
-                  {projectList.filter(p => p.status === status).map(project => (
-                    <Card 
-                      key={project.id} 
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, project.id)}
-                      onClick={() => router.push(`/projects/${project.id}`)}
-                      className={cn("border-border/40 shadow-none hover:border-border transition-colors cursor-pointer active:cursor-grabbing", isPending && "opacity-80")}
-                    >
-                      <CardContent className="p-3">
-                        <p className="text-xs font-medium mb-1">{project.name}</p>
-                        <Progress value={project.computedProgress} className="h-1 mb-2" />
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] text-muted-foreground">{project.team?.name || "-"}</span>
-                          <Badge variant="outline" className={cn("text-[9px]", healthColors[project.health])}>{project.health.replace("_", " ")}</Badge>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                  {projectList.filter(p => p.status === status).length === 0 && (
-                    <div className="rounded-lg border border-dashed border-border/50 p-4 text-center">
-                      <p className="text-[11px] text-muted-foreground">No projects</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>

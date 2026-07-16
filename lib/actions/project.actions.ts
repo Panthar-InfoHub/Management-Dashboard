@@ -28,13 +28,36 @@ export async function updateProjectStatusAction(projectId: string, newStatus: an
   return { success: true, project };
 }
 
+export async function updateProjectPriorityAction(projectId: string, newPriority: any) {
+  const employee = await requireAuth("project:update");
+
+  const project = await db.project.update({
+    where: { id: projectId },
+    data: { priority: newPriority }
+  });
+
+  await db.auditLog.create({
+    data: {
+      action: "UPDATE",
+      entity: "Project",
+      entityId: project.id,
+      description: `Updated project priority to ${newPriority}`,
+      actorId: employee.id
+    }
+  });
+
+  revalidatePath("/projects");
+  revalidatePath(`/projects/${projectId}`);
+
+  return { success: true, project };
+}
+
 export async function createProjectAction(data: {
   name: string;
   description?: string;
   leadId: string;
   teamId: string;
   status: any;
-  health: any;
   priority: any;
   startDate?: Date;
   endDate?: Date;
@@ -48,7 +71,6 @@ export async function createProjectAction(data: {
       leadId: data.leadId,
       teamId: data.teamId,
       status: data.status,
-      health: data.health,
       priority: data.priority,
       startDate: data.startDate,
       endDate: data.endDate,
@@ -75,4 +97,88 @@ export async function createProjectAction(data: {
   revalidatePath("/");
 
   return { success: true, project };
+}
+
+export async function updateProjectAction(projectId: string, data: {
+  name: string;
+  description?: string;
+  leadId: string;
+  teamId: string;
+  status: any;
+  priority: any;
+}) {
+  const employee = await requireAuth("project:update");
+
+  const project = await db.project.update({
+    where: { id: projectId },
+    data: {
+      name: data.name,
+      description: data.description,
+      leadId: data.leadId,
+      teamId: data.teamId,
+      status: data.status,
+      priority: data.priority,
+    }
+  });
+
+  await db.auditLog.create({
+    data: {
+      action: "UPDATE",
+      entity: "Project",
+      entityId: project.id,
+      description: `Updated project configuration`,
+      actorId: employee.id
+    }
+  });
+
+  revalidatePath("/projects");
+  revalidatePath(`/projects/${projectId}`);
+  return { success: true, project };
+}
+
+export async function manageProjectMembersAction(projectId: string, memberIds: string[]) {
+  const employee = await requireAuth("project:update");
+
+  // Sync ProjectMember relation (join table)
+  await db.$transaction([
+    db.projectMember.deleteMany({ where: { projectId } }),
+    db.projectMember.createMany({ 
+      data: memberIds.map(id => ({ projectId, employeeId: id })) 
+    })
+  ]);
+
+  await db.auditLog.create({
+    data: {
+      action: "UPDATE",
+      entity: "Project",
+      entityId: projectId,
+      description: `Updated project roster (${memberIds.length} members)`,
+      actorId: employee.id
+    }
+  });
+
+  revalidatePath("/projects");
+  revalidatePath(`/projects/${projectId}`);
+  return { success: true };
+}
+
+export async function deleteProjectAction(projectId: string) {
+  const employee = await requireAuth("project:delete");
+
+  await db.project.delete({
+    where: { id: projectId }
+  });
+
+  await db.auditLog.create({
+    data: {
+      action: "DELETE",
+      entity: "Project",
+      entityId: projectId,
+      description: `Deleted project`,
+      actorId: employee.id
+    }
+  });
+
+  revalidatePath("/projects");
+  return { success: true };
 }

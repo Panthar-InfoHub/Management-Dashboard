@@ -30,7 +30,6 @@ export function NewProjectForm({
     description: string;
     goals: string;
     status: any;
-    health: any;
     priority: any;
     lead: string;
     team: string;
@@ -41,7 +40,6 @@ export function NewProjectForm({
     description: "",
     goals: "",
     status: "PLANNING", 
-    health: "GOOD",
     priority: "MEDIUM",
     lead: employees[0]?.id || "",
     team: teams[0]?.id || "",
@@ -57,7 +55,6 @@ export function NewProjectForm({
         name: newProject.name,
         description: newProject.description || newProject.goals || "A newly created project.",
         status: newProject.status,
-        health: newProject.health,
         priority: newProject.priority,
         leadId: newProject.lead,
         teamId: newProject.team,
@@ -172,18 +169,6 @@ export function NewProjectForm({
                     <SelectItem value="ACTIVE">Active</SelectItem>
                     <SelectItem value="PAUSED">Paused</SelectItem>
                     <SelectItem value="COMPLETED">Completed</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground">Health</label>
-                <Select value={newProject.health} onValueChange={v => setNewProject({ ...newProject, health: v })}>
-                  <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="GOOD">Good</SelectItem>
-                    <SelectItem value="AT_RISK">At Risk</SelectItem>
-                    <SelectItem value="CRITICAL">Critical</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

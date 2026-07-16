@@ -1,25 +1,107 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Calendar, CheckSquare, Clock, ChevronRight, Plus, Users, Flag, TrendingUp } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Calendar, CheckSquare, Clock, ChevronRight, ChevronDown, Plus, Users, Flag, TrendingUp, Settings2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { updateProjectAction, manageProjectMembersAction, updateProjectStatusAction, updateProjectPriorityAction } from "@/lib/actions/project.actions";
 
-const healthColors: Record<string, string> = { GOOD: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20", AT_RISK: "bg-amber-500/10 text-amber-600 border-amber-500/20", CRITICAL: "bg-red-500/10 text-red-600 border-red-500/20" };
 const statusColors: Record<string, string> = { ACTIVE: "bg-blue-500/10 text-blue-600 border-blue-500/20", PLANNING: "bg-purple-500/10 text-purple-600 border-purple-500/20", PAUSED: "bg-orange-500/10 text-orange-600 border-orange-500/20", COMPLETED: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20", ARCHIVED: "bg-gray-500/10 text-gray-600 border-gray-500/20" };
 const priorityColors: Record<string, string> = { CRITICAL: "bg-red-500/10 text-red-600 border-red-500/20", HIGH: "bg-orange-500/10 text-orange-600 border-orange-500/20", MEDIUM: "bg-blue-500/10 text-blue-600 border-blue-500/20", LOW: "bg-gray-500/10 text-gray-600 border-gray-500/20" };
 const taskStatusColors: Record<string, string> = { BACKLOG: "bg-gray-500/10 text-gray-600 border-gray-500/20", TODO: "bg-slate-500/10 text-slate-600 border-slate-500/20", IN_PROGRESS: "bg-blue-500/10 text-blue-600 border-blue-500/20", REVIEW: "bg-purple-500/10 text-purple-600 border-purple-500/20", TESTING: "bg-amber-500/10 text-amber-600 border-amber-500/20", DONE: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" };
 
-export function ProjectDetailClient({ initialProject }: { initialProject: any }) {
-  const [project] = useState(initialProject);
+export function ProjectDetailClient({ project, allEmployees = [], allTeams = [] }: { project: any, allEmployees: any[], allTeams: any[] }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
 
   const completedTasks = project.tasks.filter((t: any) => t.status === "DONE").length;
   const totalTasks = project.tasks.length;
   
+  // Edit Project State
+  const [editOpen, setEditOpen] = useState(false);
+  const [editData, setEditData] = useState({ 
+    name: project.name, 
+    description: project.description || "", 
+    leadId: project.leadId,
+    teamId: project.teamId,
+    status: project.status,
+    priority: project.priority
+  });
+
+  const handleOpenEdit = () => {
+    setEditData({ 
+      name: project.name, 
+      description: project.description || "", 
+      leadId: project.leadId,
+      teamId: project.teamId,
+      status: project.status,
+      priority: project.priority
+    });
+    setEditOpen(true);
+  };
+
+  const handleUpdateProject = () => {
+    if (!editData.name || !editData.leadId || !editData.teamId) return;
+    startTransition(() => {
+      updateProjectAction(project.id, editData).then(() => {
+        setEditOpen(false);
+        router.refresh();
+      }).catch(err => console.error(err));
+    });
+  };
+
+  // Manage Members State
+  const [manageOpen, setManageOpen] = useState(false);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+
+  const handleOpenManage = () => {
+    // Only pre-select members that are not the lead
+    setSelectedMemberIds(project.members.filter((m: any) => m.employeeId !== project.leadId).map((m: any) => m.employeeId));
+    setManageOpen(true);
+  };
+
+  const handleManageMembers = () => {
+    startTransition(() => {
+      // Ensure the lead is ALWAYS part of the project members
+      const finalMemberIds = Array.from(new Set([...selectedMemberIds, project.leadId]));
+      manageProjectMembersAction(project.id, finalMemberIds).then(() => {
+        setManageOpen(false);
+        router.refresh();
+      }).catch(err => console.error(err));
+    });
+  };
+
+  const toggleMember = (id: string) => {
+    if (selectedMemberIds.includes(id)) {
+      setSelectedMemberIds(selectedMemberIds.filter(mid => mid !== id));
+    } else {
+      setSelectedMemberIds([...selectedMemberIds, id]);
+    }
+  };
+
+  const handleQuickStatusChange = (newStatus: string) => {
+    if (newStatus === project.status) return;
+    startTransition(() => {
+      updateProjectStatusAction(project.id, newStatus).catch(err => console.error(err));
+    });
+  };
+
+  const handleQuickPriorityChange = (newPriority: string) => {
+    if (newPriority === project.priority) return;
+    startTransition(() => {
+      updateProjectPriorityAction(project.id, newPriority).catch(err => console.error(err));
+    });
+  };
+
   return (
     <div className="h-full flex flex-col bg-background selection:bg-primary/10">
       {/* Vercel-like Breadcrumb & Actions Bar */}
@@ -30,10 +112,11 @@ export function ProjectDetailClient({ initialProject }: { initialProject: any })
           <span className="text-foreground font-medium truncate max-w-[300px]">{project.name}</span>
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" size="sm" asChild className="h-8 shadow-none">
-            <Link href={`/projects/${project.id}/edit`}>
-              Edit Project
-            </Link>
+          <Button variant="outline" size="sm" onClick={handleOpenManage} className="h-8 shadow-none gap-2">
+            <Users className="h-4 w-4" /> Manage Members
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleOpenEdit} className="h-8 shadow-none gap-2">
+            <Settings2 className="h-4 w-4" /> Edit Project
           </Button>
           <Button size="sm" asChild className="h-8 shadow-none gap-1.5">
             <Link href={`/tasks/new?project=${project.id}`}>
@@ -50,16 +133,42 @@ export function ProjectDetailClient({ initialProject }: { initialProject: any })
           <div className="space-y-10">
             <div>
               <h1 className="text-3xl font-semibold tracking-tight text-foreground mb-4">{project.name}</h1>
-              <div className="flex items-center gap-2 mb-8">
-                <Badge variant="outline" className={cn("text-[11px] px-2 py-0.5 rounded-full font-medium shadow-none", statusColors[project.status])}>
-                  {project.status.replace("_", " ")}
-                </Badge>
-                <Badge variant="outline" className={cn("text-[11px] px-2 py-0.5 rounded-full font-medium shadow-none", healthColors[project.health])}>
-                  Health: {project.health.replace("_", " ")}
-                </Badge>
-                <Badge variant="outline" className={cn("text-[11px] px-2 py-0.5 rounded-full font-medium shadow-none", priorityColors[project.priority])}>
-                  {project.priority} Priority
-                </Badge>
+              <div className="flex items-center gap-4 mb-8">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  Status:
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Badge variant="outline" className={cn("px-2 py-0.5 rounded-full shadow-none cursor-pointer hover:opacity-80 transition-opacity", statusColors[project.status])}>
+                        {project.status.replace("_", " ")} <ChevronDown className="h-3 w-3 ml-1 inline" />
+                      </Badge>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      {Object.keys(statusColors).map(status => (
+                        <DropdownMenuItem key={status} onClick={() => handleQuickStatusChange(status)} className="text-xs">
+                          {status.replace("_", " ")}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                
+                <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  Priority:
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Badge variant="outline" className={cn("px-2 py-0.5 rounded-full shadow-none cursor-pointer hover:opacity-80 transition-opacity", priorityColors[project.priority])}>
+                        {project.priority} <ChevronDown className="h-3 w-3 ml-1 inline" />
+                      </Badge>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      {Object.keys(priorityColors).map(priority => (
+                        <DropdownMenuItem key={priority} onClick={() => handleQuickPriorityChange(priority)} className="text-xs">
+                          {priority}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
 
               <div className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground leading-relaxed">
@@ -97,8 +206,8 @@ export function ProjectDetailClient({ initialProject }: { initialProject: any })
               </div>
 
               {project.tasks.length > 0 ? (
-                <div className="border border-border/40 rounded-lg overflow-hidden bg-background">
-                  <div className="divide-y divide-border/40">
+                <div className="border border-border/40 rounded-lg bg-background flex flex-col">
+                  <div className="divide-y divide-border/40 overflow-y-auto max-h-[400px]">
                     {project.tasks.map((task: any) => (
                       <div key={task.id} className="p-4 hover:bg-muted/20 transition-colors flex items-center justify-between group">
                         <div className="space-y-1.5">
@@ -138,7 +247,6 @@ export function ProjectDetailClient({ initialProject }: { initialProject: any })
                 </div>
               )}
             </div>
-
           </div>
 
           {/* Right Sidebar (Metadata) */}
@@ -177,14 +285,14 @@ export function ProjectDetailClient({ initialProject }: { initialProject: any })
             {/* Properties */}
             <div>
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Properties</h3>
-              <div className="space-y-4">
+              <div className="space-y-4 bg-muted/10 p-4 rounded-lg border border-border/40">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground flex items-center gap-2"><Calendar className="h-3.5 w-3.5" /> Start Date</span>
-                  <span className="font-medium">{project.startDate ? new Date(project.startDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}</span>
+                  <span className="font-medium text-xs bg-background border border-border/50 px-2 py-0.5 rounded">{project.startDate ? new Date(project.startDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground flex items-center gap-2"><Flag className="h-3.5 w-3.5" /> Target End Date</span>
-                  <span className="font-medium text-foreground">{project.endDate ? new Date(project.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}</span>
+                  <span className="text-muted-foreground flex items-center gap-2"><Flag className="h-3.5 w-3.5" /> Deadline</span>
+                  <span className="font-medium text-xs bg-background border border-border/50 px-2 py-0.5 rounded">{project.endDate ? new Date(project.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}</span>
                 </div>
               </div>
             </div>
@@ -192,29 +300,164 @@ export function ProjectDetailClient({ initialProject }: { initialProject: any })
             {/* Project Members */}
             <div>
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Members</h3>
-                <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{project.members.length}</span>
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Project Members</h3>
+                <span className="text-xs font-medium bg-background border border-border/50 px-2 py-0.5 rounded">{project.members.length}</span>
               </div>
-              <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
-                {project.members.map((m: any) => (
-                  <div key={m.id} className="flex items-center gap-3 group">
-                    <Avatar className="h-7 w-7">
-                      <AvatarImage src={m.employee.avatarUrl} />
-                      <AvatarFallback className="text-[10px] bg-secondary text-secondary-foreground">
-                        {m.employee.firstName.charAt(0)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{m.employee.firstName} {m.employee.lastName}</p>
-                    </div>
+              
+              {project.members.length > 0 ? (
+                <div className="border border-border/40 rounded-lg bg-background flex flex-col">
+                  <div className="divide-y divide-border/40 overflow-y-auto max-h-[300px]">
+                    {project.members.map((m: any) => (
+                      <div key={m.id} className="flex items-center gap-3 p-3 hover:bg-muted/30 transition-colors group">
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={m.employee.avatarUrl} />
+                          <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
+                            {m.employee.firstName.charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">{m.employee.firstName} {m.employee.lastName}</p>
+                          {m.employeeId === project.leadId && (
+                            <Badge variant="secondary" className="text-[9px] mt-0.5 h-4 px-1.5 leading-none bg-primary/10 text-primary border-primary/20">Lead</Badge>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-border/40 p-4 text-center bg-muted/10">
+                  <p className="text-xs text-muted-foreground">No members assigned.</p>
+                </div>
+              )}
             </div>
 
           </div>
         </div>
       </div>
+
+      {/* Edit Project Modal */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Project</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4 max-h-[70vh] overflow-y-auto pr-2">
+            <div className="space-y-1.5 flex flex-col">
+              <label className="text-xs font-semibold text-muted-foreground">Project Name</label>
+              <Input value={editData.name} onChange={e => setEditData({ ...editData, name: e.target.value })} />
+            </div>
+            
+            <div className="space-y-1.5 flex flex-col">
+              <label className="text-xs font-semibold text-muted-foreground">Description</label>
+              <Input value={editData.description} onChange={e => setEditData({ ...editData, description: e.target.value })} />
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5 flex flex-col">
+                <label className="text-xs font-semibold text-muted-foreground">Project Lead</label>
+                <Select value={editData.leadId} onValueChange={val => setEditData({ ...editData, leadId: val })}>
+                  <SelectTrigger><SelectValue placeholder="Select lead" /></SelectTrigger>
+                  <SelectContent>
+                    {allEmployees.map(e => (
+                      <SelectItem key={e.id} value={e.id}>{e.firstName} {e.lastName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5 flex flex-col">
+                <label className="text-xs font-semibold text-muted-foreground">Owning Team</label>
+                <Select value={editData.teamId} onValueChange={val => setEditData({ ...editData, teamId: val })}>
+                  <SelectTrigger><SelectValue placeholder="Select team" /></SelectTrigger>
+                  <SelectContent>
+                    {allTeams.map(t => (
+                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5 flex flex-col">
+                <label className="text-xs font-semibold text-muted-foreground">Status</label>
+                <Select value={editData.status} onValueChange={val => setEditData({ ...editData, status: val })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Object.keys(statusColors).map(status => (
+                      <SelectItem key={status} value={status}>{status.replace("_", " ")}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5 flex flex-col">
+                <label className="text-xs font-semibold text-muted-foreground">Priority</label>
+                <Select value={editData.priority} onValueChange={val => setEditData({ ...editData, priority: val })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Object.keys(priorityColors).map(priority => (
+                      <SelectItem key={priority} value={priority}>{priority}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+          </div>
+          <DialogFooter className="pt-4 border-t border-border/40 mt-2">
+            <Button variant="outline" onClick={() => setEditOpen(false)} className="w-full sm:w-auto">Cancel</Button>
+            <Button onClick={handleUpdateProject} disabled={isPending || !editData.name || !editData.leadId || !editData.teamId} className="w-full sm:w-auto">
+              {isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Manage Members Modal */}
+      <Dialog open={manageOpen} onOpenChange={setManageOpen}>
+        <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Manage Project Members</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto py-4 space-y-2 pr-2">
+            {allEmployees.filter(emp => emp.id !== project.leadId).map(emp => {
+              const isSelected = selectedMemberIds.includes(emp.id);
+              
+              return (
+                <div 
+                  key={emp.id} 
+                  onClick={() => toggleMember(emp.id)}
+                  className={cn(
+                    "flex items-center gap-3 p-3 rounded-lg border transition-all cursor-pointer",
+                    isSelected ? "border-primary/50 bg-primary/5" : "border-transparent hover:bg-muted/50"
+                  )}
+                >
+                  <div className={cn(
+                    "flex items-center justify-center w-4 h-4 rounded-sm border shrink-0 transition-colors",
+                    isSelected ? "bg-primary border-primary text-primary-foreground" : "border-border/50 bg-background"
+                  )}>
+                    {isSelected && <Check className="h-3 w-3" />}
+                  </div>
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={emp.avatarUrl} />
+                    <AvatarFallback className="text-xs">{emp.firstName.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{emp.firstName} {emp.lastName}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{emp.designation || emp.email}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter className="pt-4 border-t border-border/40">
+            <Button variant="outline" onClick={() => setManageOpen(false)} className="w-full sm:w-auto">Cancel</Button>
+            <Button onClick={handleManageMembers} disabled={isPending} className="w-full sm:w-auto">
+              {isPending ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
