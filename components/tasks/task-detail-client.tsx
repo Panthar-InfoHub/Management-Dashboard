@@ -18,7 +18,7 @@ import { toast } from "sonner";
 const statusColors: Record<string, string> = { BACKLOG: "bg-gray-500/10 text-gray-600 border-gray-500/20", TODO: "bg-slate-500/10 text-slate-600 border-slate-500/20", IN_PROGRESS: "bg-blue-500/10 text-blue-600 border-blue-500/20", REVIEW: "bg-purple-500/10 text-purple-600 border-purple-500/20", TESTING: "bg-amber-500/10 text-amber-600 border-amber-500/20", DONE: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" };
 const priorityColors: Record<string, string> = { CRITICAL: "bg-red-500/10 text-red-600 border-red-500/20", HIGH: "bg-orange-500/10 text-orange-600 border-orange-500/20", MEDIUM: "bg-blue-500/10 text-blue-600 border-blue-500/20", LOW: "bg-gray-500/10 text-gray-600 border-gray-500/20" };
 
-export function TaskDetailClient({ initialTask, projectTasks }: { initialTask: any, projectTasks?: any[] }) {
+export function TaskDetailClient({ initialTask, projectTasks, canEdit = true }: { initialTask: any, projectTasks?: any[], canEdit?: boolean }) {
   const router = useRouter();
   const [task, setTask] = useState(initialTask);
   const [isPending, startTransition] = useTransition();
@@ -44,19 +44,27 @@ export function TaskDetailClient({ initialTask, projectTasks }: { initialTask: a
   };
 
   const handleStatusChange = (newStatus: string) => {
+    const oldStatus = task.status;
     setTask((prev: any) => ({ ...prev, status: newStatus }));
     startTransition(() => {
       updateTaskStatusAction(task.id, newStatus).then((res) => {
         if(res.success) toast.success(`Status updated to ${newStatus}`);
+      }).catch(err => {
+        setTask((prev: any) => ({ ...prev, status: oldStatus }));
+        toast.error("Failed to update status");
       });
     });
   };
 
   const handlePriorityChange = (newPriority: string) => {
+    const oldPriority = task.priority;
     setTask((prev: any) => ({ ...prev, priority: newPriority }));
     startTransition(() => {
       updateTaskPriorityAction(task.id, newPriority).then((res) => {
         if(res.success) toast.success(`Priority updated to ${newPriority}`);
+      }).catch(err => {
+        setTask((prev: any) => ({ ...prev, priority: oldPriority }));
+        toast.error("Failed to update priority");
       });
     });
   };
@@ -68,6 +76,8 @@ export function TaskDetailClient({ initialTask, projectTasks }: { initialTask: a
           toast.success(blockerId ? "Blocker added" : "Blocker removed");
           router.refresh();
         }
+      }).catch(err => {
+        toast.error("Failed to update blocker");
       });
     });
   };
@@ -105,9 +115,11 @@ export function TaskDetailClient({ initialTask, projectTasks }: { initialTask: a
           <span className="text-foreground font-medium truncate max-w-[200px] md:max-w-[300px]">{task.title}</span>
         </div>
         <div className="flex gap-2 self-end sm:self-auto shrink-0">
-          <Button variant="outline" size="sm" className="h-8 shadow-none text-xs">
-            Edit Task
-          </Button>
+          {canEdit && (
+            <Button variant="outline" size="sm" className="h-8 shadow-none text-xs">
+              Edit Task
+            </Button>
+          )}
           {task.status !== "DONE" && (
             <Button size="sm" className="h-8 shadow-none text-xs" onClick={() => handleStatusChange("DONE")}>
               Mark as Done

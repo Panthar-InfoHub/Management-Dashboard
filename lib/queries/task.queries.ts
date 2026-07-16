@@ -1,17 +1,39 @@
 import { db } from "@/lib/db";
 import { getCurrentEmployee } from "@/lib/auth";
 
-export async function getKanbanTasks() {
+export async function getKanbanTasks(filters?: { team?: string, project?: string, assignee?: string, search?: string }) {
   const employee = await getCurrentEmployee();
 
   // For the Kanban board, fetch tasks the user has access to. Admins see all tasks.
-  const whereClause = employee.role === "ADMIN" ? {} : {
+  let accessClause = (employee.role === "ADMIN" || employee.role === "MANAGER") ? {} : {
     OR: [
       { project: { members: { some: { employeeId: employee.id } } } },
       { assignees: { some: { id: employee.id } } },
       { creatorId: employee.id }
     ]
   };
+
+  const AND: any[] = [];
+  if (Object.keys(accessClause).length > 0) AND.push(accessClause);
+
+  if (filters?.team && filters.team !== "ALL") {
+    AND.push({ project: { teamId: filters.team } });
+  }
+  if (filters?.project && filters.project !== "ALL") {
+    AND.push({ projectId: filters.project });
+  }
+  if (filters?.assignee && filters.assignee !== "ALL") {
+    if (filters.assignee === "UNASSIGNED") {
+      AND.push({ assignees: { none: {} } });
+    } else {
+      AND.push({ assignees: { some: { id: filters.assignee } } });
+    }
+  }
+  if (filters?.search) {
+    AND.push({ title: { contains: filters.search, mode: "insensitive" } });
+  }
+
+  const whereClause = AND.length > 0 ? { AND } : {};
 
   const tasks = await db.task.findMany({
     where: whereClause,
@@ -67,13 +89,13 @@ export async function getTaskById(taskId: string) {
 
   if (!task) return null;
 
-  // Authorization: Admin sees all. Otherwise, must be creator, assignee, or project member
-  if (employee.role !== "ADMIN" && task.creatorId !== employee.id) {
+  // Authorization: Admin/Manager sees all. Otherwise, must be creator, assignee, or project member
+  if (employee.role !== "ADMIN" && employee.role !== "MANAGER" && task.creatorId !== employee.id) {
     const isAssignee = task.assignees.some(a => a.id === employee.id);
     const isProjectMember = task.project.members.some(m => m.employeeId === employee.id);
     
     if (!isAssignee && !isProjectMember) {
-      throw new Error("Unauthorized access to task");
+      throw new Error("FORBIDDEN: Requires higher permission level");
     }
   }
 

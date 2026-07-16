@@ -4,8 +4,16 @@ import { getCurrentEmployee } from "@/lib/auth";
 export async function getTeams() {
   const employee = await getCurrentEmployee();
   
-  // Everyone can view teams
+  // Admin and Manager see all teams. Others see only teams they belong to or lead.
+  const whereClause = (employee.role === "ADMIN" || employee.role === "MANAGER") ? {} : {
+    OR: [
+      { members: { some: { id: employee.id } } },
+      { leadId: employee.id }
+    ]
+  };
+
   const teams = await db.team.findMany({
+    where: whereClause,
     include: {
       lead: {
         select: { id: true, firstName: true, lastName: true, avatarUrl: true }
@@ -45,6 +53,15 @@ export async function getTeamById(teamId: string) {
       }
     }
   });
+
+  if (!team) return null;
+
+  if (employee.role !== "ADMIN" && employee.role !== "MANAGER" && team.leadId !== employee.id) {
+    const isMember = team.members.some(m => m.id === employee.id);
+    if (!isMember) {
+      throw new Error("FORBIDDEN: Requires higher permission level");
+    }
+  }
 
   return team;
 }

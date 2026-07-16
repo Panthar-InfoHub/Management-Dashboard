@@ -17,7 +17,7 @@ const statusColors: Record<string, string> = { ACTIVE: "bg-blue-500/10 text-blue
 
 const taskStatusColors: Record<string, string> = { BACKLOG: "bg-gray-500/10 text-gray-600 border-gray-500/20", TODO: "bg-slate-500/10 text-slate-600 border-slate-500/20", IN_PROGRESS: "bg-blue-500/10 text-blue-600 border-blue-500/20", REVIEW: "bg-purple-500/10 text-purple-600 border-purple-500/20", TESTING: "bg-orange-500/10 text-orange-600 border-orange-500/20", DONE: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" };
 
-export function TeamDetailClient({ team, allEmployees = [], tasks = [] }: { team: any, allEmployees?: any[], tasks?: any[] }) {
+export function TeamDetailClient({ team, allEmployees = [], tasks = [], canEdit = true }: { team: any, allEmployees?: any[], tasks?: any[], canEdit?: boolean }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -78,14 +78,16 @@ export function TeamDetailClient({ team, allEmployees = [], tasks = [] }: { team
           <ChevronRight className="h-3.5 w-3.5" />
           <span className="text-foreground font-medium truncate max-w-[300px]">{team.name}</span>
         </div>
-        <div className="flex gap-3">
-          <Button variant="outline" size="sm" onClick={handleOpenManage} className="h-8 shadow-none gap-2">
-            <Users className="h-4 w-4" /> Manage Members
-          </Button>
-          <Button size="sm" onClick={handleOpenEdit} className="h-8 shadow-none gap-2">
-            <Settings2 className="h-4 w-4" /> Edit Team
-          </Button>
-        </div>
+        {canEdit && (
+          <div className="flex gap-3">
+            <Button variant="outline" size="sm" onClick={handleOpenManage} className="h-8 shadow-none gap-2">
+              <Users className="h-4 w-4" /> Manage Members
+            </Button>
+            <Button size="sm" onClick={handleOpenEdit} className="h-8 shadow-none gap-2">
+              <Settings2 className="h-4 w-4" /> Edit Team
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto px-8 py-8">

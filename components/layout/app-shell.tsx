@@ -9,7 +9,7 @@ import { CommandPalette } from "@/components/layout/command-palette";
 import { SubmitUpdateModal } from "@/components/modals/submit-update-modal";
 import { cn } from "@/lib/utils";
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, isAdmin }: { children: React.ReactNode, isAdmin: boolean }) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -27,7 +27,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <main className="flex-1 min-h-0 overflow-y-auto bg-background/50">{children}</main>
           </div>
         </div>
-        <CommandPalette />
+        <CommandPalette isAdmin={isAdmin} />
         <SubmitUpdateModal />
       </TooltipProvider>
     </ThemeProvider>

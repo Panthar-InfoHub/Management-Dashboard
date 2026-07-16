@@ -61,8 +61,28 @@ export async function createProjectAction(data: {
   priority: any;
   startDate?: Date;
   endDate?: Date;
+  addTeamMembers?: boolean;
 }) {
   const employee = await requireAuth("project:create");
+
+  let membersToAdd = [
+    { employeeId: data.leadId },
+    ...(data.leadId !== employee.id ? [{ employeeId: employee.id }] : [])
+  ];
+
+  if (data.addTeamMembers && data.teamId) {
+    const team = await db.team.findUnique({
+      where: { id: data.teamId },
+      include: { members: { select: { id: true } } }
+    });
+    if (team) {
+      team.members.forEach((m: any) => {
+        if (!membersToAdd.find((x) => x.employeeId === m.id)) {
+          membersToAdd.push({ employeeId: m.id });
+        }
+      });
+    }
+  }
 
   const project = await db.project.create({
     data: {
@@ -75,10 +95,7 @@ export async function createProjectAction(data: {
       startDate: data.startDate,
       endDate: data.endDate,
       members: {
-        create: [
-          { employeeId: data.leadId },
-          ...(data.leadId !== employee.id ? [{ employeeId: employee.id }] : [])
-        ]
+        create: membersToAdd
       }
     }
   });

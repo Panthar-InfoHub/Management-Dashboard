@@ -14,7 +14,7 @@ import {
   Plus, Search, Zap, ArrowRight,
 } from "lucide-react";
 
-export function CommandPalette() {
+export function CommandPalette({ isAdmin }: { isAdmin: boolean }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
 
@@ -46,11 +46,13 @@ export function CommandPalette() {
             <span>Create Task</span>
             <CommandShortcut>⌘ T</CommandShortcut>
           </CommandItem>
-          <CommandItem onSelect={() => navigate("/projects")} className="gap-2 px-4 py-2">
-            <Plus className="h-4 w-4 text-muted-foreground" />
-            <span>Create Project</span>
-            <CommandShortcut>⌘ P</CommandShortcut>
-          </CommandItem>
+          {isAdmin && (
+            <CommandItem onSelect={() => navigate("/projects")} className="gap-2 px-4 py-2">
+              <Plus className="h-4 w-4 text-muted-foreground" />
+              <span>Create Project</span>
+              <CommandShortcut>⌘ P</CommandShortcut>
+            </CommandItem>
+          )}
           <CommandItem 
             onSelect={() => {
               setOpen(false);
@@ -85,7 +87,7 @@ export function CommandPalette() {
           </CommandItem>
           <CommandItem onSelect={() => navigate("/employees")} className="gap-2 px-4 py-2">
             <UserCircle className="h-4 w-4 text-muted-foreground" />
-            <span>Employees</span>
+            <span>Members</span>
           </CommandItem>
           <CommandItem onSelect={() => navigate("/daily-updates")} className="gap-2 px-4 py-2">
             <MessageSquare className="h-4 w-4 text-muted-foreground" />
@@ -99,15 +101,19 @@ export function CommandPalette() {
             <FileText className="h-4 w-4 text-muted-foreground" />
             <span>Documents</span>
           </CommandItem>
-          <CommandItem onSelect={() => navigate("/reports")} className="gap-2 px-4 py-2">
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
-            <span>Reports</span>
-          </CommandItem>
-          <CommandItem onSelect={() => navigate("/settings")} className="gap-2 px-4 py-2">
-            <Settings className="h-4 w-4 text-muted-foreground" />
-            <span>Settings</span>
-            <CommandShortcut>⌘ ,</CommandShortcut>
-          </CommandItem>
+          {isAdmin && (
+            <>
+              <CommandItem onSelect={() => navigate("/reports")} className="gap-2 px-4 py-2">
+                <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                <span>Reports</span>
+              </CommandItem>
+              <CommandItem onSelect={() => navigate("/settings")} className="gap-2 px-4 py-2">
+                <Settings className="h-4 w-4 text-muted-foreground" />
+                <span>Settings</span>
+                <CommandShortcut>⌘ ,</CommandShortcut>
+              </CommandItem>
+            </>
+          )}
         </CommandGroup>
       </CommandList>
     </CommandDialog>

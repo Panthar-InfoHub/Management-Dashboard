@@ -19,7 +19,7 @@ import { updateProjectStatusAction } from "@/lib/actions/project.actions";
 const statusColors: Record<string, string> = { ACTIVE: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20", PLANNING: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20 hover:bg-purple-500/20", ON_HOLD: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20 hover:bg-orange-500/20", COMPLETED: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20", ARCHIVED: "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20 hover:bg-gray-500/20" };
 const priorityColors: Record<string, string> = { CRITICAL: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20 hover:bg-red-500/20", HIGH: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20 hover:bg-orange-500/20", MEDIUM: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20", LOW: "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20 hover:bg-gray-500/20" };
 
-export function ProjectsClient({ initialProjects }: { initialProjects: any[] }) {
+export function ProjectsClient({ initialProjects, canCreate }: { initialProjects: any[], canCreate: boolean }) {
   const [projectList, setProjectList] = useState(initialProjects);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -51,9 +51,8 @@ export function ProjectsClient({ initialProjects }: { initialProjects: any[] }) 
         <EmptyState 
           icon={FolderKanban}
           title="No projects found"
-          description="Get started by creating your first project. You can manage tasks, track progress, and collaborate with your team."
-          actionLabel="Create New Project"
-          actionHref="/projects/new"
+          description="You can manage tasks, track progress, and collaborate with your team."
+          {...(canCreate ? { actionLabel: "Create New Project", actionHref: "/projects/new" } : {})}
           className="mt-6 h-[400px]"
         />
       </div>
@@ -67,11 +66,13 @@ export function ProjectsClient({ initialProjects }: { initialProjects: any[] }) 
           <h1 className="text-xl font-semibold tracking-tight">Projects</h1>
           <p className="text-sm text-muted-foreground">Manage and track all active projects across your organization.</p>
         </div>
-        <Button asChild size="sm" className="gap-2 text-xs">
-          <Link href="/projects/new">
-            <Plus className="h-3.5 w-3.5" /> New Project
-          </Link>
-        </Button>
+        {canCreate && (
+          <Button asChild size="sm" className="gap-2 text-xs">
+            <Link href="/projects/new">
+              <Plus className="h-3.5 w-3.5" /> New Project
+            </Link>
+          </Button>
+        )}
       </div>
 
       <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
@@ -118,9 +119,18 @@ export function ProjectsClient({ initialProjects }: { initialProjects: any[] }) 
 
         <TabsContent value="grid" className="mt-0 pt-4 flex-1 overflow-y-auto pr-2 pb-4 focus-visible:outline-none focus-visible:ring-0">
           {filteredProjects.length === 0 ? (
-            <div className="border border-dashed border-border/50 rounded-lg p-12 text-center">
-              <p className="text-sm text-muted-foreground">No projects match your filters.</p>
-            </div>
+            <EmptyState 
+              icon={FolderKanban}
+              title="No projects match your filters"
+              description="Try adjusting your search or filters to see more projects."
+              actionLabel="Clear Filters"
+              onAction={() => {
+                setSearch("");
+                setStatusFilter("ALL");
+                setPriorityFilter("ALL");
+              }}
+              className="mt-6 h-[400px]"
+            />
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {filteredProjects.map((project) => {
@@ -188,11 +198,20 @@ export function ProjectsClient({ initialProjects }: { initialProjects: any[] }) 
           )}
         </TabsContent>
 
-        <TabsContent value="list" className="mt-0 pt-4 flex-1 overflow-y-auto pr-2 pb-4 focus-visible:outline-none focus-visible:ring-0">
+        <TabsContent value="list" className="mt-0 pt-4 flex-1 overflow-y-auto focus-visible:outline-none focus-visible:ring-0">
           {filteredProjects.length === 0 ? (
-            <div className="border border-dashed border-border/50 rounded-lg p-12 text-center">
-              <p className="text-sm text-muted-foreground">No projects match your filters.</p>
-            </div>
+            <EmptyState 
+              icon={FolderKanban}
+              title="No projects match your filters"
+              description="Try adjusting your search or filters to see more projects."
+              actionLabel="Clear Filters"
+              onAction={() => {
+                setSearch("");
+                setStatusFilter("ALL");
+                setPriorityFilter("ALL");
+              }}
+              className="mt-6 h-[400px]"
+            />
           ) : (
             <div className="border border-border/40 rounded-lg overflow-hidden bg-background">
               <div className="divide-y divide-border/40">

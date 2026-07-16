@@ -15,7 +15,7 @@ export default async function EmployeesPage() {
       initialEmployees={JSON.parse(JSON.stringify(employees))} 
       teams={JSON.parse(JSON.stringify(teams))}
       availableRoles={roles.map((r:any) => r.name)}
-      isAdmin={currentEmployee.role === "ADMIN"} 
+      isAdmin={currentEmployee.role === "ADMIN" || currentEmployee.role === "MANAGER"} 
     />
   );
 }

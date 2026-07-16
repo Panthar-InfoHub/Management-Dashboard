@@ -12,6 +12,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { createProjectAction } from "@/lib/actions/project.actions";
 
@@ -35,6 +36,7 @@ export function NewProjectForm({
     team: string;
     startDate: Date | undefined;
     endDate: Date | undefined;
+    addTeamMembers: boolean;
   }>({ 
     name: "", 
     description: "",
@@ -45,6 +47,7 @@ export function NewProjectForm({
     team: teams[0]?.id || "",
     startDate: new Date(),
     endDate: new Date(Date.now() + 30 * 86400000),
+    addTeamMembers: false
   });
 
   const handleCreateProject = () => {
@@ -59,7 +62,8 @@ export function NewProjectForm({
         leadId: newProject.lead,
         teamId: newProject.team,
         startDate: newProject.startDate,
-        endDate: newProject.endDate
+        endDate: newProject.endDate,
+        addTeamMembers: newProject.addTeamMembers
       }).then(() => {
         router.push("/projects");
       }).catch(err => {
@@ -156,6 +160,15 @@ export function NewProjectForm({
                     {teams.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                {newProject.team && (
+                  <div className="flex items-center justify-between pt-2">
+                    <span className="text-xs text-muted-foreground">Add all team members to project</span>
+                    <Switch 
+                      checked={newProject.addTeamMembers} 
+                      onCheckedChange={(c) => setNewProject({ ...newProject, addTeamMembers: c })} 
+                    />
+                  </div>
+                )}
               </div>
               
               <div className="h-px w-full bg-border/50 my-2" />

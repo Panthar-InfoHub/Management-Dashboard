@@ -21,7 +21,6 @@ const roleColors: Record<string, string> = {
 };
 
 export function EmployeesClient({ initialEmployees, teams, availableRoles = [], isAdmin }: { initialEmployees: any[], teams: any[], availableRoles?: string[], isAdmin: boolean }) {
-  const [employeeList, setEmployeeList] = useState(initialEmployees);
   const [newEmpOpen, setNewEmpOpen] = useState(false);
   const [editEmpOpen, setEditEmpOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -65,7 +64,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
     });
   };
 
-  const filteredEmployees = employeeList.filter(e => 
+  const filteredEmployees = initialEmployees.filter(e => 
     (e.firstName + " " + e.lastName).toLowerCase().includes(searchQuery.toLowerCase()) || 
     e.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -74,8 +73,14 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
     <div className="space-y-6 p-6 md:p-8 max-w-7xl mx-auto h-full overflow-y-auto selection:bg-primary/10">
       <div className="flex items-center justify-between pb-6 border-b border-border/40">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Directory</h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage personnel, roles, and access across your organization.</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            {isAdmin ? "Directory" : "Members"}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {isAdmin 
+              ? "Manage personnel, roles, and access across your organization." 
+              : "View members across your organization."}
+          </p>
         </div>
         {isAdmin && (
           <Dialog open={newEmpOpen} onOpenChange={setNewEmpOpen}>
@@ -205,8 +210,15 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
       <div className="border border-border/40 rounded-lg overflow-hidden bg-background">
         <div className="divide-y divide-border/40 bg-muted/5">
           {/* Table Header */}
-          <div className="grid grid-cols-[2fr_1.5fr_1.5fr_1fr_40px] gap-4 px-5 py-3 text-[11px] font-medium text-muted-foreground uppercase tracking-wider bg-muted/20">
-            <span>Name & Title</span><span>Contact Info</span><span>Status & System Role</span><span>Joined</span><span className="text-right"></span>
+          <div className={cn(
+            "grid gap-4 px-5 py-3 text-[11px] font-medium text-muted-foreground uppercase tracking-wider bg-muted/20",
+            isAdmin ? "grid-cols-[2fr_1.5fr_1.5fr_1fr_40px]" : "grid-cols-[2fr_1.5fr_1fr]"
+          )}>
+            <span>Name & Title</span>
+            <span>Contact Info</span>
+            {isAdmin && <span>Status & System Role</span>}
+            <span>Joined</span>
+            {isAdmin && <span className="text-right"></span>}
           </div>
           
           {/* Table Rows */}
@@ -214,7 +226,10 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
             <div className="p-8 text-center text-sm text-muted-foreground">No personnel found matching your search.</div>
           ) : (
             filteredEmployees.map(emp => (
-              <div key={emp.id} className="grid grid-cols-[2fr_1.5fr_1.5fr_1fr_40px] gap-4 px-5 py-4 items-center hover:bg-muted/30 transition-colors">
+              <div key={emp.id} className={cn(
+                "grid gap-4 px-5 py-4 items-center hover:bg-muted/30 transition-colors",
+                isAdmin ? "grid-cols-[2fr_1.5fr_1.5fr_1fr_40px]" : "grid-cols-[2fr_1.5fr_1fr]"
+              )}>
                 
                 {/* Column 1: Name & Title */}
                 <div className="flex items-center gap-4 min-w-0">
@@ -247,17 +262,19 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
                   )}
                 </div>
 
-                {/* Column 3: Status & Role */}
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className={cn("text-[9px] px-2 py-0.5 shadow-none rounded-full border-border/40", roleColors[emp.role] || "bg-gray-500/10 text-gray-600 border-gray-500/20")}>
-                    {emp.role}
-                  </Badge>
-                  {emp.clerkId.startsWith("pending_") && (
-                    <Badge variant="outline" className="text-[9px] px-2 py-0.5 shadow-none rounded-full bg-amber-500/10 text-amber-600 border-amber-500/20">
-                      INVITED
+                {/* Column 3: Status & Role (Admin only) */}
+                {isAdmin && (
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className={cn("text-[9px] px-2 py-0.5 shadow-none rounded-full border-border/40", roleColors[emp.role] || "bg-gray-500/10 text-gray-600 border-gray-500/20")}>
+                      {emp.role}
                     </Badge>
-                  )}
-                </div>
+                    {emp.clerkId.startsWith("pending_") && (
+                      <Badge variant="outline" className="text-[9px] px-2 py-0.5 shadow-none rounded-full bg-amber-500/10 text-amber-600 border-amber-500/20">
+                        INVITED
+                      </Badge>
+                    )}
+                  </div>
+                )}
 
                 {/* Column 4: Joined Date */}
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -266,8 +283,8 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
                 </div>
 
                 {/* Actions */}
-                <div className="text-right">
-                  {isAdmin && (
+                {isAdmin && (
+                  <div className="text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
@@ -288,8 +305,8 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             ))
           )}

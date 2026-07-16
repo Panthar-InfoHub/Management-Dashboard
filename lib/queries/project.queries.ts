@@ -4,12 +4,11 @@ import { getCurrentEmployee } from "@/lib/auth";
 export async function getProjectsList() {
   const employee = await getCurrentEmployee();
 
-  // Fetch all projects where the employee is a member, lead, or team member (Admins see all)
-  const whereClause = employee.role === "ADMIN" ? {} : {
+  // Fetch all projects where the employee is explicitly a member or the project lead (Admins/Managers see all)
+  const whereClause = (employee.role === "ADMIN" || employee.role === "MANAGER") ? {} : {
     OR: [
       { members: { some: { employeeId: employee.id } } },
-      { leadId: employee.id },
-      { team: { members: { some: { id: employee.id } } } }
+      { leadId: employee.id }
     ]
   };
 
@@ -62,19 +61,10 @@ export async function getProjectById(projectId: string) {
   if (!project) return null;
 
   // Verify access
-  if (employee.role !== "ADMIN" && project.leadId !== employee.id) {
+  if (employee.role !== "ADMIN" && employee.role !== "MANAGER" && project.leadId !== employee.id) {
     const isMember = project.members.some(m => m.employeeId === employee.id);
     if (!isMember) {
-      // Wait, let's also check if they are in the owning team
-      const team = await db.team.findUnique({
-        where: { id: project.teamId },
-        include: { members: { select: { id: true } } }
-      });
-      const inTeam = team?.members.some(m => m.id === employee.id);
-      
-      if (!inTeam) {
-        throw new Error("Unauthorized access to project");
-      }
+      throw new Error("FORBIDDEN: Requires higher permission level");
     }
   }
 

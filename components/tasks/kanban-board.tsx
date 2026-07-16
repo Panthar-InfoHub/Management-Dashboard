@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import { Filter, Search, MessageSquare, ClipboardList, Clock, ChevronDown, ChevronRight as ChevronRightIcon } from "lucide-react";
 import { updateTaskStatusAction } from "@/lib/actions/task.actions";
+import { toast } from "sonner";
 
 const statusColors: Record<string, string> = { BACKLOG: "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20 hover:bg-gray-500/20", TODO: "bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20 hover:bg-slate-500/20", IN_PROGRESS: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20", REVIEW: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20 hover:bg-purple-500/20", TESTING: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/20", DONE: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20" };
 const priorityColors: Record<string, string> = { CRITICAL: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20 hover:bg-red-500/20", HIGH: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20 hover:bg-orange-500/20", MEDIUM: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20", LOW: "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20 hover:bg-gray-500/20" };
@@ -27,13 +28,23 @@ const columns = [
   { id: "DONE", title: "Done" },
 ];
 
-export function KanbanBoard({ initialTasks }: { initialTasks: any[] }) {
+export function KanbanBoard({ 
+  initialTasks, 
+  allowedProjects = [], 
+  allowedTeams = [], 
+  allEmployees = [] 
+}: { 
+  initialTasks: any[], 
+  allowedProjects?: any[], 
+  allowedTeams?: any[], 
+  allEmployees?: any[] 
+}) {
   const [taskList, setTaskList] = useState(initialTasks);
-  const [search, setSearch] = useState("");
+  // Remove local search state, we will use URL search params
+  const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const toggleTask = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -54,40 +65,47 @@ export function KanbanBoard({ initialTasks }: { initialTasks: any[] }) {
   const urlProject = searchParams.get("project") || "ALL";
   const urlAssignee = searchParams.get("assignee") || "ALL";
 
-  // Derive unique filters from initial tasks
+  // We start with the explicitly allowed lists from the server (to prevent losing filters when searching),
+  // but we ALSO inject any projects/teams/assignees that appear in the current tasks.
+  // This ensures that if you are assigned to a task in a project you don't belong to, 
+  // you can still filter by that project.
   const teams = useMemo(() => {
-    const map = new Map();
+    const map = new Map(allowedTeams.map(t => [t.id, t]));
     initialTasks.forEach(t => {
       if (t.project?.team) map.set(t.project.team.id, t.project.team);
     });
     return Array.from(map.values());
-  }, [initialTasks]);
+  }, [allowedTeams, initialTasks]);
 
   const projects = useMemo(() => {
-    const map = new Map();
+    const map = new Map(allowedProjects.map(p => [p.id, p]));
     initialTasks.forEach(t => {
       if (t.project) map.set(t.project.id, t.project);
     });
     return Array.from(map.values());
-  }, [initialTasks]);
+  }, [allowedProjects, initialTasks]);
 
   const assignees = useMemo(() => {
-    const map = new Map();
+    const map = new Map(allEmployees.map(e => [e.id, e]));
     initialTasks.forEach(t => {
       t.assignees?.forEach((a: any) => map.set(a.id, a));
     });
     return Array.from(map.values());
-  }, [initialTasks]);
+  }, [allEmployees, initialTasks]);
 
-  // Apply filters
+  // Search from URL
+  const urlSearch = searchParams.get("search") || "";
+
+  // The backend already filters `taskList`, but we keep this for optimistic UI rendering 
+  // (e.g. when dragging a task, or when waiting for server component to reload)
   const filteredTasks = taskList.filter(t => {
-    // Only show top-level tasks (no parentId)
     if (t.parentId) return false;
-    const matchSearch = t.title.toLowerCase().includes(search.toLowerCase()) || 
-                        (t.project?.name || "").toLowerCase().includes(search.toLowerCase());
+    const matchSearch = t.title.toLowerCase().includes(urlSearch.toLowerCase()) || 
+                        (t.project?.name || "").toLowerCase().includes(urlSearch.toLowerCase());
     const matchTeam = urlTeam === "ALL" || t.project?.team?.id === urlTeam;
     const matchProject = urlProject === "ALL" || t.project?.id === urlProject;
-    const matchAssignee = urlAssignee === "ALL" || (t.assignees && t.assignees.some((a: any) => a.id === urlAssignee));
+    const matchAssignee = urlAssignee === "ALL" || 
+                          (urlAssignee === "UNASSIGNED" ? (!t.assignees || t.assignees.length === 0) : (t.assignees && t.assignees.some((a: any) => a.id === urlAssignee)));
     
     return matchSearch && matchTeam && matchProject && matchAssignee;
   });
@@ -113,6 +131,9 @@ export function KanbanBoard({ initialTasks }: { initialTasks: any[] }) {
   const handleDrop = (e: React.DragEvent, statusId: string) => {
     e.preventDefault();
     const taskId = e.dataTransfer.getData("taskId");
+    const task = taskList.find(t => t.id === taskId);
+    if (!task) return;
+    const oldStatus = task.status;
     
     // Optimistic UI Update
     setTaskList((prev) => 
@@ -121,24 +142,17 @@ export function KanbanBoard({ initialTasks }: { initialTasks: any[] }) {
     
     // Server Action
     startTransition(() => {
-      updateTaskStatusAction(taskId, statusId).catch(err => {
+      updateTaskStatusAction(taskId, statusId).then(() => {
+        toast.success("Task status updated");
+      }).catch(err => {
+        setTaskList((prev) => prev.map(t => t.id === taskId ? { ...t, status: oldStatus } : t));
+        toast.error("Failed to update status");
         console.error("Failed to update status", err);
       });
     });
   };
 
-  if (initialTasks.length === 0) {
-    return (
-      <EmptyState 
-        icon={ClipboardList}
-        title="No tasks found"
-        description="There are no tasks assigned to you or in your active projects yet."
-        actionLabel="Create New Task"
-        actionHref="/tasks/new"
-        className="mt-6 h-[400px]"
-      />
-    );
-  }
+  const hasActiveFilters = urlTeam !== "ALL" || urlProject !== "ALL" || urlAssignee !== "ALL" || urlSearch !== "";
 
   return (
     <div className="flex flex-col gap-4 flex-1 min-w-0 overflow-hidden">
@@ -147,8 +161,14 @@ export function KanbanBoard({ initialTasks }: { initialTasks: any[] }) {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input 
             placeholder="Search tasks…" 
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            defaultValue={urlSearch}
+            onChange={(e) => {
+              const val = e.target.value;
+              const timeoutId = window.setTimeout(() => {
+                updateUrlFilter("search", val || "ALL");
+              }, 500);
+              return () => clearTimeout(timeoutId);
+            }}
             className="pl-9 h-9 text-sm" 
           />
         </div>
@@ -180,14 +200,27 @@ export function KanbanBoard({ initialTasks }: { initialTasks: any[] }) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All Assignees</SelectItem>
+              <SelectItem value="UNASSIGNED">Unassigned</SelectItem>
               {assignees.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.firstName} {a.lastName}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
       </div>
 
-      <Tabs defaultValue="board" className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <TabsList className="shrink-0 w-fit">
+      {filteredTasks.length === 0 ? (
+        <EmptyState 
+          icon={ClipboardList}
+          title={hasActiveFilters ? "No tasks match your filters" : "No tasks found"}
+          description={hasActiveFilters ? "Try adjusting your search or filters to see more tasks." : "There are no tasks assigned to you or in your active projects yet."}
+          {...(!hasActiveFilters ? { actionLabel: "Create New Task", actionHref: "/tasks/new" } : {
+            actionLabel: "Clear Filters",
+            onAction: () => router.push("/tasks")
+          })}
+          className="mt-6 h-[400px]"
+        />
+      ) : (
+        <Tabs defaultValue="board" className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          <TabsList className="shrink-0 w-fit">
           <TabsTrigger value="board" className="text-xs">Board</TabsTrigger>
           <TabsTrigger value="list" className="text-xs">List</TabsTrigger>
         </TabsList>
@@ -309,12 +342,7 @@ export function KanbanBoard({ initialTasks }: { initialTasks: any[] }) {
         </TabsContent>
 
         <TabsContent value="list" className="mt-0 pt-4 flex-1 overflow-y-auto focus-visible:outline-none">
-          {filteredTasks.length === 0 ? (
-            <div className="border border-dashed border-border/50 rounded-lg p-12 text-center">
-              <p className="text-sm text-muted-foreground">No tasks match your filters.</p>
-            </div>
-          ) : (
-            <div className="border border-border/40 rounded-lg overflow-hidden bg-background">
+          <div className="border border-border/40 rounded-lg overflow-hidden bg-background">
             <div className="divide-y divide-border/40">
               <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-4 px-5 py-3 text-[11px] font-medium text-muted-foreground uppercase tracking-wider bg-muted/20">
                 <span>Task</span><span>Status</span><span>Priority</span><span>Assignee</span><span>Due Date</span>
@@ -374,10 +402,10 @@ export function KanbanBoard({ initialTasks }: { initialTasks: any[] }) {
                 return renderTree(filteredTasks);
               })()}
             </div>
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
+             </div>
+          </TabsContent>
+        </Tabs>
+      )}
     </div>
   );
 }

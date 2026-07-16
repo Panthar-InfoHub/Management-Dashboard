@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { requireAuth } from "@/lib/auth";
+import { requireAuth, getCurrentEmployee } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 
 export async function createTaskAction(data: {
@@ -38,9 +38,22 @@ export async function createTaskAction(data: {
 }
 
 export async function updateTaskStatusAction(taskId: string, newStatus: any) {
-  const employee = await requireAuth("task:update:any");
+  const employee = await getCurrentEmployee();
 
-  const task = await db.task.update({
+  const task = await db.task.findUnique({
+    where: { id: taskId },
+    include: { project: { include: { members: true } }, assignees: true }
+  });
+
+  if (!task) throw new Error("Task not found");
+
+  if (employee.role !== "ADMIN" && employee.role !== "MANAGER") {
+    const isAssignee = task.assignees.some(a => a.id === employee.id);
+    const isProjectMember = task.project.members.some(m => m.employeeId === employee.id);
+    if (!isAssignee && !isProjectMember) throw new Error("FORBIDDEN: Requires higher permission level");
+  }
+
+  const updatedTask = await db.task.update({
     where: { id: taskId },
     data: { status: newStatus },
     include: { blocking: true }
@@ -49,8 +62,8 @@ export async function updateTaskStatusAction(taskId: string, newStatus: any) {
   
 
   // Auto-unblock dependent tasks if this task is now DONE
-  if (newStatus === "DONE" && task.blocking && task.blocking.length > 0) {
-    for (const blockedTask of task.blocking) {
+  if (newStatus === "DONE" && updatedTask.blocking && updatedTask.blocking.length > 0) {
+    for (const blockedTask of updatedTask.blocking) {
       await db.task.update({
         where: { id: blockedTask.id },
         data: { blockedById: null }
@@ -60,7 +73,7 @@ export async function updateTaskStatusAction(taskId: string, newStatus: any) {
   }
 
   revalidatePath("/", "layout");
-  return { success: true, task };
+  return { success: true, task: updatedTask };
 }
 
 export async function updateTaskPriorityAction(taskId: string, newPriority: any) {
@@ -78,24 +91,45 @@ export async function updateTaskPriorityAction(taskId: string, newPriority: any)
 }
 
 export async function setTaskBlockerAction(taskId: string, blockerTaskId: string | null) {
-  const employee = await requireAuth("task:update:any");
+  const employee = await getCurrentEmployee();
 
-  const task = await db.task.update({
+  const task = await db.task.findUnique({
+    where: { id: taskId },
+    include: { project: { include: { members: true } }, assignees: true }
+  });
+
+  if (!task) throw new Error("Task not found");
+
+  if (employee.role !== "ADMIN" && employee.role !== "MANAGER") {
+    const isAssignee = task.assignees.some(a => a.id === employee.id);
+    const isProjectMember = task.project.members.some(m => m.employeeId === employee.id);
+    if (!isAssignee && !isProjectMember) throw new Error("FORBIDDEN: Requires higher permission level");
+  }
+
+  const updatedTask = await db.task.update({
     where: { id: taskId },
     data: { blockedById: blockerTaskId }
   });
 
-  
-
   revalidatePath("/", "layout");
-  return { success: true, task };
+  return { success: true, task: updatedTask };
 }
 
 export async function createSubtaskAction(parentId: string, data: { title: string; assigneeId?: string; priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" }) {
-  const employee = await requireAuth("task:create");
+  const employee = await getCurrentEmployee();
 
-  const parentTask = await db.task.findUnique({ where: { id: parentId } });
+  const parentTask = await db.task.findUnique({ 
+    where: { id: parentId },
+    include: { project: { include: { members: true } }, assignees: true }
+  });
+
   if (!parentTask) throw new Error("Parent task not found");
+
+  if (employee.role !== "ADMIN" && employee.role !== "MANAGER") {
+    const isAssignee = parentTask.assignees.some(a => a.id === employee.id);
+    const isProjectMember = parentTask.project.members.some(m => m.employeeId === employee.id);
+    if (!isAssignee && !isProjectMember) throw new Error("FORBIDDEN: Requires higher permission level");
+  }
 
   const subtask = await db.task.create({
     data: {
@@ -107,8 +141,6 @@ export async function createSubtaskAction(parentId: string, data: { title: strin
       assignees: data.assigneeId ? { connect: [{ id: data.assigneeId }] } : undefined,
     }
   });
-
-  
 
   revalidatePath("/", "layout");
   return { success: true, subtask };

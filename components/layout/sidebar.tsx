@@ -20,7 +20,7 @@ const navItems = [
   { label: "Projects", href: "/projects", icon: FolderKanban, badge: "6" },
   { label: "Tasks", href: "/tasks", icon: ClipboardCheck, badge: "10" },
   { label: "Teams", href: "/teams", icon: Users },
-  { label: "Employees", href: "/employees", icon: UserCircle, badge: "12" },
+  { label: "Members", href: "/employees", icon: UserCircle, badge: "12" },
   { label: "Daily Updates", href: "/daily-updates", icon: MessageSquare, badge: "5" },
   { label: "Calendar", href: "/calendar", icon: CalendarDays },
   { label: "Documents", href: "/documents", icon: FileText },
@@ -32,7 +32,7 @@ const bottomItems = [
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 
-export function Sidebar({ collapsed, setCollapsed, isMobile }: { collapsed: boolean; setCollapsed: (val: boolean) => void, isMobile?: boolean }) {
+export function Sidebar({ collapsed, setCollapsed, isMobile, isAdmin = false }: { collapsed: boolean; setCollapsed: (val: boolean) => void, isMobile?: boolean, isAdmin?: boolean }) {
   const pathname = usePathname();
   const { user } = useUser();
 
@@ -100,7 +100,7 @@ export function Sidebar({ collapsed, setCollapsed, isMobile }: { collapsed: bool
       {/* Nav */}
       <ScrollArea className="flex-1 px-2 py-1">
         <nav className="flex flex-col gap-0.5 mt-1">
-          {navItems.map((item) => {
+          {navItems.filter(item => isAdmin || item.label !== "Reports").map((item) => {
             const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
             const link = (
               <Link
@@ -148,7 +148,7 @@ export function Sidebar({ collapsed, setCollapsed, isMobile }: { collapsed: bool
 
       {/* Bottom items */}
       <div className="px-2 py-1">
-        {bottomItems.map((item) => {
+        {bottomItems.filter(item => isAdmin || item.label !== "Settings").map((item) => {
           const isActive = pathname.startsWith(item.href);
           const link = (
             <Link
