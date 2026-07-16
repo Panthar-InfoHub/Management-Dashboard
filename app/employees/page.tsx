@@ -1,13 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { employees } from "@/lib/mock-data";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { employees as mockEmployees } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
-import { Search, Filter, Mail, Flame, TrendingUp, Wifi, WifiOff, Clock } from "lucide-react";
+import { Search, Filter, Mail, Flame, TrendingUp, Wifi, WifiOff, Clock, Plus } from "lucide-react";
 
 const statusConfig: Record<string, { label: string; color: string; icon: React.ElementType }> = {
   online: { label: "Online", color: "bg-green-500", icon: Wifi },
@@ -16,6 +19,29 @@ const statusConfig: Record<string, { label: string; color: string; icon: React.E
 };
 
 export default function EmployeesPage() {
+  const [employeeList, setEmployeeList] = useState(mockEmployees);
+  const [newEmpOpen, setNewEmpOpen] = useState(false);
+  const [newEmp, setNewEmp] = useState({ name: "", role: "", email: "", team: "Engineering" });
+
+  const handleCreateEmployee = () => {
+    if (!newEmp.name || !newEmp.role || !newEmp.email) return;
+    const emp = {
+      id: `EMP-${Math.floor(Math.random() * 10000)}`,
+      name: newEmp.name,
+      avatar: newEmp.name.substring(0, 2).toUpperCase(),
+      role: newEmp.role,
+      email: newEmp.email,
+      status: "online" as const,
+      streak: 1,
+      productivity: 100,
+      skills: ["New Hire"],
+      team: newEmp.team,
+    };
+    setEmployeeList([emp, ...employeeList]);
+    setNewEmp({ name: "", role: "", email: "", team: "Engineering" });
+    setNewEmpOpen(false);
+  };
+
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
@@ -23,7 +49,45 @@ export default function EmployeesPage() {
           <h1 className="text-xl font-semibold tracking-tight">Employees</h1>
           <p className="text-sm text-muted-foreground">View and manage all team members across the organization.</p>
         </div>
-        <Button size="sm" className="gap-2 text-xs">Add Employee</Button>
+        <Dialog open={newEmpOpen} onOpenChange={setNewEmpOpen}>
+          <DialogTrigger asChild>
+            <Button size="sm" className="gap-2 text-xs"><Plus className="h-3.5 w-3.5" /> Add Employee</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add New Employee</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Full Name</label>
+                <Input value={newEmp.name} onChange={e => setNewEmp({ ...newEmp, name: e.target.value })} placeholder="E.g. Jane Doe" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium">Role</label>
+                  <Input value={newEmp.role} onChange={e => setNewEmp({ ...newEmp, role: e.target.value })} placeholder="E.g. Frontend Engineer" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium">Email</label>
+                  <Input value={newEmp.email} onChange={e => setNewEmp({ ...newEmp, email: e.target.value })} placeholder="jane@example.com" />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Team</label>
+                <Select value={newEmp.team} onValueChange={v => setNewEmp({ ...newEmp, team: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Engineering">Engineering</SelectItem>
+                    <SelectItem value="Product">Product</SelectItem>
+                    <SelectItem value="Design">Design</SelectItem>
+                    <SelectItem value="Marketing">Marketing</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button onClick={handleCreateEmployee} className="w-full mt-4">Create Employee</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <div className="flex items-center gap-3">
@@ -35,7 +99,7 @@ export default function EmployeesPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {employees.map(emp => {
+        {employeeList.map(emp => {
           const status = statusConfig[emp.status];
           return (
             <Card key={emp.id} className="group border-border/50 hover:border-border transition-all hover:shadow-sm cursor-pointer">

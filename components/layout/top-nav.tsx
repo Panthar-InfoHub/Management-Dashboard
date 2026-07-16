@@ -31,7 +31,12 @@ export function TopNav() {
       {/* Actions */}
       <div className="flex items-center gap-1">
         {/* Search */}
-        <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground">
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="gap-2 text-muted-foreground"
+          onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}
+        >
           <Search className="h-4 w-4" />
           <span className="hidden text-xs sm:inline">Search</span>
           <kbd className="hidden rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px] sm:inline">⌘K</kbd>

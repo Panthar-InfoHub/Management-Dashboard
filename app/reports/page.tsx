@@ -23,10 +23,10 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 const orgHealth = [
-  { name: "Productivity", value: 91, fill: "hsl(217, 91%, 60%)" },
-  { name: "Engagement", value: 87, fill: "hsl(271, 91%, 65%)" },
-  { name: "Retention", value: 95, fill: "hsl(160, 84%, 39%)" },
-  { name: "Satisfaction", value: 82, fill: "hsl(38, 92%, 50%)" },
+  { name: "Productivity", value: 91, fill: "#0ea5e9" },
+  { name: "Engagement", value: 87, fill: "#a855f7" },
+  { name: "Retention", value: 95, fill: "#10b981" },
+  { name: "Satisfaction", value: 82, fill: "#f59e0b" },
 ];
 
 export default function ReportsPage() {
@@ -82,9 +82,9 @@ export default function ReportsPage() {
                       <XAxis dataKey="day" tick={{ fontSize: 11 }} className="text-muted-foreground" />
                       <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" />
                       <Tooltip content={<CustomTooltip />} />
-                      <Bar dataKey="commits" name="Commits" fill="hsl(217, 91%, 60%)" radius={[3, 3, 0, 0]} />
-                      <Bar dataKey="prs" name="PRs" fill="hsl(271, 91%, 65%)" radius={[3, 3, 0, 0]} />
-                      <Bar dataKey="reviews" name="Reviews" fill="hsl(160, 84%, 39%)" radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="commits" name="Commits" fill="#0ea5e9" radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="prs" name="PRs" fill="#a855f7" radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="reviews" name="Reviews" fill="#10b981" radius={[3, 3, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -106,7 +106,7 @@ export default function ReportsPage() {
                       <XAxis dataKey="week" tick={{ fontSize: 11 }} className="text-muted-foreground" />
                       <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" domain={[60, 100]} />
                       <Tooltip content={<CustomTooltip />} />
-                      <Line type="monotone" dataKey="value" name="Productivity" stroke="hsl(160, 84%, 39%)" strokeWidth={2} dot={{ r: 3 }} />
+                      <Line type="monotone" dataKey="value" name="Productivity" stroke="#0ea5e9" strokeWidth={2} dot={{ r: 3, fill: "#0ea5e9" }} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -128,7 +128,7 @@ export default function ReportsPage() {
                     <Tooltip content={<CustomTooltip />} />
                     <Bar dataKey="score" name="Performance Score" radius={[0, 4, 4, 0]}>
                       {chartData.teamPerformance.map((entry, i) => (
-                        <Cell key={i} fill={entry.score >= 90 ? "hsl(160, 84%, 39%)" : entry.score >= 80 ? "hsl(217, 91%, 60%)" : "hsl(38, 92%, 50%)"} />
+                        <Cell key={i} fill={entry.score >= 90 ? "#10b981" : entry.score >= 80 ? "#0ea5e9" : "#f59e0b"} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -149,8 +149,8 @@ export default function ReportsPage() {
                     <XAxis dataKey="sprint" tick={{ fontSize: 11 }} className="text-muted-foreground" />
                     <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" />
                     <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="planned" name="Planned" fill="hsl(271, 91%, 65%)" radius={[3, 3, 0, 0]} opacity={0.4} />
-                    <Bar dataKey="completed" name="Completed" fill="hsl(160, 84%, 39%)" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="planned" name="Planned" fill="#a855f7" radius={[3, 3, 0, 0]} opacity={0.3} />
+                    <Bar dataKey="completed" name="Completed" fill="#a855f7" radius={[3, 3, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -167,16 +167,16 @@ export default function ReportsPage() {
                   <AreaChart data={chartData.taskCompletion}>
                     <defs>
                       <linearGradient id="rCompGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="hsl(187, 92%, 45%)" stopOpacity={0.3} />
-                        <stop offset="100%" stopColor="hsl(187, 92%, 45%)" stopOpacity={0} />
+                        <stop offset="0%" stopColor="#0ea5e9" stopOpacity={0.3} />
+                        <stop offset="100%" stopColor="#0ea5e9" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                     <XAxis dataKey="day" tick={{ fontSize: 11 }} className="text-muted-foreground" />
                     <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" />
                     <Tooltip content={<CustomTooltip />} />
-                    <Area type="monotone" dataKey="completed" name="Completed" stroke="hsl(187, 92%, 45%)" fill="url(#rCompGradient)" strokeWidth={2} />
-                    <Area type="monotone" dataKey="created" name="Created" stroke="hsl(25, 95%, 53%)" fill="transparent" strokeWidth={2} strokeDasharray="5 5" />
+                    <Area type="monotone" dataKey="completed" name="Completed" stroke="#0ea5e9" fill="url(#rCompGradient)" strokeWidth={2} />
+                    <Area type="monotone" dataKey="created" name="Created" stroke="#f97316" strokeOpacity={0.4} fill="transparent" strokeWidth={2} strokeDasharray="5 5" />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>

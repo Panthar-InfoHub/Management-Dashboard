@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  CommandDialog, CommandEmpty, CommandGroup,
-  CommandInput, CommandItem, CommandList, CommandSeparator,
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput, CommandItem, CommandList, CommandSeparator, CommandShortcut,
 } from "@/components/ui/command";
 import {
   LayoutDashboard, FolderKanban, Users, UserCircle, CalendarDays,
@@ -39,50 +41,72 @@ export function CommandPalette() {
         <CommandEmpty>No results found.</CommandEmpty>
 
         <CommandGroup heading="Quick Actions">
-          <CommandItem onSelect={() => navigate("/tasks")} className="gap-2">
-            <Plus className="h-4 w-4 text-muted-foreground" /> Create Task
+          <CommandItem onSelect={() => navigate("/tasks")} className="gap-2 px-4 py-2">
+            <Plus className="h-4 w-4 text-muted-foreground" />
+            <span>Create Task</span>
+            <CommandShortcut>⌘ T</CommandShortcut>
           </CommandItem>
-          <CommandItem onSelect={() => navigate("/projects")} className="gap-2">
-            <Plus className="h-4 w-4 text-muted-foreground" /> Create Project
+          <CommandItem onSelect={() => navigate("/projects")} className="gap-2 px-4 py-2">
+            <Plus className="h-4 w-4 text-muted-foreground" />
+            <span>Create Project</span>
+            <CommandShortcut>⌘ P</CommandShortcut>
           </CommandItem>
-          <CommandItem onSelect={() => navigate("/daily-updates")} className="gap-2">
-            <Zap className="h-4 w-4 text-muted-foreground" /> Submit Daily Update
+          <CommandItem 
+            onSelect={() => {
+              setOpen(false);
+              document.dispatchEvent(new CustomEvent("open-submit-update"));
+            }} 
+            className="gap-2 px-4 py-2"
+          >
+            <Zap className="h-4 w-4 text-muted-foreground" />
+            <span>Submit Daily Update</span>
+            <CommandShortcut>⌘ U</CommandShortcut>
           </CommandItem>
         </CommandGroup>
 
         <CommandSeparator />
 
         <CommandGroup heading="Navigation">
-          <CommandItem onSelect={() => navigate("/")} className="gap-2">
-            <LayoutDashboard className="h-4 w-4 text-muted-foreground" /> Dashboard
-            <ArrowRight className="ml-auto h-3 w-3 text-muted-foreground" />
+          <CommandItem onSelect={() => navigate("/")} className="gap-2 px-4 py-2">
+            <LayoutDashboard className="h-4 w-4 text-muted-foreground" />
+            <span>Dashboard</span>
           </CommandItem>
-          <CommandItem onSelect={() => navigate("/projects")} className="gap-2">
-            <FolderKanban className="h-4 w-4 text-muted-foreground" /> Projects
+          <CommandItem onSelect={() => navigate("/projects")} className="gap-2 px-4 py-2">
+            <FolderKanban className="h-4 w-4 text-muted-foreground" />
+            <span>Projects</span>
           </CommandItem>
-          <CommandItem onSelect={() => navigate("/tasks")} className="gap-2">
-            <ClipboardCheck className="h-4 w-4 text-muted-foreground" /> Tasks
+          <CommandItem onSelect={() => navigate("/tasks")} className="gap-2 px-4 py-2">
+            <ClipboardCheck className="h-4 w-4 text-muted-foreground" />
+            <span>Tasks</span>
           </CommandItem>
-          <CommandItem onSelect={() => navigate("/teams")} className="gap-2">
-            <Users className="h-4 w-4 text-muted-foreground" /> Teams
+          <CommandItem onSelect={() => navigate("/teams")} className="gap-2 px-4 py-2">
+            <Users className="h-4 w-4 text-muted-foreground" />
+            <span>Teams</span>
           </CommandItem>
-          <CommandItem onSelect={() => navigate("/employees")} className="gap-2">
-            <UserCircle className="h-4 w-4 text-muted-foreground" /> Employees
+          <CommandItem onSelect={() => navigate("/employees")} className="gap-2 px-4 py-2">
+            <UserCircle className="h-4 w-4 text-muted-foreground" />
+            <span>Employees</span>
           </CommandItem>
-          <CommandItem onSelect={() => navigate("/daily-updates")} className="gap-2">
-            <MessageSquare className="h-4 w-4 text-muted-foreground" /> Daily Updates
+          <CommandItem onSelect={() => navigate("/daily-updates")} className="gap-2 px-4 py-2">
+            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+            <span>Daily Updates</span>
           </CommandItem>
-          <CommandItem onSelect={() => navigate("/calendar")} className="gap-2">
-            <CalendarDays className="h-4 w-4 text-muted-foreground" /> Calendar
+          <CommandItem onSelect={() => navigate("/calendar")} className="gap-2 px-4 py-2">
+            <CalendarDays className="h-4 w-4 text-muted-foreground" />
+            <span>Calendar</span>
           </CommandItem>
-          <CommandItem onSelect={() => navigate("/documents")} className="gap-2">
-            <FileText className="h-4 w-4 text-muted-foreground" /> Documents
+          <CommandItem onSelect={() => navigate("/documents")} className="gap-2 px-4 py-2">
+            <FileText className="h-4 w-4 text-muted-foreground" />
+            <span>Documents</span>
           </CommandItem>
-          <CommandItem onSelect={() => navigate("/reports")} className="gap-2">
-            <BarChart3 className="h-4 w-4 text-muted-foreground" /> Reports
+          <CommandItem onSelect={() => navigate("/reports")} className="gap-2 px-4 py-2">
+            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            <span>Reports</span>
           </CommandItem>
-          <CommandItem onSelect={() => navigate("/settings")} className="gap-2">
-            <Settings className="h-4 w-4 text-muted-foreground" /> Settings
+          <CommandItem onSelect={() => navigate("/settings")} className="gap-2 px-4 py-2">
+            <Settings className="h-4 w-4 text-muted-foreground" />
+            <span>Settings</span>
+            <CommandShortcut>⌘ ,</CommandShortcut>
           </CommandItem>
         </CommandGroup>
       </CommandList>

@@ -1,10 +1,11 @@
-import { OverviewCards } from "@/components/dashboard/overview-cards";
+import { ActionableWidgets } from "@/components/dashboard/productive-widgets";
 import { InsightsPanel } from "@/components/dashboard/insights-panel";
 import { DashboardCharts } from "@/components/dashboard/dashboard-charts";
 import { ActivityFeed } from "@/components/dashboard/activity-feed";
 import { TodayAgenda } from "@/components/dashboard/today-agenda";
 import { ProjectsSummary } from "@/components/dashboard/projects-summary";
 import { Button } from "@/components/ui/button";
+import Link from "next/link";
 import { MessageSquare, Plus } from "lucide-react";
 
 export default function DashboardPage() {
@@ -22,29 +23,30 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" className="gap-2 text-xs">
+          <Button 
+            variant="secondary" 
+            size="sm" 
+            className="gap-2 text-xs"
+            onClick={() => document.dispatchEvent(new CustomEvent("open-submit-update"))}
+          >
             <MessageSquare className="h-3.5 w-3.5" />
             Submit Update
           </Button>
-          <Button size="sm" className="gap-2 text-xs">
-            <Plus className="h-3.5 w-3.5" />
-            Quick Action
+          <Button asChild size="sm" className="gap-2 text-xs">
+            <Link href="/tasks">
+              <Plus className="h-3.5 w-3.5" />
+              Quick Action
+            </Link>
           </Button>
         </div>
       </div>
 
-      {/* Overview Cards */}
-      <OverviewCards />
+      {/* Actionable Productive Row */}
+      <ActionableWidgets />
 
-      {/* Charts + Insights Row */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <DashboardCharts />
-        </div>
-        <div className="space-y-4">
-          <InsightsPanel />
-          <TodayAgenda />
-        </div>
+      {/* Charts Row */}
+      <div className="grid gap-4">
+        <DashboardCharts />
       </div>
 
       {/* Activity + Projects Row */}

@@ -1,17 +1,19 @@
 "use client";
 
+import { useState, useEffect } from "react";
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { tasks, employees, projects } from "@/lib/mock-data";
-import { cn } from "@/lib/utils";
-import { Plus, Filter, Search, ClipboardCheck, Calendar, MessageSquare, Zap } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { tasks as mockTasks, employees, projects } from "@/lib/mock-data";
+import { cn } from "@/lib/utils";
+import { Plus, Filter, Search, MessageSquare } from "lucide-react";
 
-const statusColors: Record<string, string> = { backlog: "bg-gray-500/10 text-gray-500", todo: "bg-slate-500/10 text-slate-500", "in-progress": "bg-blue-500/10 text-blue-500", review: "bg-purple-500/10 text-purple-500", testing: "bg-amber-500/10 text-amber-500", done: "bg-green-500/10 text-green-500" };
-const priorityColors: Record<string, string> = { critical: "bg-red-500/10 text-red-500", high: "bg-orange-500/10 text-orange-500", medium: "bg-blue-500/10 text-blue-500", low: "bg-gray-500/10 text-gray-500" };
+const statusColors: Record<string, string> = { backlog: "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20 hover:bg-gray-500/20", todo: "bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20 hover:bg-slate-500/20", "in-progress": "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20", review: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20 hover:bg-purple-500/20", testing: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/20", done: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20" };
+const priorityColors: Record<string, string> = { critical: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20 hover:bg-red-500/20", high: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20 hover:bg-orange-500/20", medium: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20", low: "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20 hover:bg-gray-500/20" };
 const priorityDots: Record<string, string> = { critical: "bg-red-500", high: "bg-orange-500", medium: "bg-blue-500", low: "bg-gray-500" };
 
 const columns = [
@@ -24,6 +26,34 @@ const columns = [
 ];
 
 export default function TasksPage() {
+  const [taskList, setTaskList] = useState(mockTasks);
+
+  // Sync with mockTasks to pick up newly added tasks across pages
+  useEffect(() => {
+    setTaskList([...mockTasks]);
+  }, []);
+
+  const handleDragStart = (e: React.DragEvent, taskId: string) => {
+    e.dataTransfer.setData("taskId", taskId);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent, statusId: string) => {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData("taskId");
+    const updated = taskList.map(t => t.id === taskId ? { ...t, status: statusId } : t);
+    setTaskList(updated);
+    
+    // Also mutate mock data so changes persist across navigation during this session
+    const mockTask = mockTasks.find(t => t.id === taskId);
+    if (mockTask) {
+      mockTask.status = statusId;
+    }
+  };
+
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
@@ -31,7 +61,11 @@ export default function TasksPage() {
           <h1 className="text-xl font-semibold tracking-tight">Tasks</h1>
           <p className="text-sm text-muted-foreground">Track and manage all tasks across projects.</p>
         </div>
-        <Button size="sm" className="gap-2 text-xs"><Plus className="h-3.5 w-3.5" /> New Task</Button>
+        <Button asChild size="sm" className="gap-2 text-xs">
+          <Link href="/tasks/new">
+            <Plus className="h-3.5 w-3.5" /> New Task
+          </Link>
+        </Button>
       </div>
 
       <div className="flex items-center gap-3">
@@ -51,19 +85,28 @@ export default function TasksPage() {
         <TabsContent value="board" className="mt-4">
           <div className="grid grid-cols-6 gap-3 overflow-x-auto">
             {columns.map(col => {
-              const colTasks = tasks.filter(t => t.status === col.id);
+              const colTasks = taskList.filter(t => t.status === col.id);
               return (
-                <div key={col.id} className="min-w-[200px]">
+                <div 
+                  key={col.id} 
+                  className="min-w-[200px] flex flex-col h-full bg-accent/20 rounded-md p-2 border border-border/20"
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, col.id)}
+                >
                   <div className="flex items-center gap-2 mb-3 px-1">
-                    <Badge className={cn("text-[10px] border-0", statusColors[col.id])}>{col.title}</Badge>
+                    <Badge variant="outline" className={cn("text-[10px]", statusColors[col.id])}>{col.title}</Badge>
                     <span className="text-[10px] text-muted-foreground font-medium">{colTasks.length}</span>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-2 flex-1">
                     {colTasks.map(task => {
                       const assignee = employees.find(e => e.id === task.assignee);
-                      const project = projects.find(p => p.id === task.project);
                       return (
-                        <Card key={task.id} className="border-border/50 hover:border-border transition-all hover:shadow-sm cursor-pointer">
+                        <Card 
+                          key={task.id} 
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, task.id)}
+                          className="border-border/50 hover:border-border transition-all hover:shadow-sm cursor-grab active:cursor-grabbing"
+                        >
                           <CardContent className="p-3 space-y-2">
                             <div className="flex items-start gap-1.5">
                               <div className={cn("mt-1.5 h-1.5 w-1.5 rounded-full shrink-0", priorityDots[task.priority])} />
@@ -107,7 +150,7 @@ export default function TasksPage() {
               <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_80px] gap-4 px-4 py-2 text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
                 <span>Task</span><span>Status</span><span>Priority</span><span>Assignee</span><span>Due Date</span><span>Points</span>
               </div>
-              {tasks.map(task => {
+              {taskList.map(task => {
                 const assignee = employees.find(e => e.id === task.assignee);
                 return (
                   <div key={task.id} className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_80px] gap-4 px-4 py-3 items-center hover:bg-accent/30 transition-colors cursor-pointer">
@@ -117,8 +160,8 @@ export default function TasksPage() {
                         {task.labels.map(l => <span key={l} className="text-[9px] text-muted-foreground bg-accent rounded-full px-1.5 py-0.5">{l}</span>)}
                       </div>
                     </div>
-                    <Badge className={cn("text-[10px] w-fit border-0", statusColors[task.status])}>{task.status}</Badge>
-                    <Badge className={cn("text-[10px] w-fit border-0", priorityColors[task.priority])}>{task.priority}</Badge>
+                    <Badge variant="outline" className={cn("text-[10px] w-fit", statusColors[task.status])}>{task.status}</Badge>
+                    <Badge variant="outline" className={cn("text-[10px] w-fit", priorityColors[task.priority])}>{task.priority}</Badge>
                     <div className="flex items-center gap-1.5">
                       <Avatar className="h-4 w-4"><AvatarFallback className="text-[7px] bg-primary/10">{assignee?.avatar}</AvatarFallback></Avatar>
                       <span className="text-xs text-muted-foreground truncate">{assignee?.name}</span>

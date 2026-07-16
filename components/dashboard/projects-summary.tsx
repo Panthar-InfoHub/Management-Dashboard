@@ -10,15 +10,15 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 
 const healthColors: Record<string, string> = {
-  good: "bg-green-500/10 text-green-500",
-  "at-risk": "bg-amber-500/10 text-amber-500",
-  critical: "bg-red-500/10 text-red-500",
+  good: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20",
+  "at-risk": "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/20",
+  critical: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20 hover:bg-red-500/20",
 };
 
 const statusColors: Record<string, string> = {
-  active: "bg-blue-500/10 text-blue-500",
-  delayed: "bg-red-500/10 text-red-500",
-  completed: "bg-green-500/10 text-green-500",
+  active: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20",
+  delayed: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20 hover:bg-red-500/20",
+  completed: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20",
 };
 
 export function ProjectsSummary() {
@@ -45,9 +45,9 @@ export function ProjectsSummary() {
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2 min-w-0">
                   <p className="text-xs font-medium text-foreground truncate">{project.name}</p>
-                  <Badge className={cn("text-[9px] border-0 shrink-0", statusColors[project.status])}>{project.status}</Badge>
+                  <Badge variant="outline" className={cn("text-[9px] shrink-0", statusColors[project.status])}>{project.status}</Badge>
                 </div>
-                <Badge className={cn("text-[9px] border-0 shrink-0", healthColors[project.health])}>{project.health}</Badge>
+                <Badge variant="outline" className={cn("text-[9px] shrink-0", healthColors[project.health])}>{project.health}</Badge>
               </div>
               <div className="flex items-center gap-3">
                 <Progress value={project.progress} className="h-1.5 flex-1" />

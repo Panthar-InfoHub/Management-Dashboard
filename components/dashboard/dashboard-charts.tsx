@@ -45,15 +45,15 @@ export function DashboardCharts() {
               <AreaChart data={chartData.productivity}>
                 <defs>
                   <linearGradient id="prodGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="hsl(217, 91%, 60%)" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="hsl(217, 91%, 60%)" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#0ea5e9" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#0ea5e9" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis dataKey="week" tick={{ fontSize: 11 }} className="text-muted-foreground" />
                 <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" domain={[60, 100]} />
                 <Tooltip content={<CustomTooltip />} />
-                <Area type="monotone" dataKey="value" name="Productivity" stroke="hsl(217, 91%, 60%)" fill="url(#prodGradient)" strokeWidth={2} />
+                <Area type="monotone" dataKey="value" name="Productivity" stroke="#0ea5e9" fill="url(#prodGradient)" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -71,8 +71,8 @@ export function DashboardCharts() {
               <CardTitle className="text-sm font-semibold">Sprint Velocity</CardTitle>
             </div>
             <div className="flex gap-3 text-[10px]">
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-purple-500" /> Planned</span>
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Completed</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-purple-500/40" /> Planned</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-purple-500" /> Completed</span>
             </div>
           </div>
         </CardHeader>
@@ -84,8 +84,8 @@ export function DashboardCharts() {
                 <XAxis dataKey="sprint" tick={{ fontSize: 11 }} className="text-muted-foreground" />
                 <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="planned" name="Planned" fill="hsl(271, 91%, 65%)" radius={[3, 3, 0, 0]} opacity={0.4} />
-                <Bar dataKey="completed" name="Completed" fill="hsl(160, 84%, 39%)" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="planned" name="Planned" fill="#a855f7" radius={[3, 3, 0, 0]} opacity={0.3} />
+                <Bar dataKey="completed" name="Completed" fill="#a855f7" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -112,7 +112,7 @@ export function DashboardCharts() {
                 <Tooltip content={<CustomTooltip />} />
                 <Bar dataKey="score" name="Score" radius={[0, 4, 4, 0]}>
                   {chartData.teamPerformance.map((entry, i) => (
-                    <Cell key={i} fill={entry.score >= 90 ? "hsl(160, 84%, 39%)" : entry.score >= 80 ? "hsl(217, 91%, 60%)" : "hsl(38, 92%, 50%)"} />
+                    <Cell key={i} fill="#10b981" fillOpacity={entry.score >= 90 ? 1 : entry.score >= 80 ? 0.6 : 0.3} />
                   ))}
                 </Bar>
               </BarChart>
@@ -132,7 +132,7 @@ export function DashboardCharts() {
               <CardTitle className="text-sm font-semibold">Task Completion Trend</CardTitle>
             </div>
             <div className="flex gap-3 text-[10px]">
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-cyan-500" /> Completed</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-blue-500" /> Completed</span>
               <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-orange-500" /> Created</span>
             </div>
           </div>
@@ -143,20 +143,20 @@ export function DashboardCharts() {
               <AreaChart data={chartData.taskCompletion}>
                 <defs>
                   <linearGradient id="compGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="hsl(187, 92%, 45%)" stopOpacity={0.2} />
-                    <stop offset="100%" stopColor="hsl(187, 92%, 45%)" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#0ea5e9" stopOpacity={0.2} />
+                    <stop offset="100%" stopColor="#0ea5e9" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="creatGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="hsl(25, 95%, 53%)" stopOpacity={0.2} />
-                    <stop offset="100%" stopColor="hsl(25, 95%, 53%)" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#f97316" stopOpacity={0.1} />
+                    <stop offset="100%" stopColor="#f97316" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis dataKey="day" tick={{ fontSize: 11 }} className="text-muted-foreground" />
                 <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" />
                 <Tooltip content={<CustomTooltip />} />
-                <Area type="monotone" dataKey="completed" name="Completed" stroke="hsl(187, 92%, 45%)" fill="url(#compGradient)" strokeWidth={2} />
-                <Area type="monotone" dataKey="created" name="Created" stroke="hsl(25, 95%, 53%)" fill="url(#creatGradient)" strokeWidth={2} />
+                <Area type="monotone" dataKey="completed" name="Completed" stroke="#0ea5e9" fill="url(#compGradient)" strokeWidth={2} />
+                <Area type="monotone" dataKey="created" name="Created" stroke="#f97316" strokeOpacity={0.4} fill="url(#creatGradient)" strokeWidth={2} strokeDasharray="4 4" />
               </AreaChart>
             </ResponsiveContainer>
           </div>

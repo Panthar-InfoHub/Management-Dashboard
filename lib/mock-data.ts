@@ -66,6 +66,15 @@ export const dailyUpdates = [
   { id: "du3", user: "e7", date: "2025-07-15", accomplished: "Trained v3 recommendation model. Accuracy improved by 4.2%.", tasks: ["t5"], progress: 52, blockers: "GPU cluster at 90% capacity", plan: "Hyperparameter tuning", mood: "excited", reactions: 12, comments: 7 },
   { id: "du4", user: "e4", date: "2025-07-15", accomplished: "Finalized onboarding screen designs. Created 8 component variants.", tasks: ["t2"], progress: 90, blockers: "Need copy review from marketing", plan: "Design review with stakeholders", mood: "creative", reactions: 15, comments: 5 },
   { id: "du5", user: "e6", date: "2025-07-15", accomplished: "Optimized database queries, reduced p99 latency by 40ms.", tasks: ["t7"], progress: 30, blockers: "None", plan: "Continue index optimization", mood: "productive", reactions: 9, comments: 4 },
+  
+  // Previous Day (Jul 14)
+  { id: "du6", user: "e1", date: "2025-07-14", accomplished: "Started JWT implementation. Set up Redis store for sessions.", tasks: ["t1"], progress: 40, blockers: "None", plan: "Finish refresh token rotation.", mood: "productive", reactions: 4, comments: 1 },
+  { id: "du7", user: "e2", date: "2025-07-14", accomplished: "Chart components 50% done. Setup recharts wrappers.", tasks: ["t4"], progress: 50, blockers: "None", plan: "Finish variants and responsive styling.", mood: "focused", reactions: 6, comments: 0 },
+  { id: "du8", user: "e5", date: "2025-07-14", accomplished: "Configured multi-region AWS VPCs.", tasks: ["t3"], progress: 20, blockers: "Waiting for IAM approvals from security.", plan: "Setup Terraform modules for EKS.", mood: "focused", reactions: 3, comments: 2 },
+  
+  // Two Days Ago (Jul 13)
+  { id: "du9", user: "e4", date: "2025-07-13", accomplished: "Initial wireframes for onboarding.", tasks: ["t2"], progress: 40, blockers: "Need user research data.", plan: "Hi-fidelity mockups.", mood: "creative", reactions: 10, comments: 4 },
+  { id: "du10", user: "e11", date: "2025-07-13", accomplished: "Setup push notification certificates.", tasks: ["t9"], progress: 100, blockers: "None", plan: "Start integration with backend.", mood: "productive", reactions: 7, comments: 1 },
 ];
 
 export const insights = [
