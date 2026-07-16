@@ -26,7 +26,9 @@ export async function getKanbanTasks() {
       },
       project: {
         select: {
+          id: true,
           name: true,
+          team: { select: { id: true, name: true } }
         }
       }
     },
@@ -43,13 +45,22 @@ export async function getTaskById(taskId: string) {
     where: { id: taskId },
     include: {
       project: {
-        include: { team: true, members: true }
+        include: { 
+          team: true, 
+          members: { include: { employee: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } } } } 
+        }
       },
       assignees: {
         select: { id: true, firstName: true, lastName: true, avatarUrl: true }
       },
       creator: {
         select: { id: true, firstName: true, lastName: true, avatarUrl: true }
+      },
+      subtasks: {
+        include: { assignees: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } } }
+      },
+      blockedBy: {
+        select: { id: true, title: true, status: true }
       }
     }
   });
@@ -66,5 +77,14 @@ export async function getTaskById(taskId: string) {
     }
   }
 
-  return task;
+  // Fetch Activity (Audit logs for this task)
+  const auditLogs = await db.auditLog.findMany({
+    where: { entity: "Task", entityId: taskId },
+    orderBy: { createdAt: "desc" },
+    include: {
+      actor: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } }
+    }
+  });
+
+  return { ...task, activity: auditLogs };
 }

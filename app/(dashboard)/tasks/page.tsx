@@ -8,8 +8,8 @@ export default async function TasksPage() {
   const tasks = await getKanbanTasks();
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col gap-6 p-6 h-[calc(100vh-64px)] min-w-0 overflow-hidden">
+      <div className="flex items-center justify-between shrink-0">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Tasks</h1>
           <p className="text-sm text-muted-foreground">Track and manage all tasks across projects.</p>

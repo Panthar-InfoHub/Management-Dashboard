@@ -17,7 +17,7 @@ export default async function DashboardPage() {
   const activityFeed = await getDashboardActivityFeed();
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-6 h-full overflow-y-auto">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

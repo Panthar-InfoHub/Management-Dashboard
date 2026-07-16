@@ -26,6 +26,24 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [] 
   const completedTasks = project.tasks.filter((t: any) => t.status === "DONE").length;
   const totalTasks = project.tasks.length;
   
+  const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
+
+  const toggleTask = (taskId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setExpandedTasks(prev => ({ ...prev, [taskId]: !prev[taskId] }));
+  };
+
+  const tasksByParent = project.tasks.reduce((acc: any, t: any) => {
+    if (t.parentId) {
+      if (!acc[t.parentId]) acc[t.parentId] = [];
+      acc[t.parentId].push(t);
+    }
+    return acc;
+  }, {});
+
+  const topLevelTasks = project.tasks.filter((t: any) => !t.parentId);
+  
   // Edit Project State
   const [editOpen, setEditOpen] = useState(false);
   const [editData, setEditData] = useState({ 
@@ -202,40 +220,78 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [] 
                 <h3 className="text-sm font-medium flex items-center gap-2 text-foreground">
                   <CheckSquare className="h-4 w-4 text-muted-foreground" /> Project Tasks
                 </h3>
-                <Link href="/tasks" className="text-xs text-primary hover:underline">View All on Board</Link>
+                <Link href={`/tasks?project=${project.id}`} className="text-xs text-primary hover:underline">View All on Board</Link>
               </div>
 
               {project.tasks.length > 0 ? (
                 <div className="border border-border/40 rounded-lg bg-background flex flex-col">
                   <div className="divide-y divide-border/40 overflow-y-auto max-h-[400px]">
-                    {project.tasks.map((task: any) => (
-                      <div key={task.id} className="p-4 hover:bg-muted/20 transition-colors flex items-center justify-between group">
-                        <div className="space-y-1.5">
-                          <Link href={`/tasks/${task.id}`} className="text-sm font-medium group-hover:text-primary transition-colors block">
-                            {task.title}
-                          </Link>
-                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                            <Badge variant="outline" className={cn("text-[9px] px-1.5 py-0 shadow-none rounded-sm", taskStatusColors[task.status])}>
-                              {task.status.replace("_", " ")}
-                            </Badge>
-                            {task.dueDate && (
-                              <span className="flex items-center gap-1.5">
-                                <Clock className="h-3 w-3" />
-                                {new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex -space-x-2">
-                          {task.assignees?.map((a: any) => (
-                            <Avatar key={a.id} className="h-7 w-7 border-2 border-background">
-                              <AvatarImage src={a.avatarUrl} />
-                              <AvatarFallback className="text-[9px] bg-primary/10">{a.firstName.charAt(0)}</AvatarFallback>
-                            </Avatar>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
+                    {(() => {
+                      const renderTree = (tasks: any[], depth = 0) => {
+                        return tasks.map(task => {
+                          const children = tasksByParent[task.id] || [];
+                          const isExpanded = expandedTasks[task.id];
+                          const hasChildren = children.length > 0;
+                          
+                          return (
+                            <div key={task.id} className="flex flex-col border-b border-border/20 last:border-0">
+                              <div 
+                                className="p-4 hover:bg-muted/20 transition-colors flex items-center justify-between group cursor-pointer"
+                                style={{ paddingLeft: `${Math.max(1, depth * 1.5) + 0.5}rem` }}
+                                onClick={(e) => {
+                                  if (hasChildren) {
+                                    toggleTask(task.id, e);
+                                  } else {
+                                    router.push(`/tasks/${task.id}`);
+                                  }
+                                }}
+                              >
+                                <div className="space-y-1.5 flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    {hasChildren && (
+                                      <div 
+                                        className="h-5 w-5 flex items-center justify-center rounded hover:bg-muted shrink-0 text-muted-foreground transition-colors"
+                                      >
+                                        {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                      </div>
+                                    )}
+                                    {!hasChildren && depth > 0 && <div className="h-5 w-5 shrink-0" />}
+                                    <Link href={`/tasks/${task.id}`} className="text-sm font-medium group-hover:text-primary transition-colors block truncate" onClick={e => e.stopPropagation()}>
+                                      {task.title}
+                                    </Link>
+                                  </div>
+                                  <div className="flex items-center gap-3 text-xs text-muted-foreground pl-7">
+                                    <Badge variant="outline" className={cn("text-[9px] px-1.5 py-0 shadow-none rounded-sm", taskStatusColors[task.status])}>
+                                      {task.status.replace("_", " ")}
+                                    </Badge>
+                                    {task.dueDate && (
+                                      <span className="flex items-center gap-1.5">
+                                        <Clock className="h-3 w-3" />
+                                        {new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex -space-x-2 shrink-0">
+                                  {task.assignees?.map((a: any) => (
+                                    <Avatar key={a.id} className="h-7 w-7 border-2 border-background">
+                                      <AvatarImage src={a.avatarUrl} />
+                                      <AvatarFallback className="text-[9px] bg-primary/10">{a.firstName.charAt(0)}</AvatarFallback>
+                                    </Avatar>
+                                  ))}
+                                </div>
+                              </div>
+                              {hasChildren && isExpanded && (
+                                <div className="flex flex-col w-full bg-muted/5">
+                                  {renderTree(children, depth + 1)}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        });
+                      };
+                      return renderTree(topLevelTasks);
+                    })()}
                   </div>
                 </div>
               ) : (

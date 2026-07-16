@@ -32,7 +32,7 @@ const bottomItems = [
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 
-export function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCollapsed: (val: boolean) => void }) {
+export function Sidebar({ collapsed, setCollapsed, isMobile }: { collapsed: boolean; setCollapsed: (val: boolean) => void, isMobile?: boolean }) {
   const pathname = usePathname();
   const { user } = useUser();
 
@@ -42,8 +42,9 @@ export function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCo
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-border bg-sidebar transition-all duration-200",
-        collapsed ? "w-[60px]" : "w-[240px]"
+        "fixed left-0 top-0 z-40 h-screen flex-col border-r border-border bg-sidebar transition-all duration-200",
+        isMobile ? "flex relative w-full" : "hidden md:flex",
+        !isMobile && (collapsed ? "w-[60px]" : "w-[240px]")
       )}
     >
       {/* Header with Logo and Collapse Toggle */}

@@ -31,20 +31,9 @@ export async function createTaskAction(data: {
   });
 
   // Log audit
-  await db.auditLog.create({
-    data: {
-      action: "CREATE",
-      entity: "Task",
-      entityId: task.id,
-      description: `Created task: ${task.title}`,
-      actorId: employee.id
-    }
-  });
-
-  revalidatePath("/tasks");
-  revalidatePath("/projects");
-  revalidatePath("/");
   
+
+  revalidatePath("/", "layout");
   return { success: true, taskId: task.id };
 }
 
@@ -53,22 +42,90 @@ export async function updateTaskStatusAction(taskId: string, newStatus: any) {
 
   const task = await db.task.update({
     where: { id: taskId },
-    data: { status: newStatus }
+    data: { status: newStatus },
+    include: { blocking: true }
   });
 
-  await db.auditLog.create({
+  
+
+  // Auto-unblock dependent tasks if this task is now DONE
+  if (newStatus === "DONE" && task.blocking && task.blocking.length > 0) {
+    for (const blockedTask of task.blocking) {
+      await db.task.update({
+        where: { id: blockedTask.id },
+        data: { blockedById: null }
+      });
+      
+    }
+  }
+
+  revalidatePath("/", "layout");
+  return { success: true, task };
+}
+
+export async function updateTaskPriorityAction(taskId: string, newPriority: any) {
+  const employee = await requireAuth("task:update:any");
+
+  const task = await db.task.update({
+    where: { id: taskId },
+    data: { priority: newPriority }
+  });
+
+  
+
+  revalidatePath("/", "layout");
+  return { success: true, task };
+}
+
+export async function setTaskBlockerAction(taskId: string, blockerTaskId: string | null) {
+  const employee = await requireAuth("task:update:any");
+
+  const task = await db.task.update({
+    where: { id: taskId },
+    data: { blockedById: blockerTaskId }
+  });
+
+  
+
+  revalidatePath("/", "layout");
+  return { success: true, task };
+}
+
+export async function createSubtaskAction(parentId: string, data: { title: string; assigneeId?: string; priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" }) {
+  const employee = await requireAuth("task:create");
+
+  const parentTask = await db.task.findUnique({ where: { id: parentId } });
+  if (!parentTask) throw new Error("Parent task not found");
+
+  const subtask = await db.task.create({
     data: {
-      action: "STATUS_CHANGE",
-      entity: "Task",
-      entityId: task.id,
-      description: `Moved task to ${newStatus}`,
-      actorId: employee.id
+      title: data.title,
+      projectId: parentTask.projectId,
+      parentId: parentId,
+      creatorId: employee.id,
+      priority: data.priority,
+      assignees: data.assigneeId ? { connect: [{ id: data.assigneeId }] } : undefined,
     }
   });
 
-  revalidatePath("/tasks");
-  revalidatePath("/projects");
-  revalidatePath("/");
+  
 
+  revalidatePath("/", "layout");
+  return { success: true, subtask };
+}
+
+export async function assignTaskAction(taskId: string, assigneeId: string | null) {
+  const employee = await requireAuth("task:assign");
+
+  const task = await db.task.update({
+    where: { id: taskId },
+    data: {
+      assignees: assigneeId ? { set: [{ id: assigneeId }] } : { set: [] }
+    }
+  });
+
+  
+
+  revalidatePath("/", "layout");
   return { success: true, task };
 }

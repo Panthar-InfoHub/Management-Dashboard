@@ -11,11 +11,13 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
   Bell, ChevronRight, Moon, Sun, Monitor, Plus,
-  Search, Command,
+  Search, Command, Menu,
 } from "lucide-react";
 import { notifications } from "@/lib/mock-data";
+import { Sidebar } from "./sidebar";
 
 export function TopNav() {
   const { theme, setTheme } = useTheme();
@@ -23,12 +25,25 @@ export function TopNav() {
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-background/80 backdrop-blur-md px-6">
-      {/* Breadcrumb */}
-      <nav className="flex items-center gap-1 text-sm text-muted-foreground">
-        <span className="font-medium text-foreground">Panthar</span>
-        <ChevronRight className="h-3.5 w-3.5" />
-        <span>Dashboard</span>
-      </nav>
+      {/* Mobile Menu & Breadcrumb */}
+      <div className="flex items-center gap-3">
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon" className="md:hidden -ml-2 text-muted-foreground">
+              <Menu className="h-5 w-5" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="p-0 w-64 border-r border-border">
+            <Sidebar collapsed={false} setCollapsed={() => {}} isMobile={true} />
+          </SheetContent>
+        </Sheet>
+        
+        <nav className="flex items-center gap-1 text-sm text-muted-foreground">
+          <span className="font-medium text-foreground hidden sm:inline">Panthar</span>
+          <ChevronRight className="h-3.5 w-3.5 hidden sm:inline" />
+          <span>Dashboard</span>
+        </nav>
+      </div>
 
       {/* Actions */}
       <div className="flex items-center gap-1">

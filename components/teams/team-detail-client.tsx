@@ -113,49 +113,6 @@ export function TeamDetailClient({ team, allEmployees = [], tasks = [] }: { team
               </div>
             </div>
 
-            {/* Tasks Section */}
-            <div className="pt-8 border-t border-border/40">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-sm font-medium flex items-center gap-2 text-foreground">
-                  <CheckSquare className="h-4 w-4 text-muted-foreground" /> Recent Team Tasks
-                </h3>
-              </div>
-
-              {tasks.length > 0 ? (
-                <div className="border border-border/40 rounded-lg bg-background flex flex-col">
-                  <div className="divide-y divide-border/40 overflow-y-auto max-h-[400px]">
-                    {tasks.map((task: any) => (
-                      <div key={task.id} className="p-4 hover:bg-muted/20 transition-colors flex items-center justify-between group">
-                        <div className="space-y-1.5 min-w-0 flex-1 pr-4">
-                          <Link href={`/tasks`} className="text-sm font-medium group-hover:text-primary transition-colors truncate block">
-                            {task.title}
-                          </Link>
-                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                            <Badge variant="outline" className={cn("text-[9px] px-1.5 py-0 shadow-none rounded-sm uppercase tracking-wider", taskStatusColors[task.status])}>
-                              {task.status.replace("_", " ")}
-                            </Badge>
-                            <span className="truncate">in {task.project?.name}</span>
-                          </div>
-                        </div>
-                        <div className="flex -space-x-1.5 shrink-0">
-                          {task.assignees?.map((a: any) => (
-                            <Avatar key={a.id} className="h-6 w-6 border-2 border-background ring-1 ring-border/20">
-                              <AvatarImage src={a.avatarUrl} />
-                              <AvatarFallback className="text-[8px] bg-primary/10">{a.firstName?.charAt(0)}</AvatarFallback>
-                            </Avatar>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-lg border border-dashed border-border/40 p-8 text-center bg-muted/10">
-                  <p className="text-sm text-muted-foreground">No recent tasks for this team.</p>
-                </div>
-              )}
-            </div>
-
             {/* Team Projects */}
             <div className="pt-8 border-t border-border/40">
               <div className="flex items-center justify-between mb-6">
@@ -279,10 +236,7 @@ export function TeamDetailClient({ team, allEmployees = [], tasks = [] }: { team
             <div>
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Properties</h3>
               <div className="space-y-4 bg-muted/10 p-4 rounded-lg border border-border/40">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground flex items-center gap-2"><CheckSquare className="h-3.5 w-3.5" /> Tasks</span>
-                  <span className="font-medium bg-background border border-border/50 px-2 py-0.5 rounded text-xs">{tasks.length}</span>
-                </div>
+
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground flex items-center gap-2"><LayoutDashboard className="h-3.5 w-3.5" /> Projects</span>
                   <span className="font-medium bg-background border border-border/50 px-2 py-0.5 rounded text-xs">{team.projects.length}</span>

@@ -71,7 +71,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
   );
 
   return (
-    <div className="space-y-6 p-6 md:p-8 max-w-7xl mx-auto h-full selection:bg-primary/10">
+    <div className="space-y-6 p-6 md:p-8 max-w-7xl mx-auto h-full overflow-y-auto selection:bg-primary/10">
       <div className="flex items-center justify-between pb-6 border-b border-border/40">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Directory</h1>

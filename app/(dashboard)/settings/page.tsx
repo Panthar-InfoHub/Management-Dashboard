@@ -29,7 +29,7 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("profile");
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-6 h-full overflow-y-auto">
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
         <p className="text-sm text-muted-foreground">Manage your workspace preferences and configurations.</p>
