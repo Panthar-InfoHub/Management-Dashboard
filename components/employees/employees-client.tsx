@@ -7,10 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Search, Plus, Mail, Shield, Building2, UserPlus, MoreVertical, Calendar } from "lucide-react";
-import { createEmployeeAction } from "@/lib/actions/employee.actions";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Search, Plus, Mail, Shield, Building2, UserPlus, MoreVertical, Calendar, Pencil, Trash2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { createEmployeeAction, updateEmployeeAction, deleteEmployeeAction } from "@/lib/actions/employee.actions";
 import { useRouter } from "next/navigation";
-import { Role } from "@prisma/client";
 import { cn } from "@/lib/utils";
 
 const roleColors: Record<string, string> = { 
@@ -19,14 +20,17 @@ const roleColors: Record<string, string> = {
   EMPLOYEE: "bg-gray-500/10 text-gray-600 border-gray-500/20" 
 };
 
-export function EmployeesClient({ initialEmployees, teams, isAdmin }: { initialEmployees: any[], teams: any[], isAdmin: boolean }) {
+export function EmployeesClient({ initialEmployees, teams, availableRoles = [], isAdmin }: { initialEmployees: any[], teams: any[], availableRoles?: string[], isAdmin: boolean }) {
   const [employeeList, setEmployeeList] = useState(initialEmployees);
   const [newEmpOpen, setNewEmpOpen] = useState(false);
+  const [editEmpOpen, setEditEmpOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
-  const [newEmp, setNewEmp] = useState({ firstName: "", lastName: "", email: "", role: "EMPLOYEE" as Role, designation: "" });
+  const [newEmp, setNewEmp] = useState({ firstName: "", lastName: "", email: "", role: availableRoles[0] || "EMPLOYEE", designation: "", password: "" });
+  const [setCustomPassword, setSetCustomPassword] = useState(false);
+  const [editingEmp, setEditingEmp] = useState<{ id: string; role: string; designation: string } | null>(null);
 
   const handleCreateEmployee = () => {
     if (!newEmp.firstName || !newEmp.lastName || !newEmp.email) return;
@@ -34,7 +38,28 @@ export function EmployeesClient({ initialEmployees, teams, isAdmin }: { initialE
     startTransition(() => {
       createEmployeeAction(newEmp).then(() => {
         setNewEmpOpen(false);
-        setNewEmp({ firstName: "", lastName: "", email: "", role: "EMPLOYEE", designation: "" });
+        setNewEmp({ firstName: "", lastName: "", email: "", role: "EMPLOYEE", designation: "", password: "" });
+        setSetCustomPassword(false);
+        router.refresh();
+      }).catch(err => console.error(err));
+    });
+  };
+
+  const handleUpdateEmployee = () => {
+    if (!editingEmp) return;
+    startTransition(() => {
+      updateEmployeeAction(editingEmp.id, { role: editingEmp.role, designation: editingEmp.designation }).then(() => {
+        setEditEmpOpen(false);
+        setEditingEmp(null);
+        router.refresh();
+      }).catch(err => console.error(err));
+    });
+  };
+
+  const handleDeleteEmployee = (id: string) => {
+    if (!confirm("Are you sure you want to remove this member? They will lose access immediately.")) return;
+    startTransition(() => {
+      deleteEmployeeAction(id).then(() => {
         router.refresh();
       }).catch(err => console.error(err));
     });
@@ -57,7 +82,7 @@ export function EmployeesClient({ initialEmployees, teams, isAdmin }: { initialE
             <DialogTrigger asChild>
               <Button size="sm" className="gap-2 shadow-none"><UserPlus className="h-4 w-4" /> Add Member</Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="sm:max-w-lg">
               <DialogHeader>
                 <DialogTitle>Invite New Member</DialogTitle>
               </DialogHeader>
@@ -72,9 +97,34 @@ export function EmployeesClient({ initialEmployees, teams, isAdmin }: { initialE
                     <Input value={newEmp.lastName} onChange={e => setNewEmp({ ...newEmp, lastName: e.target.value })} placeholder="Doe" />
                   </div>
                 </div>
-                <div className="space-y-1.5 flex flex-col">
-                  <label className="text-xs font-semibold text-muted-foreground">Email Address</label>
-                  <Input value={newEmp.email} type="email" onChange={e => setNewEmp({ ...newEmp, email: e.target.value })} placeholder="jane@example.com" />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5 flex flex-col">
+                    <label className="text-xs font-semibold text-muted-foreground">Email Address</label>
+                    <Input value={newEmp.email} type="email" onChange={e => setNewEmp({ ...newEmp, email: e.target.value })} placeholder="jane@example.com" />
+                  </div>
+                  <div className="space-y-1.5 flex flex-col">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-muted-foreground">Initial Password</label>
+                      <div className="flex items-center gap-2">
+                        <label className="text-[10px] text-muted-foreground">Create password</label>
+                        <Switch 
+                          checked={setCustomPassword} 
+                          onCheckedChange={(checked) => {
+                            setSetCustomPassword(checked);
+                            if (!checked) setNewEmp(prev => ({ ...prev, password: "" }));
+                          }} 
+                          className="scale-75 data-[state=checked]:bg-primary"
+                        />
+                      </div>
+                    </div>
+                    <Input 
+                      value={newEmp.password} 
+                      type="password" 
+                      disabled={!setCustomPassword}
+                      onChange={e => setNewEmp({ ...newEmp, password: e.target.value })} 
+                      placeholder={setCustomPassword ? "Enter password" : "Disabled (Invite via email)"} 
+                    />
+                  </div>
                 </div>
                 <div className="space-y-1.5 flex flex-col">
                   <label className="text-xs font-semibold text-muted-foreground">Designation / Title</label>
@@ -82,19 +132,19 @@ export function EmployeesClient({ initialEmployees, teams, isAdmin }: { initialE
                 </div>
                 <div className="space-y-1.5 flex flex-col">
                   <label className="text-xs font-semibold text-muted-foreground">System Role</label>
-                  <Select value={newEmp.role} onValueChange={(val: Role) => setNewEmp({ ...newEmp, role: val })}>
+                  <Select value={newEmp.role} onValueChange={(val: string) => setNewEmp({ ...newEmp, role: val })}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="EMPLOYEE">Employee</SelectItem>
-                      <SelectItem value="MANAGER">Manager</SelectItem>
-                      <SelectItem value="ADMIN">Admin</SelectItem>
+                      {availableRoles.map(roleName => (
+                        <SelectItem key={roleName} value={roleName}>{roleName}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="text-[11px] text-muted-foreground bg-muted/30 p-3 rounded-lg border border-border/40 mt-4">
-                  When they sign up with this email address, their account will be automatically linked to this profile.
+                  If you leave the password blank, an email invitation will be sent instead. If you set a password, the account is created instantly.
                 </div>
                 <Button onClick={handleCreateEmployee} disabled={isPending || !newEmp.firstName || !newEmp.email} className="w-full">
                   {isPending ? "Adding..." : "Add Member"}
@@ -104,6 +154,41 @@ export function EmployeesClient({ initialEmployees, teams, isAdmin }: { initialE
           </Dialog>
         )}
       </div>
+
+      <Dialog open={editEmpOpen} onOpenChange={setEditEmpOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Member</DialogTitle>
+          </DialogHeader>
+          {editingEmp && (
+            <div className="space-y-4 pt-4">
+              <div className="space-y-1.5 flex flex-col">
+                <label className="text-xs font-semibold text-muted-foreground">Designation / Title</label>
+                <Input value={editingEmp.designation} onChange={e => setEditingEmp({ ...editingEmp, designation: e.target.value })} placeholder="E.g. Senior Frontend Engineer" />
+              </div>
+              <div className="space-y-1.5 flex flex-col">
+                <label className="text-xs font-semibold text-muted-foreground">System Role</label>
+                <Select value={editingEmp.role} onValueChange={(val: string) => setEditingEmp({ ...editingEmp, role: val })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableRoles.map(roleName => (
+                      <SelectItem key={roleName} value={roleName}>{roleName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="text-[11px] text-muted-foreground bg-muted/30 p-3 rounded-lg border border-border/40 mt-4">
+                Updating their role will immediately sync with their Clerk permissions.
+              </div>
+              <Button onClick={handleUpdateEmployee} disabled={isPending} className="w-full">
+                {isPending ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-md">
@@ -164,7 +249,7 @@ export function EmployeesClient({ initialEmployees, teams, isAdmin }: { initialE
 
                 {/* Column 3: Status & Role */}
                 <div className="flex items-center gap-2">
-                  <Badge variant="outline" className={cn("text-[9px] px-2 py-0.5 shadow-none rounded-full border-border/40", roleColors[emp.role])}>
+                  <Badge variant="outline" className={cn("text-[9px] px-2 py-0.5 shadow-none rounded-full border-border/40", roleColors[emp.role] || "bg-gray-500/10 text-gray-600 border-gray-500/20")}>
                     {emp.role}
                   </Badge>
                   {emp.clerkId.startsWith("pending_") && (
@@ -182,9 +267,28 @@ export function EmployeesClient({ initialEmployees, teams, isAdmin }: { initialE
 
                 {/* Actions */}
                 <div className="text-right">
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
+                  {isAdmin && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => {
+                          setEditingEmp({ id: emp.id, role: emp.role, designation: emp.designation || "" });
+                          setEditEmpOpen(true);
+                        }}>
+                          <Pencil className="h-4 w-4 mr-2" />
+                          Edit Role & Title
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="text-red-600 focus:bg-red-50 focus:text-red-600 cursor-pointer" onClick={() => handleDeleteEmployee(emp.id)}>
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Remove Member
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
               </div>
             ))

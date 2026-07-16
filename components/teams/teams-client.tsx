@@ -17,7 +17,7 @@ export function TeamsClient({ initialTeams, employees, isAdmin }: { initialTeams
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
-  const [newTeam, setNewTeam] = useState({ name: "", description: "", color: "#3b82f6", leadId: "" });
+  const [newTeam, setNewTeam] = useState({ name: "", description: "", leadId: "" });
 
   const handleCreateTeam = () => {
     if (!newTeam.name || !newTeam.leadId) return;
@@ -25,7 +25,7 @@ export function TeamsClient({ initialTeams, employees, isAdmin }: { initialTeams
     startTransition(() => {
       createTeamAction(newTeam).then((team) => {
         setNewTeamOpen(false);
-        setNewTeam({ name: "", description: "", color: "#3b82f6", leadId: "" });
+        setNewTeam({ name: "", description: "", leadId: "" });
         router.refresh();
       }).catch(err => console.error(err));
     });
@@ -68,13 +68,6 @@ export function TeamsClient({ initialTeams, employees, isAdmin }: { initialTeams
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
-                <div className="space-y-1.5 flex flex-col">
-                  <label className="text-xs font-semibold text-muted-foreground">Team Color</label>
-                  <div className="flex gap-2">
-                    <Input type="color" value={newTeam.color} onChange={e => setNewTeam({ ...newTeam, color: e.target.value })} className="w-12 h-9 p-1 cursor-pointer" />
-                    <Input value={newTeam.color} onChange={e => setNewTeam({ ...newTeam, color: e.target.value })} className="flex-1 font-mono text-sm uppercase" />
-                  </div>
                 </div>
                 <Button onClick={handleCreateTeam} disabled={isPending || !newTeam.name || !newTeam.leadId} className="w-full mt-2">
                   {isPending ? "Creating..." : "Create Team"}

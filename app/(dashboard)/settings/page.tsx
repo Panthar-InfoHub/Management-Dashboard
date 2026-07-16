@@ -10,12 +10,14 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
-import { User, Bell, Palette, Shield, Keyboard, Users, Building, Plug } from "lucide-react";
+import { User, Bell, Palette, Shield, Keyboard, Users, Building, Plug, KeyRound } from "lucide-react";
+import { RolesTab } from "@/components/settings/roles-tab";
 
 const tabs = [
   { value: "profile", label: "Profile", icon: User },
   { value: "workspace", label: "Workspace", icon: Building },
   { value: "members", label: "Members", icon: Users },
+  { value: "roles", label: "Roles & Permissions", icon: KeyRound },
   { value: "notifications", label: "Notifications", icon: Bell },
   { value: "appearance", label: "Appearance", icon: Palette },
   { value: "security", label: "Security", icon: Shield },
@@ -51,7 +53,7 @@ export default function SettingsPage() {
         </nav>
 
         {/* Content */}
-        <div className="flex-1 max-w-2xl">
+        <div className="flex-1 min-w-0 pb-10">
           {activeTab === "profile" && (
             <Card className="border-border/50">
               <CardHeader><CardTitle className="text-sm font-semibold">Profile</CardTitle></CardHeader>
@@ -111,6 +113,10 @@ export default function SettingsPage() {
                 ))}
               </CardContent>
             </Card>
+          )}
+
+          {activeTab === "roles" && (
+            <RolesTab />
           )}
 
           {activeTab === "notifications" && (

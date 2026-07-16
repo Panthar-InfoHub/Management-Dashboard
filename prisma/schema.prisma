@@ -13,11 +13,9 @@ datasource db {
 // ENUMS
 // ─────────────────────────────────────────────
 
-enum Role {
-  ADMIN
-  MANAGER
-  EMPLOYEE
-}
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
 
 enum EmployeeStatus {
   ACTIVE
@@ -81,6 +79,14 @@ enum AuditAction {
 // CORE MODELS
 // ─────────────────────────────────────────────
 
+model SystemRole {
+  name        String   @id // e.g. "ADMIN", "MANAGER", "EMPLOYEE", "INTERN"
+  permissions String[]
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 /// Central entity. Every person in the org is an Employee.
 /// Clerk provides identity (clerkId), our DB provides role/authorization.
 model Employee {
@@ -90,7 +96,7 @@ model Employee {
   firstName   String
   lastName    String
   avatarUrl   String?
-  role        Role           @default(EMPLOYEE)
+  role        String         @default("EMPLOYEE")
   status      EmployeeStatus @default(ACTIVE)
   designation String?        // e.g. "Senior Frontend Engineer"
   phone       String?

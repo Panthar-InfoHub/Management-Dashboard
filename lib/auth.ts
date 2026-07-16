@@ -107,8 +107,10 @@ export async function getCurrentEmployee(): Promise<AuthEmployee> {
  */
 export async function requireAuth(permission: Permission): Promise<AuthEmployee> {
   const employee = await getCurrentEmployee();
-  if (!hasPermission(employee.role, permission)) {
-    throw new Error(`Forbidden: requires "${permission}"`);
+  const hasPerm = await hasPermission(employee.role, permission);
+  if (!hasPerm) {
+    console.error(`[Auth] Forbidden: ${employee.email} (Role: ${employee.role}) attempted action requiring ${permission}`);
+    throw new Error("FORBIDDEN: Requires higher permission level");
   }
   return employee;
 }
@@ -120,7 +122,7 @@ export async function requireAuth(permission: Permission): Promise<AuthEmployee>
 export async function checkPermission(permission: Permission): Promise<boolean> {
   try {
     const employee = await getCurrentEmployee();
-    return hasPermission(employee.role, permission);
+    return await hasPermission(employee.role, permission);
   } catch {
     return false;
   }
