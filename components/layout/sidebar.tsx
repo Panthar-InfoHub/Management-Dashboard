@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   LayoutDashboard, FolderKanban, Users, UserCircle, CalendarDays,
@@ -32,7 +33,7 @@ const bottomItems: NavItem[] = [
 
 export function Sidebar({ collapsed, setCollapsed, isMobile, isAdmin = false }: { collapsed: boolean; setCollapsed: (val: boolean) => void, isMobile?: boolean, isAdmin?: boolean }) {
   const pathname = usePathname();
-  const { user } = useUser();
+  const { user, isLoaded } = useUser();
 
   // A constrained divider that doesn't bleed out in collapsed mode
   const Divider = () => <div className="my-2 h-px bg-border w-[calc(100%-16px)] mx-auto" />;
@@ -187,20 +188,34 @@ export function Sidebar({ collapsed, setCollapsed, isMobile, isAdmin = false }: 
 
       {/* User */}
       <div className={cn("flex items-center gap-2 p-3", collapsed && "justify-center p-2 mb-2")}>
-        <Avatar className="h-8 w-8 rounded-md">
-          {user?.imageUrl ? (
-            <AvatarImage src={user.imageUrl} alt={user.fullName ?? ""} />
-          ) : (
-            <AvatarFallback className="bg-primary/10 text-xs font-medium text-primary rounded-md border border-primary/20">
-              {user?.firstName?.charAt(0) || "U"}
-            </AvatarFallback>
-          )}
-        </Avatar>
-        {!collapsed && (
-          <div className="flex flex-1 flex-col overflow-hidden">
-            <span className="truncate text-xs font-medium text-foreground">{user?.fullName || "User"}</span>
-            <span className="truncate text-[10px] text-muted-foreground">{user?.primaryEmailAddress?.emailAddress || "user@panthar.io"}</span>
-          </div>
+        {!isLoaded ? (
+          <>
+            <Skeleton className="h-8 w-8 rounded-md shrink-0" />
+            {!collapsed && (
+              <div className="flex flex-1 flex-col gap-1.5 overflow-hidden">
+                <Skeleton className="h-3.5 w-24" />
+                <Skeleton className="h-3 w-32" />
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <Avatar className="h-8 w-8 rounded-md">
+              {user?.imageUrl ? (
+                <AvatarImage src={user.imageUrl} alt={user.fullName ?? ""} />
+              ) : (
+                <AvatarFallback className="bg-primary/10 text-xs font-medium text-primary rounded-md border border-primary/20">
+                  {user?.firstName?.charAt(0) || "U"}
+                </AvatarFallback>
+              )}
+            </Avatar>
+            {!collapsed && (
+              <div className="flex flex-1 flex-col overflow-hidden">
+                <span className="truncate text-xs font-medium text-foreground">{user?.fullName || "User"}</span>
+                <span className="truncate text-[10px] text-muted-foreground">{user?.primaryEmailAddress?.emailAddress || "user@panthar.io"}</span>
+              </div>
+            )}
+          </>
         )}
       </div>
     </aside>

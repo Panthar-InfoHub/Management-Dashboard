@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Offline | Panthar</title>
+  <style>
+    :root {
+      --background: #000000;
+      --foreground: #ffffff;
+      --muted: #888888;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background-color: var(--background);
+      color: var(--foreground);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      text-align: center;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2rem;
+      padding: 2rem;
+      animation: fadeIn 0.5s ease-out forwards;
+      opacity: 0;
+    }
+    .logo-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 56px;
+      height: 56px;
+      background-color: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+    .logo {
+      width: 32px;
+      height: 32px;
+      object-fit: contain;
+    }
+    .content {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 500;
+      letter-spacing: -0.02em;
+    }
+    p {
+      margin: 0;
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+    .retry-button {
+      margin-top: 1rem;
+      background-color: var(--foreground);
+      color: var(--background);
+      border: none;
+      border-radius: 6px;
+      padding: 0.5rem 1rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .retry-button:hover {
+      opacity: 0.9;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    /* Light mode support */
+    @media (prefers-color-scheme: light) {
+      :root {
+        --background: #ffffff;
+        --foreground: #000000;
+        --muted: #666666;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo-container">
+      <img src="/images/black_logo.webp" alt="Panthar Logo" class="logo" />
+    </div>
+    <div class="content">
+      <h1>You are offline</h1>
+      <p>Please check your internet connection.</p>
+    </div>
+    <button class="retry-button" onclick="window.location.reload()">Try Again</button>
+  </div>
+</body>
+</html>

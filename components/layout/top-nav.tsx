@@ -1,7 +1,7 @@
 "use client";
 
 import { useTheme } from "@/components/providers/theme-provider";
-import { UserButton, Show } from "@clerk/nextjs";
+import { UserButton, ClerkLoading, ClerkLoaded } from "@clerk/nextjs";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -12,6 +12,7 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
   Bell, ChevronRight, Moon, Sun, Monitor, Plus,
@@ -163,17 +164,13 @@ export function TopNav({ isAdmin = false }: { isAdmin?: boolean }) {
 
 
         {/* User menu (Clerk) */}
-        <div className="flex items-center pl-2">
-          <Show 
-            when="signed-in" 
-            fallback={
-              <Button asChild variant="default" size="sm">
-                <Link href="/sign-in">Sign In</Link>
-              </Button>
-            }
-          >
+        <div className="flex items-center pl-2 h-8 w-8 justify-center ml-1">
+          <ClerkLoading>
+            <Skeleton className="h-7 w-7 rounded-full" />
+          </ClerkLoading>
+          <ClerkLoaded>
             <UserButton />
-          </Show>
+          </ClerkLoaded>
         </div>
       </div>
     </header>
