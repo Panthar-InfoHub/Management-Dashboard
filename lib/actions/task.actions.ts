@@ -3,6 +3,7 @@
 import { db } from "@/lib/db";
 import { requireAuth, getCurrentEmployee } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
+import { getKanbanTasks } from "@/lib/queries/task.queries";
 
 export async function createTaskAction(data: {
   title: string;
@@ -213,4 +214,8 @@ export async function assignTaskAction(taskId: string, assigneeId: string | null
 
   revalidatePath("/", "layout");
   return { success: true, task };
+}
+
+export async function loadMoreTasksAction(filters: any, skip: number) {
+  return await getKanbanTasks(filters, skip, 50);
 }

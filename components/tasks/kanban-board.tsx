@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import { useState, useTransition, useMemo, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { Filter, Search, MessageSquare, ClipboardList, Clock, ChevronDown, ChevronRight as ChevronRightIcon } from "lucide-react";
-import { updateTaskStatusAction } from "@/lib/actions/task.actions";
+import { updateTaskStatusAction, loadMoreTasksAction } from "@/lib/actions/task.actions";
 import { toast } from "sonner";
 
 const statusColors: Record<string, string> = { BACKLOG: "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20 hover:bg-gray-500/20", TODO: "bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20 hover:bg-slate-500/20", IN_PROGRESS: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20", REVIEW: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20 hover:bg-purple-500/20", TESTING: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/20", DONE: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20" };
@@ -50,7 +50,14 @@ export function KanbanBoard({
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
+  const [hasMore, setHasMore] = useState(initialTasks.length === 50);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    setTaskList(initialTasks);
+    setHasMore(initialTasks.length === 50);
+  }, [initialTasks]);
 
   const toggleTask = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -145,6 +152,25 @@ export function KanbanBoard({
         console.error("Failed to update status", err);
       });
     });
+  };
+
+  const handleLoadMore = async () => {
+    setIsLoadingMore(true);
+    const skip = taskList.length;
+    try {
+      const more = await loadMoreTasksAction({
+        team: searchParams.get("team") || "ALL",
+        project: searchParams.get("project") || "ALL",
+        assignee: searchParams.get("assignee") || "ALL",
+        search: searchParams.get("search") || "",
+      }, skip);
+      if (more.length < 50) setHasMore(false);
+      setTaskList(prev => [...prev, ...more]);
+    } catch(err) {
+      toast.error("Failed to load more tasks");
+    } finally {
+      setIsLoadingMore(false);
+    }
   };
 
   const hasActiveFilters = urlTeam !== "ALL" || urlProject !== "ALL" || urlAssignee !== "ALL" || urlSearch !== "";
@@ -362,6 +388,14 @@ export function KanbanBoard({
              </div>
           </TabsContent>
         </Tabs>
+      )}
+
+      {hasMore && filteredTasks.length > 0 && (
+        <div className="flex justify-center mt-2 shrink-0 pb-4">
+          <Button variant="outline" size="sm" onClick={handleLoadMore} disabled={isLoadingMore}>
+            {isLoadingMore ? "Loading..." : "Load More Tasks"}
+          </Button>
+        </div>
       )}
     </div>
   );

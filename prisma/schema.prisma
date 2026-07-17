@@ -49,19 +49,6 @@ enum ProjectStatus {
 
 
 
-enum LeaveType {
-  CASUAL
-  SICK
-}
-
-enum LeaveStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  CANCELLED
-}
-
-
 
 // ─────────────────────────────────────────────
 // CORE MODELS
@@ -103,16 +90,7 @@ model Employee {
   projectLead   Project[]       @relation("ProjectLead")
   projectMember ProjectMember[]
 
-  // ── Daily Updates ──
-  dailyUpdates DailyUpdate[]
 
-  // ── Leave & Attendance ──
-  leaveRequests  Leave[]        @relation("LeaveRequester")
-  leaveApprovals Leave[]        @relation("LeaveApprover")
-  leaveBalances  LeaveBalance[]
-  attendance     Attendance[]
-
-  notifications Notification[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -233,104 +211,3 @@ model Comment {
   createdAt DateTime @default(now())
 }
 
-// ─────────────────────────────────────────────
-// DAILY UPDATES
-// ─────────────────────────────────────────────
-
-model DailyUpdate {
-  id           String   @id @default(cuid())
-  employeeId   String
-  employee     Employee @relation(fields: [employeeId], references: [id])
-  date         DateTime @db.Date // one per employee per day
-  accomplished String
-  blockers     String?
-  plan         String?  // tomorrow's plan
-  progress     Int      @default(0) // 0–100
-  mood         String?  // "productive", "focused", etc.
-  taskRefs     String[] // task IDs worked on
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([employeeId, date])
-  @@index([date])
-}
-
-// ─────────────────────────────────────────────
-// LEAVE & ATTENDANCE (schema ready, UI deferred)
-// ─────────────────────────────────────────────
-
-/// Tracks allocated vs used leave per type per fiscal year (Apr 1 – Mar 31).
-model LeaveBalance {
-  id         String    @id @default(cuid())
-  employeeId String
-  employee   Employee  @relation(fields: [employeeId], references: [id])
-  leaveType  LeaveType
-  fiscalYear Int       // e.g. 2026 means Apr 2026 – Mar 2027
-  total      Int       // allocated for the year
-  used       Int       @default(0)
-  remaining  Int       // maintained on write: total - used
-
-  @@unique([employeeId, leaveType, fiscalYear])
-  @@index([employeeId, fiscalYear])
-}
-
-model Leave {
-  id          String      @id @default(cuid())
-  employeeId  String
-  employee    Employee    @relation("LeaveRequester", fields: [employeeId], references: [id])
-  leaveType   LeaveType
-  status      LeaveStatus @default(PENDING)
-  startDate   DateTime    @db.Date
-  endDate     DateTime    @db.Date
-  totalDays   Float       // supports half-days (0.5)
-  reason      String
-  rejectionNote String?
-
-  approverId String?
-  approver   Employee? @relation("LeaveApprover", fields: [approverId], references: [id])
-  approvedAt DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([employeeId])
-  @@index([status])
-  @@index([startDate, endDate])
-}
-
-model Attendance {
-  id         String   @id @default(cuid())
-  employeeId String
-  employee   Employee @relation(fields: [employeeId], references: [id])
-  date       DateTime @db.Date
-  present    Boolean  @default(true)
-  checkIn    DateTime?
-  checkOut   DateTime?
-  source     String   @default("system") // "system" | "manual" | "leave"
-  notes      String?
-
-  @@unique([employeeId, date])
-  @@index([employeeId, date])
-}
-
-// ─────────────────────────────────────────────
-// AUDIT & NOTIFICATIONS
-// ─────────────────────────────────────────────
-
-
-
-model Notification {
-  id         String   @id @default(cuid())
-  employeeId String
-  employee   Employee @relation(fields: [employeeId], references: [id])
-  title      String
-  body       String
-  category   String   // "tasks", "leaves", "mentions", etc.
-  read       Boolean  @default(false)
-  linkTo     String?  // URL path to navigate to
-
-  createdAt DateTime @default(now())
-
-  @@index([employeeId, read])
-}

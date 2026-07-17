@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { getCurrentEmployee } from "@/lib/auth";
 
-export async function getKanbanTasks(filters?: { team?: string, project?: string, assignee?: string, search?: string }) {
+export async function getKanbanTasks(filters?: { team?: string, project?: string, assignee?: string, search?: string }, skip = 0, take = 50) {
   const employee = await getCurrentEmployee();
 
   // For the Kanban board, fetch tasks the user has access to. Admins see all tasks.
@@ -37,6 +37,8 @@ export async function getKanbanTasks(filters?: { team?: string, project?: string
 
   const tasks = await db.task.findMany({
     where: whereClause,
+    skip,
+    take,
     include: {
       assignees: {
         select: {

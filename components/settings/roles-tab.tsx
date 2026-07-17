@@ -66,42 +66,6 @@ const PERMISSION_GROUPS = [
     ]
   },
   {
-    id: "update",
-    label: "Daily Standups",
-    icon: FileText,
-    desc: "Submit and view daily progress reports.",
-    permissions: [
-      { id: "update:submit", label: "Submit Updates" },
-      { id: "update:view:team", label: "View Team Updates" },
-      { id: "update:view:all", label: "View All Updates" }
-    ]
-  },
-  {
-    id: "leave",
-    label: "Leave Management",
-    icon: Calendar,
-    desc: "Request time off and manage balances.",
-    permissions: [
-      { id: "leave:request", label: "Request Leave" },
-      { id: "leave:approve", label: "Approve Leave" },
-      { id: "leave:view:team", label: "View Team Leaves" },
-      { id: "leave:view:all", label: "View All Leaves" },
-      { id: "leave:balance:edit", label: "Edit Balances" }
-    ]
-  },
-  {
-    id: "attendance",
-    label: "Attendance",
-    icon: Clock,
-    desc: "Track and modify working hours.",
-    permissions: [
-      { id: "attendance:view:own", label: "View Own Log" },
-      { id: "attendance:view:team", label: "View Team Log" },
-      { id: "attendance:view:all", label: "View All Logs" },
-      { id: "attendance:edit", label: "Edit Timesheets" }
-    ]
-  },
-  {
     id: "admin",
     label: "Administration",
     icon: ShieldAlert,
