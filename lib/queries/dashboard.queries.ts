@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import type { AuthEmployee } from "@/lib/auth";
-import type { Prisma, TaskStatus } from "@prisma/client";
+import type { Prisma, TaskStatus } from "@/lib/generated/prisma";
 import { startOfWeek, startOfMonth, startOfDay, subDays, addDays, eachDayOfInterval, format } from "date-fns";
 import { ROLE_ORDER, sortByOrder } from "@/lib/dashboard-colors";
 

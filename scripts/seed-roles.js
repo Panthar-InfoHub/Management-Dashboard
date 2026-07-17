@@ -1,6 +1,8 @@
 require('dotenv').config({ path: '.env.local' });
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const { PrismaClient } = require('../lib/generated/prisma');
+const { PrismaNeon } = require('@prisma/adapter-neon');
+const adapter = new PrismaNeon({ connectionString: process.env.DATABASE_URL });
+const prisma = new PrismaClient({ adapter });
 
 const ALL_PERMISSIONS = [
   "task:create", "task:assign", "task:update:own", "task:update:any", "task:delete", "task:move:own", "task:move:any",

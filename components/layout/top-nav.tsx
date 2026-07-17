@@ -166,10 +166,14 @@ export function TopNav({ isAdmin = false }: { isAdmin?: boolean }) {
         {/* User menu (Clerk) */}
         <div className="flex items-center pl-2 h-8 w-8 justify-center ml-1">
           <ClerkLoading>
-            <Skeleton className="h-7 w-7 rounded-full" />
+            <div key="clerk-loading-state">
+              <Skeleton className="h-7 w-7 rounded-full" />
+            </div>
           </ClerkLoading>
           <ClerkLoaded>
-            <UserButton />
+            <div key="clerk-loaded-state">
+              <UserButton />
+            </div>
           </ClerkLoaded>
         </div>
       </div>

@@ -6,7 +6,7 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { hasPermission, type Permission } from "@/lib/permissions";
-import type { Employee } from "@prisma/client";
+import type { Employee } from "@/lib/generated/prisma";
 
 export type AuthEmployee = Pick<
   Employee,
