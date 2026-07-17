@@ -76,6 +76,10 @@ model Employee {
   designation String?        // e.g. "Senior Frontend Engineer"
   phone       String?
   joinDate    DateTime       @default(now())
+  
+  // ── Employee Codes ──
+  pantharCode String?        @unique
+  kavachXCode String?        @unique
 
   // ── Team relation ──
   teamId      String?
@@ -210,6 +214,15 @@ model Comment {
   authorId String
 
   createdAt DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────
+// SYSTEM MODELS
+// ─────────────────────────────────────────────
+
+model Sequence {
+  name  String @id // e.g. "SEQ_PANTHAR", "SEQ_KAVACHX"
+  value Int    @default(0)
 }
 
 model Notification {

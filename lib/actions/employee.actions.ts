@@ -147,3 +147,71 @@ export async function deleteEmployeeAction(id: string) {
   revalidatePath("/employees");
   return employee;
 }
+
+export async function reserveEmployeeSequenceAction(type: "PANTHAR" | "KAVACHX") {
+  const currentEmployee = await requireAuth("employee:update");
+  if (currentEmployee.role !== "ADMIN" && currentEmployee.role !== "MANAGER") {
+    throw new Error("Only ADMIN or MANAGER can generate employee codes.");
+  }
+  
+  const seqName = type === "PANTHAR" ? "SEQ_PANTHAR" : "SEQ_KAVACHX";
+  const seq = await db.sequence.findUnique({
+    where: { name: seqName }
+  });
+  
+  return (seq?.value || 0) + 1;
+}
+
+export async function generateEmployeeCodeAction(employeeId: string, type: "PANTHAR" | "KAVACHX", joinDateStr: string, reservedSeq?: number) {
+  const currentEmployee = await requireAuth("employee:update");
+  
+  if (currentEmployee.role !== "ADMIN" && currentEmployee.role !== "MANAGER") {
+    throw new Error("Only ADMIN or MANAGER can generate employee codes.");
+  }
+
+  const employee = await db.employee.findUnique({ where: { id: employeeId } });
+  if (!employee) throw new Error("Employee not found.");
+
+  if (type === "PANTHAR" && employee.pantharCode) {
+    throw new Error("Panthar code already exists.");
+  }
+  if (type === "KAVACHX" && employee.kavachXCode) {
+    throw new Error("KavachX code already exists.");
+  }
+
+  // Parse join date (assuming YYYY-MM-DD input from HTML date picker)
+  const dateObj = new Date(joinDateStr);
+  if (isNaN(dateObj.getTime())) throw new Error("Invalid join date.");
+
+  const dd = String(dateObj.getDate()).padStart(2, "0");
+  const mm = String(dateObj.getMonth() + 1).padStart(2, "0");
+  const yy = String(dateObj.getFullYear()).slice(-2);
+  const dateStr = `${dd}${mm}${yy}`;
+
+  const seqName = type === "PANTHAR" ? "SEQ_PANTHAR" : "SEQ_KAVACHX";
+  const prefix = type === "PANTHAR" ? "PTHUB" : "KAVACHX";
+
+  // Atomic transaction
+  const result = await db.$transaction(async (tx) => {
+    // ALWAYS dynamically generate inside transaction to avoid race conditions!
+    // We ignore reservedSeq entirely because we don't want to burn sequences upfront.
+    const seq = await tx.sequence.upsert({
+      where: { name: seqName },
+      update: { value: { increment: 1 } },
+      create: { name: seqName, value: 1 }
+    });
+    
+    const finalSeqValue = seq.value;
+    const newCode = `${prefix}-${dateStr}${finalSeqValue}`;
+
+    return tx.employee.update({
+      where: { id: employeeId },
+      data: {
+        ...(type === "PANTHAR" ? { pantharCode: newCode } : { kavachXCode: newCode })
+      }
+    });
+  });
+
+  revalidatePath("/employees");
+  return result;
+}

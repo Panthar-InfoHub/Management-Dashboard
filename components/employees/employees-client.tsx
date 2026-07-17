@@ -8,10 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Search, Plus, Mail, Shield, Building2, UserPlus, MoreVertical, Calendar, Pencil, Trash2, Eye, EyeOff } from "lucide-react";
+import { Search, Plus, Mail, Shield, Building2, UserPlus, MoreVertical, Calendar, Pencil, Trash2, Eye, EyeOff, Copy } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { createEmployeeAction, updateEmployeeAction, deleteEmployeeAction } from "@/lib/actions/employee.actions";
+import { createEmployeeAction, updateEmployeeAction, deleteEmployeeAction, generateEmployeeCodeAction, reserveEmployeeSequenceAction } from "@/lib/actions/employee.actions";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -33,6 +37,49 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
   const [setCustomPassword, setSetCustomPassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [editingEmp, setEditingEmp] = useState<{ id: string; role: string; designation: string } | null>(null);
+
+  const [codeEmpOpen, setCodeEmpOpen] = useState(false);
+  const [codeEmpTarget, setCodeEmpTarget] = useState<any>(null);
+  const [codeType, setCodeType] = useState<"PANTHAR" | "KAVACHX">("PANTHAR");
+  const [joinDateStr, setJoinDateStr] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [reservedSeq, setReservedSeq] = useState<number | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [employeeToDelete, setEmployeeToDelete] = useState<string | null>(null);
+
+  const handleStartGenerating = () => {
+    startTransition(() => {
+      reserveEmployeeSequenceAction(codeType).then((seq) => {
+        setReservedSeq(seq);
+        setIsGenerating(true);
+      }).catch((err: any) => toast.error(err.message || "Failed to reserve sequence"));
+    });
+  };
+
+  const handleCopyCode = (code: string) => {
+    navigator.clipboard.writeText(code);
+    toast.success("Code copied to clipboard");
+  };
+
+  const handleGenerateCode = () => {
+    if (!codeEmpTarget || !joinDateStr || !reservedSeq) return;
+    startTransition(() => {
+      generateEmployeeCodeAction(codeEmpTarget.id, codeType, joinDateStr, reservedSeq)
+        .then((result) => {
+          toast.success("Employee code generated!");
+          router.refresh();
+          // Find the updated employee and update the local target to show the code immediately
+          setCodeEmpTarget({
+            ...codeEmpTarget,
+            pantharCode: codeType === "PANTHAR" ? result.pantharCode : codeEmpTarget.pantharCode,
+            kavachXCode: codeType === "KAVACHX" ? result.kavachXCode : codeEmpTarget.kavachXCode,
+          });
+          setIsGenerating(false);
+          setReservedSeq(null);
+        })
+        .catch((err: any) => toast.error(err.message || "Failed to generate code"));
+    });
+  };
 
   const handleCreateEmployee = () => {
     if (!newEmp.firstName || !newEmp.lastName || !newEmp.email) return;
@@ -59,13 +106,20 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
     });
   };
 
-  const handleDeleteEmployee = (id: string) => {
-    if (!confirm("Are you sure you want to remove this member? They will lose access immediately.")) return;
+  const confirmDeleteEmployee = () => {
+    if (!employeeToDelete) return;
     startTransition(() => {
-      deleteEmployeeAction(id).then(() => {
+      deleteEmployeeAction(employeeToDelete).then(() => {
         router.refresh();
+        setDeleteDialogOpen(false);
+        setEmployeeToDelete(null);
       }).catch((err: any) => toast.error(err.message || "Failed to delete employee"));
     });
+  };
+
+  const handleDeleteClick = (id: string) => {
+    setEmployeeToDelete(id);
+    setDeleteDialogOpen(true);
   };
 
   const filteredEmployees = initialEmployees.filter(e => 
@@ -207,6 +261,142 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
         </DialogContent>
       </Dialog>
 
+      <Dialog open={codeEmpOpen} onOpenChange={(val) => { setCodeEmpOpen(val); if(!val) { setIsGenerating(false); setReservedSeq(null); } }}>
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Employee Codes</DialogTitle>
+          </DialogHeader>
+          {codeEmpTarget && (
+            <div className="space-y-6 pt-4">
+              <div className="flex bg-muted/30 p-1 rounded-md">
+                <Button 
+                  variant={codeType === "PANTHAR" ? "default" : "ghost"} 
+                  className="flex-1 h-8 text-xs" 
+                  onClick={() => { setCodeType("PANTHAR"); setIsGenerating(false); setReservedSeq(null); }}
+                >
+                  Panthar
+                </Button>
+                <Button 
+                  variant={codeType === "KAVACHX" ? "default" : "ghost"} 
+                  className="flex-1 h-8 text-xs" 
+                  onClick={() => { setCodeType("KAVACHX"); setIsGenerating(false); setReservedSeq(null); }}
+                >
+                  KavachX
+                </Button>
+              </div>
+
+              <div className="space-y-4">
+                {codeType === "PANTHAR" && (
+                  codeEmpTarget.pantharCode && codeEmpTarget.pantharCode !== "Generated..." ? (
+                    <div className="bg-primary/5 border border-primary/20 rounded-md p-6 text-center relative group">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Panthar Code</p>
+                      <div className="flex items-center justify-center gap-3">
+                        <p className="text-3xl font-bold tracking-tight text-primary">{codeEmpTarget.pantharCode}</p>
+                        <Button 
+                          variant="outline" 
+                          size="icon" 
+                          className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={() => handleCopyCode(codeEmpTarget.pantharCode)}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="bg-muted/30 border border-border/40 rounded-md p-4 text-center">
+                        <p className="text-sm font-medium text-foreground">No Panthar Code Found</p>
+                        <p className="text-xs text-muted-foreground mt-1">Generate a new unique identifier.</p>
+                      </div>
+                      
+                      {!isGenerating ? (
+                        <Button onClick={handleStartGenerating} disabled={isPending} className="w-full">
+                          {isPending ? "Reserving Sequence..." : "Generate Panthar Code"}
+                        </Button>
+                      ) : (
+                        <div className="space-y-4 animate-in slide-in-from-bottom-2 duration-200">
+                          <div className="space-y-1.5 flex flex-col">
+                            <label className="text-xs font-semibold text-muted-foreground">Confirm Date of Joining</label>
+                            <Input 
+                              type="date" 
+                              value={joinDateStr} 
+                              onChange={(e) => setJoinDateStr(e.target.value)} 
+                              className="w-full"
+                            />
+                            <p className="text-[10px] text-muted-foreground/80 mt-1 leading-tight">
+                              This code cannot be modified after generation. Ensure the Date of Joining is correct.
+                            </p>
+                          </div>
+                          <div className="bg-primary/5 text-primary text-xs text-center p-3 rounded-md font-medium tracking-wide border border-primary/20">
+                            Reserved Sequence: <span className="font-bold text-lg">{reservedSeq}</span>
+                          </div>
+                          <Button onClick={handleGenerateCode} disabled={isPending || !joinDateStr || !reservedSeq} className="w-full">
+                            {isPending ? "Generating..." : "Confirm & Save"}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                )}
+
+                {codeType === "KAVACHX" && (
+                  codeEmpTarget.kavachXCode && codeEmpTarget.kavachXCode !== "Generated..." ? (
+                    <div className="bg-primary/5 border border-primary/20 rounded-md p-6 text-center relative group">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">KavachX Code</p>
+                      <div className="flex items-center justify-center gap-3">
+                        <p className="text-3xl font-bold tracking-tight text-primary">{codeEmpTarget.kavachXCode}</p>
+                        <Button 
+                          variant="outline" 
+                          size="icon" 
+                          className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={() => handleCopyCode(codeEmpTarget.kavachXCode)}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="bg-muted/30 border border-border/40 rounded-md p-4 text-center">
+                        <p className="text-sm font-medium text-foreground">No KavachX Code Found</p>
+                        <p className="text-xs text-muted-foreground mt-1">Generate a new unique identifier.</p>
+                      </div>
+                      
+                      {!isGenerating ? (
+                        <Button onClick={handleStartGenerating} disabled={isPending} className="w-full">
+                          {isPending ? "Reserving Sequence..." : "Generate KavachX Code"}
+                        </Button>
+                      ) : (
+                        <div className="space-y-4 animate-in slide-in-from-bottom-2 duration-200">
+                          <div className="space-y-1.5 flex flex-col">
+                            <label className="text-xs font-semibold text-muted-foreground">Confirm Date of Joining</label>
+                            <Input 
+                              type="date" 
+                              value={joinDateStr} 
+                              onChange={(e) => setJoinDateStr(e.target.value)} 
+                              className="w-full"
+                            />
+                            <p className="text-[10px] text-muted-foreground/80 mt-1 leading-tight">
+                              This code cannot be modified after generation. Ensure the Date of Joining is correct.
+                            </p>
+                          </div>
+                          <div className="bg-primary/5 text-primary text-xs text-center p-3 rounded-md font-medium tracking-wide border border-primary/20">
+                            Reserved Sequence: <span className="font-bold text-lg">{reservedSeq}</span>
+                          </div>
+                          <Button onClick={handleGenerateCode} disabled={isPending || !joinDateStr || !reservedSeq} className="w-full">
+                            {isPending ? "Generating..." : "Confirm & Save"}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -299,19 +489,29 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
+                        <DropdownMenuContent align="end" className="w-[180px]">
                           {canUpdate && (
-                            <DropdownMenuItem onClick={() => {
+                            <DropdownMenuItem className="text-xs" onClick={() => {
                               setEditingEmp({ id: emp.id, role: emp.role, designation: emp.designation || "" });
                               setEditEmpOpen(true);
                             }}>
-                              <Pencil className="h-4 w-4 mr-2" />
+                              <Pencil className="h-3.5 w-3.5 mr-2" />
                               Edit Role & Title
                             </DropdownMenuItem>
                           )}
+                          {isAdmin && (
+                            <DropdownMenuItem className="text-xs" onClick={() => {
+                              setCodeEmpTarget(emp);
+                              setCodeType("PANTHAR");
+                              setCodeEmpOpen(true);
+                            }}>
+                              <Shield className="h-3.5 w-3.5 mr-2" />
+                              Employee Codes
+                            </DropdownMenuItem>
+                          )}
                           {canDelete && (
-                            <DropdownMenuItem className="text-red-600 focus:bg-red-50 focus:text-red-600 cursor-pointer" onClick={() => handleDeleteEmployee(emp.id)}>
-                              <Trash2 className="h-4 w-4 mr-2" />
+                            <DropdownMenuItem className="text-red-600 focus:bg-red-50 focus:text-red-600 cursor-pointer text-xs" onClick={() => handleDeleteClick(emp.id)}>
+                              <Trash2 className="h-3.5 w-3.5 mr-2" />
                               Remove Member
                             </DropdownMenuItem>
                           )}
@@ -325,6 +525,23 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
           </TableBody>
         </Table>
       </div>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently remove the member from the organization and instantly revoke their platform access.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteEmployee} disabled={isPending} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {isPending ? "Removing..." : "Remove Member"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
