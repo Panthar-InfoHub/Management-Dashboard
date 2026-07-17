@@ -18,7 +18,7 @@ import { toast } from "sonner";
 const statusColors: Record<string, string> = { BACKLOG: "bg-gray-500/10 text-gray-600 border-gray-500/20", TODO: "bg-slate-500/10 text-slate-600 border-slate-500/20", IN_PROGRESS: "bg-blue-500/10 text-blue-600 border-blue-500/20", REVIEW: "bg-purple-500/10 text-purple-600 border-purple-500/20", TESTING: "bg-amber-500/10 text-amber-600 border-amber-500/20", DONE: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" };
 const priorityColors: Record<string, string> = { CRITICAL: "bg-red-500/10 text-red-600 border-red-500/20", HIGH: "bg-orange-500/10 text-orange-600 border-orange-500/20", MEDIUM: "bg-blue-500/10 text-blue-600 border-blue-500/20", LOW: "bg-gray-500/10 text-gray-600 border-gray-500/20" };
 
-export function TaskDetailClient({ initialTask, projectTasks, canEdit = true, canDelete = false }: { initialTask: any, projectTasks?: any[], canEdit?: boolean, canDelete?: boolean }) {
+export function TaskDetailClient({ initialTask, projectTasks, canEditDetails = true, canEditStatus = true, canDelete = false, currentEmployeeId }: { initialTask: any, projectTasks?: any[], canEditDetails?: boolean, canEditStatus?: boolean, canDelete?: boolean, currentEmployeeId?: string }) {
   const router = useRouter();
   const [task, setTask] = useState(initialTask);
   const [projectTasksList, setProjectTasksList] = useState(projectTasks || []);
@@ -38,7 +38,7 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true, ca
   const [subtaskForm, setSubtaskForm] = useState({
     title: "",
     priority: initialTask.priority,
-    assigneeId: initialTask.assignees?.[0]?.id || "",
+    assigneeId: currentEmployeeId || "",
   });
 
   // Build a fast lookup for subtasks
@@ -105,7 +105,7 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true, ca
         if(res.success) {
           toast.success("Subtask created");
           setIsSubtaskDialogOpen(false);
-          setSubtaskForm(prev => ({ ...prev, title: "" }));
+          setSubtaskForm(prev => ({ ...prev, title: "", assigneeId: !canEditDetails ? (currentEmployeeId || "") : "" }));
           router.refresh(); 
         }
       }).catch((err: any) => {
@@ -138,7 +138,7 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true, ca
           <span className="text-foreground font-medium truncate max-w-[200px] md:max-w-[300px]">{task.title}</span>
         </div>
         <div className="flex gap-2 self-end sm:self-auto shrink-0">
-          {canEdit && (
+          {canEditDetails && (
             <Button variant="outline" size="sm" className="h-8 shadow-none text-xs" asChild>
               <Link href={`/tasks/${task.id}/edit`}>Edit Task</Link>
             </Button>
@@ -148,7 +148,7 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true, ca
                 Delete
               </Button>
             )}
-          {task.status !== "DONE" && (
+          {canEditStatus && task.status !== "DONE" && (
             <Button size="sm" className="h-8 shadow-none text-xs" onClick={() => handleStatusChange("DONE")}>
               Mark as Done
             </Button>
@@ -166,11 +166,11 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true, ca
               <div className="flex flex-wrap items-center gap-2 mb-8">
                 
                 <DropdownMenu>
-                  <DropdownMenuTrigger className="focus:outline-none">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground mr-4">
+                  <DropdownMenuTrigger className="focus:outline-none" disabled={!canEditStatus}>
+                    <div className={cn("flex items-center gap-2 text-sm text-muted-foreground mr-4", !canEditStatus && "opacity-70 cursor-not-allowed")}>
                       Status:
                       <Badge variant="outline" className={cn("text-[11px] px-2 py-0.5 rounded-full font-medium shadow-none cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-1", statusColors[task.status])}>
-                        {task.status.replace("_", " ")} <ChevronDown className="h-3 w-3" />
+                        {task.status.replace("_", " ")} {canEditStatus && <ChevronDown className="h-3 w-3" />}
                       </Badge>
                     </div>
                   </DropdownMenuTrigger>
@@ -187,11 +187,11 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true, ca
                 </DropdownMenu>
 
                 <DropdownMenu>
-                  <DropdownMenuTrigger className="focus:outline-none">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <DropdownMenuTrigger className="focus:outline-none" disabled={!canEditDetails}>
+                    <div className={cn("flex items-center gap-2 text-sm text-muted-foreground", !canEditDetails && "opacity-70 cursor-not-allowed")}>
                       Priority:
                       <Badge variant="outline" className={cn("text-[11px] px-2 py-0.5 rounded-full font-medium shadow-none cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-1", priorityColors[task.priority])}>
-                        {task.priority} <ChevronDown className="h-3 w-3" />
+                        {task.priority} {canEditDetails && <ChevronDown className="h-3 w-3" />}
                       </Badge>
                     </div>
                   </DropdownMenuTrigger>
@@ -230,7 +230,7 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true, ca
                   <ShieldAlert className="h-4 w-4 text-muted-foreground" /> Blocked By
                 </h3>
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
+                  <DropdownMenuTrigger asChild disabled={!canEditDetails}>
                     <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground hover:text-foreground">
                       <LinkIcon className="h-3 w-3 mr-1" /> {task.blockedBy ? "Change Blocker" : "Add Blocker"}
                     </Button>
@@ -309,9 +309,9 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true, ca
                             <div className="flex items-center gap-3 pl-9 sm:pl-0 shrink-0 sm:w-[220px] justify-end">
                               <div className="w-[95px] flex justify-end">
                                 <DropdownMenu>
-                                <DropdownMenuTrigger className="focus:outline-none shrink-0">
-                                  <Badge variant="outline" className={cn("text-[9px] px-1 py-0 shadow-none cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-0.5", statusColors[subtask.status])}>
-                                    {subtask.status.replace("_", " ")} <ChevronDown className="h-2.5 w-2.5" />
+                                <DropdownMenuTrigger className="focus:outline-none shrink-0" disabled={!canEditStatus}>
+                                  <Badge variant="outline" className={cn("text-[9px] px-1 py-0 shadow-none cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-0.5", statusColors[subtask.status], !canEditStatus && "opacity-70 cursor-not-allowed")}>
+                                    {subtask.status.replace("_", " ")} {canEditStatus && <ChevronDown className="h-2.5 w-2.5" />}
                                   </Badge>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="start">
@@ -343,9 +343,9 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true, ca
                               </div>
                               <div className="w-[115px] flex justify-start">
                                 <DropdownMenu>
-                                <DropdownMenuTrigger className="focus:outline-none">
+                                <DropdownMenuTrigger className="focus:outline-none" disabled={!canEditDetails}>
                                   {subtask.assignees?.[0] ? (
-                                    <div className="flex items-center gap-1.5 hover:bg-muted/50 p-1 rounded-md transition-colors cursor-pointer">
+                                    <div className={cn("flex items-center gap-1.5 hover:bg-muted/50 p-1 rounded-md transition-colors", canEditDetails ? "cursor-pointer" : "opacity-70 cursor-not-allowed")}>
                                       <Avatar className="h-5 w-5">
                                         <AvatarImage src={subtask.assignees[0].avatarUrl} />
                                         <AvatarFallback className="text-[8px] bg-secondary text-secondary-foreground">{subtask.assignees[0].firstName.charAt(0)}</AvatarFallback>
@@ -355,7 +355,7 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true, ca
                                       </span>
                                     </div>
                                   ) : (
-                                    <div className="flex items-center gap-1.5 hover:bg-muted/50 p-1 rounded-md transition-colors cursor-pointer">
+                                    <div className={cn("flex items-center gap-1.5 hover:bg-muted/50 p-1 rounded-md transition-colors", canEditDetails ? "cursor-pointer" : "opacity-70 cursor-not-allowed")}>
                                       <div className="h-5 w-5 rounded-full border border-dashed border-border/50 bg-accent/30 flex items-center justify-center">
                                         <UserPlus className="h-3 w-3 text-muted-foreground" />
                                       </div>
@@ -419,12 +419,13 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true, ca
                 )}
               </div>
 
-                <Dialog open={isSubtaskDialogOpen} onOpenChange={setIsSubtaskDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" size="sm" className="mt-4 w-full justify-start text-muted-foreground border-dashed">
-                      <Plus className="h-3.5 w-3.5 mr-2" /> Add a new subtask...
-                    </Button>
-                  </DialogTrigger>
+                {canEditStatus && (
+                  <Dialog open={isSubtaskDialogOpen} onOpenChange={setIsSubtaskDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" size="sm" className="mt-4 w-full justify-start text-muted-foreground border-dashed">
+                        <Plus className="h-3.5 w-3.5 mr-2" /> Add a new subtask...
+                      </Button>
+                    </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
                       <DialogTitle>Create Subtask</DialogTitle>
@@ -461,7 +462,7 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true, ca
                           <Select 
                             value={subtaskForm.assigneeId} 
                             onValueChange={v => setSubtaskForm(prev => ({...prev, assigneeId: v}))}
-                            disabled={isPending}
+                            disabled={isPending || !canEditDetails}
                           >
                              <SelectTrigger><SelectValue placeholder="Unassigned"/></SelectTrigger>
                              <SelectContent>
@@ -484,6 +485,7 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true, ca
                     </form>
                   </DialogContent>
                 </Dialog>
+                )}
               </div>
             </div>
 

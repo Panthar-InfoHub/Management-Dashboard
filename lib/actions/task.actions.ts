@@ -59,9 +59,9 @@ export async function updateTaskAction(taskId: string, data: {
   if (!existingTask) throw new Error("Task not found");
 
   if (!hasGlobalPerm) {
-    const isAssignee = existingTask.assignees.some(a => a.id === employee.id);
-    const isProjectMember = existingTask.project.members.some(m => m.employeeId === employee.id);
-    if (!isAssignee && !isProjectMember) throw new Error("You do not have permission for this action.");
+    if (existingTask.creatorId !== employee.id) {
+      throw new Error("You do not have permission to edit this task's details.");
+    }
   }
 
   const updatedTask = await db.task.update({
@@ -227,9 +227,9 @@ export async function assignTaskAction(taskId: string, assigneeId: string | null
   if (!existingTask) throw new Error("Task not found");
 
   if (!hasGlobalPerm) {
-    const isAssignee = existingTask.assignees.some(a => a.id === employee.id);
-    const isProjectMember = existingTask.project.members.some(m => m.employeeId === employee.id);
-    if (!isAssignee && !isProjectMember) throw new Error("You do not have permission for this action.");
+    if (existingTask.creatorId !== employee.id) {
+      throw new Error("You do not have permission to assign this task.");
+    }
   }
 
   const task = await db.task.update({

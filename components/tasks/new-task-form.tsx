@@ -21,11 +21,13 @@ import { toast } from "sonner";
 export function NewTaskForm({ 
   projects, 
   employees,
-  initialData 
+  initialData,
+  canAssign
 }: { 
   projects: { id: string; name: string }[];
   employees: { id: string; firstName: string; lastName: string }[];
   initialData?: any;
+  canAssign?: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -203,7 +205,8 @@ export function NewTaskForm({
                       variant="outline"
                       role="combobox"
                       aria-expanded={openAssignee}
-                      className="w-full justify-between bg-background font-normal h-auto min-h-[40px] px-3 py-2 text-left flex items-start"
+                      className={cn("w-full justify-between bg-background font-normal h-auto min-h-[40px] px-3 py-2 text-left flex items-start", canAssign === false && "opacity-70 cursor-not-allowed")}
+                      disabled={isPending || canAssign === false}
                     >
                       <div className="flex flex-wrap gap-1">
                         {newTask.assigneeIds.length > 0 ? (
@@ -213,8 +216,12 @@ export function NewTaskForm({
                               <Badge variant="secondary" key={id} className="text-[10px] rounded-sm pr-1">
                                 {emp.firstName} {emp.lastName}
                                 <span 
-                                  className="ml-1 hover:bg-muted p-0.5 rounded-full cursor-pointer" 
-                                  onClick={(e) => removeAssignee(e, id)}
+                                  className={cn("ml-1 p-0.5 rounded-full", canAssign === false ? "opacity-50 cursor-not-allowed" : "hover:bg-muted cursor-pointer")} 
+                                  onClick={(e) => {
+                                    if (canAssign !== false) {
+                                      removeAssignee(e, id);
+                                    }
+                                  }}
                                 >
                                   <X className="h-2 w-2" />
                                 </span>

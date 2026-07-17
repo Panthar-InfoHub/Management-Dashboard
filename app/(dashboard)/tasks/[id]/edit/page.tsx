@@ -21,13 +21,18 @@ export default async function EditTaskPage({ params }: { params: Promise<{ id: s
     notFound();
   }
 
-  // Permission check
+  // Permission check: Only users with global task:update or the creator can modify core details
   const canEditGlobal = await checkPermission("task:update");
+  const isCreator = task.creatorId === employee.id;
   const isAssignee = task.assignees.some((a: any) => a.id === employee.id);
   const isProjectMember = task.project?.members.some((m: any) => m.employeeId === employee.id);
-  const canEdit = canEditGlobal || isAssignee || isProjectMember;
 
-  if (!canEdit) {
+  if (!canEditGlobal && !isProjectMember && !isAssignee) {
+    // If they don't have global edit and are NO LONGER part of the project/task, they lose all access
+    notFound();
+  }
+
+  if (!canEditGlobal && !isCreator) {
     notFound();
   }
 
@@ -52,5 +57,5 @@ export default async function EditTaskPage({ params }: { params: Promise<{ id: s
     orderBy: { firstName: "asc" }
   });
 
-  return <NewTaskForm projects={projects} employees={employees} initialData={task} />;
+  return <NewTaskForm projects={projects} employees={employees} initialData={task} canAssign={canEditGlobal} />;
 }
