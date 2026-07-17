@@ -22,28 +22,42 @@ export async function createEmployeeAction(data: {
   let clerkUserId: string;
 
   if (data.password) {
-    // 1. Create the user directly in Clerk with a password
-    const newUser = await client.users.createUser({
-      emailAddress: [data.email],
-      password: data.password,
-      firstName: data.firstName,
-      lastName: data.lastName,
-      publicMetadata: {
-        role: data.role,
-        designation: data.designation
+    try {
+      // 1. Create the user directly in Clerk with a password
+      const newUser = await client.users.createUser({
+        emailAddress: [data.email],
+        password: data.password,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        publicMetadata: {
+          role: data.role,
+          designation: data.designation
+        }
+      });
+      clerkUserId = newUser.id;
+    } catch (error: any) {
+      if (error.errors && error.errors.length > 0) {
+        throw new Error(error.errors[0].message || "Failed to create user in authentication provider.");
       }
-    });
-    clerkUserId = newUser.id;
+      throw new Error("Failed to create user. Please check the password requirements.");
+    }
   } else {
-    // 2. Fallback to invitation if no password provided
-    clerkUserId = `pending_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    await client.invitations.createInvitation({
-      emailAddress: data.email,
-      publicMetadata: {
-        role: data.role,
-        designation: data.designation
+    try {
+      // 2. Fallback to invitation if no password provided
+      clerkUserId = `pending_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      await client.invitations.createInvitation({
+        emailAddress: data.email,
+        publicMetadata: {
+          role: data.role,
+          designation: data.designation
+        }
+      });
+    } catch (error: any) {
+      if (error.errors && error.errors.length > 0) {
+        throw new Error(error.errors[0].message || "Failed to send invitation.");
       }
-    });
+      throw new Error("Failed to create invitation.");
+    }
   }
 
   // 3. Create the database record

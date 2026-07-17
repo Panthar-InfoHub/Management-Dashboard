@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Search, Plus, Mail, Shield, Building2, UserPlus, MoreVertical, Calendar, Pencil, Trash2 } from "lucide-react";
+import { Search, Plus, Mail, Shield, Building2, UserPlus, MoreVertical, Calendar, Pencil, Trash2, Eye, EyeOff } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { createEmployeeAction, updateEmployeeAction, deleteEmployeeAction } from "@/lib/actions/employee.actions";
 import { useRouter } from "next/navigation";
@@ -30,6 +30,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
 
   const [newEmp, setNewEmp] = useState({ firstName: "", lastName: "", email: "", role: availableRoles[0] || "EMPLOYEE", designation: "", password: "" });
   const [setCustomPassword, setSetCustomPassword] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [editingEmp, setEditingEmp] = useState<{ id: string; role: string; designation: string } | null>(null);
 
   const handleCreateEmployee = () => {
@@ -40,6 +41,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
         setNewEmpOpen(false);
         setNewEmp({ firstName: "", lastName: "", email: "", role: "EMPLOYEE", designation: "", password: "" });
         setSetCustomPassword(false);
+        setShowPassword(false);
         router.refresh();
       }).catch((err: any) => toast.error(err.message || "Failed to add employee"));
     });
@@ -123,13 +125,25 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
                         />
                       </div>
                     </div>
-                    <Input 
-                      value={newEmp.password} 
-                      type="password" 
-                      disabled={!setCustomPassword}
-                      onChange={e => setNewEmp({ ...newEmp, password: e.target.value })} 
-                      placeholder={setCustomPassword ? "Enter password" : "Disabled (Invite via email)"} 
-                    />
+                    <div className="relative">
+                      <Input 
+                        value={newEmp.password} 
+                        type={showPassword ? "text" : "password"} 
+                        disabled={!setCustomPassword}
+                        onChange={e => setNewEmp({ ...newEmp, password: e.target.value })} 
+                        placeholder={setCustomPassword ? "Enter password" : "Disabled (Invite via email)"} 
+                        className="pr-10"
+                      />
+                      {setCustomPassword && (
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="space-y-1.5 flex flex-col">
