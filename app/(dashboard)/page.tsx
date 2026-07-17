@@ -8,19 +8,38 @@ import {
   getDashboardOverview, getTaskRadar, getAttentionProjects, getDashboardProjectsSummary, getDashboardChartsData, getCompletionTrend,
 } from "@/lib/queries/dashboard.queries";
 
-export default async function DashboardPage() {
-  const employee = await getCurrentEmployee();
-  const now = new Date();
-  const greeting = now.getHours() < 12 ? "Good morning" : now.getHours() < 17 ? "Good afternoon" : "Good evening";
+import { Suspense } from "react";
+import DashboardLoading from "./loading";
 
-  const [overview, taskRadar, attentionProjects, projectsSummary, chartData, completionTrend] = await Promise.all([
-    getDashboardOverview(employee),
+async function DashboardData({ employee, overview }: { employee: any, overview: any }) {
+  const [taskRadar, attentionProjects, projectsSummary, chartData, completionTrend] = await Promise.all([
     getTaskRadar(employee),
     getAttentionProjects(employee),
     getDashboardProjectsSummary(employee),
     getDashboardChartsData(employee),
     getCompletionTrend(employee),
   ]);
+
+  return (
+    <>
+      <OverviewBlocks overview={overview} />
+      <PriorityPanels isAdmin={overview.isAdmin} taskRadar={taskRadar} attentionProjects={attentionProjects} />
+      {chartData && <DashboardCharts chartData={chartData} completionTrend={completionTrend} />}
+      <ProjectsSummary projects={projectsSummary} />
+    </>
+  );
+}
+
+export default async function DashboardPage() {
+  const employee = await getCurrentEmployee();
+  
+  // Fetch overview fast for the shell
+  const overview = await getDashboardOverview(employee);
+
+  const now = new Date();
+  const greeting = now.getHours() < 12 ? "Good morning" : now.getHours() < 17 ? "Good afternoon" : "Good evening";
+
+
 
   return (
     <div className="h-full space-y-8 overflow-y-auto p-6">
@@ -39,17 +58,9 @@ export default async function DashboardPage() {
         <DashboardHeaderActions isAdmin={overview.isAdmin} />
       </div>
 
-      {/* Overview: 3 compound blocks, nothing to click through to understand */}
-      <OverviewBlocks overview={overview} />
-
-      {/* Priority Panels: task radar + needs attention */}
-      <PriorityPanels isAdmin={overview.isAdmin} taskRadar={taskRadar} attentionProjects={attentionProjects} />
-
-      {/* Admin/Manager Only: Org-wide Charts */}
-      {chartData && <DashboardCharts chartData={chartData} completionTrend={completionTrend} />}
-
-      {/* Projects */}
-      <ProjectsSummary projects={projectsSummary} />
+      <Suspense fallback={<DashboardLoading />}>
+        <DashboardData employee={employee} overview={overview} />
+      </Suspense>
     </div>
   );
 }

@@ -2,23 +2,24 @@
 
 import { KeyRound } from "lucide-react";
 import { RolesTab } from "@/components/settings/roles-tab";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export function SettingsClient() {
   return (
-    <div className="flex gap-6">
-      {/* Sidebar nav */}
-      <nav className="flex flex-col gap-0.5 w-48 shrink-0">
-        <button
-          className="flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium transition-colors text-left bg-accent text-accent-foreground"
-        >
-          <KeyRound className="h-3.5 w-3.5" /> Roles & Permissions
-        </button>
-      </nav>
-
-      {/* Content */}
-      <div className="flex-1 min-w-0 pb-10">
-        <RolesTab />
+    <Tabs defaultValue="roles" className="flex flex-col gap-6">
+      <div className="w-full overflow-x-auto pb-1">
+        <TabsList className="w-fit justify-start h-9">
+          <TabsTrigger value="roles" className="gap-2 text-xs h-7">
+            <KeyRound className="h-3.5 w-3.5" /> Roles & Permissions
+          </TabsTrigger>
+        </TabsList>
       </div>
-    </div>
+
+      <div className="flex-1 min-w-0 pb-10">
+        <TabsContent value="roles" className="m-0 border-0 p-0 focus-visible:outline-none">
+          <RolesTab />
+        </TabsContent>
+      </div>
+    </Tabs>
   );
 }

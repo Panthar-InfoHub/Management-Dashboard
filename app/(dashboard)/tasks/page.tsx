@@ -9,18 +9,16 @@ import { KanbanBoard } from "@/components/tasks/kanban-board";
 
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 
-export default async function TasksPage({ searchParams }: { searchParams: Promise<{ [key: string]: string | undefined }> }) {
-  const resolvedParams = await searchParams;
-  
-  const [tasks, projects, teams, allEmployees, employee] = await Promise.all([
+import { Suspense } from "react";
+import TasksLoading from "./loading";
+
+async function TasksData({ resolvedParams, employee, canEdit }: { resolvedParams: { [key: string]: string | undefined }, employee: any, canEdit: boolean }) {
+  const [tasks, projects, teams, allEmployees] = await Promise.all([
     getKanbanTasks(resolvedParams),
     getProjectsList(),
     getTeams(),
-    getEmployees(),
-    getCurrentEmployee()
+    getEmployees()
   ]);
-
-  const canEdit = await checkPermission("task:create");
 
   return (
     <div className="flex flex-col gap-6 p-6 min-h-0">
@@ -47,5 +45,21 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         employeeRole={employee.role}
       />
     </div>
+  );
+}
+
+export default async function TasksPage({ searchParams }: { searchParams: Promise<{ [key: string]: string | undefined }> }) {
+  const resolvedParams = await searchParams;
+  
+  // Fetch fast/cached auth first
+  const employee = await getCurrentEmployee();
+  const canEdit = await checkPermission("task:create");
+
+  // Instantly return the page shell and stream the heavy kanban data
+  return (
+    <Suspense fallback={<TasksLoading />}>
+      <TasksData resolvedParams={resolvedParams} employee={employee} canEdit={canEdit} />
+    </Suspense>
+
   );
 }

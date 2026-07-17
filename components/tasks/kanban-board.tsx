@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -282,7 +283,7 @@ export function KanbanBoard({
                           draggable
                           onDragStart={(e) => handleDragStart(e, task.id)}
                           onClick={() => router.push(`/tasks/${task.id}`)}
-                          className={cn("border-border/40 shadow-none hover:border-border transition-all hover:bg-muted/20 cursor-grab active:cursor-grabbing rounded-md", isPending && "opacity-80")}
+                          className={cn("border-border/40 shadow-none hover:border-border transition-all hover:bg-muted/20 cursor-grab active:cursor-grabbing rounded-md select-none", isPending && "opacity-80")}
                         >
                           <CardContent className="p-2.5 flex flex-col gap-2">
                             <div className="flex items-start justify-between gap-2">
@@ -344,48 +345,73 @@ export function KanbanBoard({
 
         <TabsContent value="list" className="mt-0 pt-4 flex-1 overflow-y-auto focus-visible:outline-none">
           <div className="border border-border/40 rounded-lg overflow-x-auto bg-background">
-            <div className="divide-y divide-border/40 min-w-[1000px]">
-              <div className="grid grid-cols-[minmax(250px,2fr)_minmax(120px,1fr)_minmax(120px,1fr)_minmax(150px,1fr)_minmax(120px,1fr)] gap-4 px-5 py-3 text-[11px] font-medium text-muted-foreground uppercase tracking-wider bg-muted/20">
-                <span>Task</span><span>Status</span><span>Priority</span><span>Assignee</span><span>Due Date</span>
-              </div>
+            <Table className="min-w-[1000px]">
+              <TableHeader className="bg-muted/20">
+                <TableRow>
+                  <TableHead className="min-w-[250px] font-medium text-[11px] uppercase tracking-wider">Task</TableHead>
+                  <TableHead className="min-w-[120px] font-medium text-[11px] uppercase tracking-wider">Status</TableHead>
+                  <TableHead className="min-w-[120px] font-medium text-[11px] uppercase tracking-wider">Priority</TableHead>
+                  <TableHead className="min-w-[150px] font-medium text-[11px] uppercase tracking-wider">Assignee</TableHead>
+                  <TableHead className="min-w-[120px] font-medium text-[11px] uppercase tracking-wider">Due Date</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
               {filteredTasks.map(task => {
-                const assignee = task.assignees?.[0];
-
+                const assignee = task.assignees && task.assignees.length > 0 ? task.assignees[0] : null;
                 return (
-                  <div 
+                  <TableRow 
                     key={task.id}
                     onClick={() => router.push(`/tasks/${task.id}`)}
-                    className="grid grid-cols-[minmax(250px,2fr)_minmax(120px,1fr)_minmax(120px,1fr)_minmax(150px,1fr)_minmax(120px,1fr)] gap-4 px-5 py-4 items-center hover:bg-muted/30 transition-colors cursor-pointer border-b border-border/40 last:border-b-0"
+                    className="cursor-pointer hover:bg-muted/30"
                   >
-                    <div className="flex items-center gap-2 min-w-0">
+                    <TableCell>
                       <div className="min-w-0">
+                        {task.project?.name && (
+                          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider truncate block">
+                            {task.project.team?.name ? `${task.project.team.name} › ` : ""}{task.project.name}
+                          </span>
+                        )}
                         <p className="text-sm font-medium text-foreground truncate">{task.title}</p>
-                        <div className="flex gap-1 mt-0.5">
-                          {task.labels?.map((l: string) => <span key={l} className="text-[9px] text-muted-foreground bg-accent rounded-full px-1.5 py-0.5">{l}</span>)}
-                        </div>
                       </div>
-                    </div>
-                    <Badge variant="outline" className={cn("text-[10px] w-fit", statusColors[task.status])}>{task.status.replace("_", " ")}</Badge>
-                    <Badge variant="outline" className={cn("text-[10px] w-fit", priorityColors[task.priority])}>{task.priority}</Badge>
-                    <div className="flex items-center gap-1.5">
-                      {assignee && (
-                        <>
-                          <Avatar className="h-4 w-4 shrink-0">
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={cn("text-[10px] shadow-none", statusColors[task.status])}>{task.status.replace("_", " ")}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={cn("text-[10px] shadow-none", priorityColors[task.priority])}>
+                        <div className={cn("w-1.5 h-1.5 rounded-full mr-1.5", priorityDots[task.priority])} />
+                        {task.priority}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {assignee ? (
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-6 w-6">
                             <AvatarImage src={assignee.avatarUrl} />
-                            <AvatarFallback className="text-[7px] bg-primary/10">{assignee.firstName?.charAt(0)}</AvatarFallback>
+                            <AvatarFallback className="text-[10px] bg-primary/10">{assignee.firstName.charAt(0)}</AvatarFallback>
                           </Avatar>
-                          <span className="text-xs text-muted-foreground truncate">{assignee.firstName} {assignee.lastName}</span>
-                        </>
+                          <span className="text-xs font-medium truncate">{assignee.firstName} {assignee.lastName}</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground italic">Unassigned</span>
                       )}
-                    </div>
-                    <span className="text-xs text-muted-foreground truncate">{task.dueDate ? new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "None"}</span>
-                  </div>
+                    </TableCell>
+                    <TableCell>
+                      {task.dueDate ? (
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Clock className="h-3.5 w-3.5" />
+                          <span>{new Date(task.dueDate).toLocaleDateString()}</span>
+                        </div>
+                      ) : <span className="text-xs text-muted-foreground">-</span>}
+                    </TableCell>
+                  </TableRow>
                 );
               })}
-            </div>
-             </div>
-          </TabsContent>
-        </Tabs>
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
+      </Tabs>
       )}
 
       {hasMore && filteredTasks.length > 0 && (

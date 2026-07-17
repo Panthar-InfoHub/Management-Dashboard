@@ -134,23 +134,23 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
   return (
     <div className="h-full flex flex-col bg-background selection:bg-primary/10">
       {/* Vercel-like Breadcrumb & Actions Bar */}
-      <div className="px-8 py-5 border-b border-border/40 flex items-center justify-between sticky top-0 bg-background/90 backdrop-blur-md z-10">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Link href="/projects" className="hover:text-foreground transition-colors">Projects</Link>
-          <ChevronRight className="h-3.5 w-3.5" />
-          <span className="text-foreground font-medium truncate max-w-[300px]">{project.name}</span>
+      <div className="px-6 py-5 border-b border-border/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sticky top-0 bg-background/90 backdrop-blur-md z-10">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground min-w-0">
+          <Link href="/projects" className="hover:text-foreground transition-colors shrink-0">Projects</Link>
+          <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+          <span className="text-foreground font-medium truncate">{project.name}</span>
         </div>
         {canEdit && (
-          <div className="flex gap-3">
-            <Button variant="outline" size="sm" onClick={handleOpenManage} className="h-8 shadow-none gap-2">
-              <Users className="h-4 w-4" /> Manage Members
+          <div className="flex flex-wrap sm:flex-nowrap gap-3 w-full sm:w-auto">
+            <Button variant="outline" size="sm" onClick={handleOpenManage} className="h-8 shadow-none gap-2 flex-1 sm:flex-initial">
+              <Users className="h-4 w-4 shrink-0" /> <span className="truncate">Manage Members</span>
             </Button>
-            <Button variant="outline" size="sm" onClick={handleOpenEdit} className="h-8 shadow-none gap-2">
-              <Settings2 className="h-4 w-4" /> Edit Project
+            <Button variant="outline" size="sm" onClick={handleOpenEdit} className="h-8 shadow-none gap-2 flex-1 sm:flex-initial">
+              <Settings2 className="h-4 w-4 shrink-0" /> <span className="truncate">Edit Project</span>
             </Button>
-            <Button size="sm" asChild className="h-8 shadow-none gap-1.5">
+            <Button size="sm" asChild className="h-8 shadow-none gap-1.5 flex-1 sm:flex-initial">
               <Link href={`/tasks/new?project=${project.id}`}>
-                <Plus className="h-3.5 w-3.5" /> Add Task
+                <Plus className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">Add Task</span>
               </Link>
             </Button>
             {canDelete && (
@@ -412,7 +412,7 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
 
       {/* Edit Project Modal */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Project</DialogTitle>
           </DialogHeader>
@@ -427,7 +427,7 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
               <Input value={editData.description} onChange={e => setEditData({ ...editData, description: e.target.value })} />
             </div>
             
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5 flex flex-col">
                 <label className="text-xs font-semibold text-muted-foreground">Project Lead</label>
                 <Select value={editData.leadId} onValueChange={val => setEditData({ ...editData, leadId: val })}>
@@ -452,7 +452,7 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5 flex flex-col">
                 <label className="text-xs font-semibold text-muted-foreground">Status</label>
                 <Select value={editData.status} onValueChange={val => setEditData({ ...editData, status: val })}>

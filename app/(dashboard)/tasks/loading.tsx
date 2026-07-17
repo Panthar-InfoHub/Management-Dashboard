@@ -3,20 +3,20 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function TasksLoading() {
   return (
     <div className="space-y-6 p-6 h-[calc(100vh-4rem)] flex flex-col">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <Skeleton className="h-7 w-40 mb-2" />
-          <Skeleton className="h-4 w-64" />
+          <Skeleton className="h-4 w-[200px] sm:w-64" />
         </div>
-        <Skeleton className="h-9 w-28" />
+        <Skeleton className="h-9 w-full sm:w-28" />
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 w-full">
         <Skeleton className="h-9 w-full max-w-sm" />
-        <Skeleton className="h-9 w-24" />
+        <Skeleton className="h-9 w-24 shrink-0" />
       </div>
 
-      <div className="flex-1 grid grid-cols-6 gap-4 overflow-hidden mt-4">
+      <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 overflow-hidden mt-4">
         {[1, 2, 3, 4, 5, 6].map((col) => (
           <div key={col} className="flex flex-col h-full bg-accent/20 rounded-md p-2 border border-border/20">
             <div className="flex items-center gap-2 mb-3">

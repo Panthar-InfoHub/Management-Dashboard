@@ -44,7 +44,7 @@ export function TeamsClient({ initialTeams, employees, canCreate = false }: { in
             <DialogTrigger asChild>
               <Button size="sm" className="gap-2 shadow-none"><Plus className="h-4 w-4" /> Create Team</Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Create New Team</DialogTitle>
               </DialogHeader>

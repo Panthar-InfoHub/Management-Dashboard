@@ -83,19 +83,19 @@ export function TeamDetailClient({ team, allEmployees = [], tasks = [], canEdit 
   return (
     <div className="h-full flex flex-col bg-background selection:bg-primary/10">
       {/* Vercel-like Breadcrumb & Actions Bar */}
-      <div className="px-8 py-5 border-b border-border/40 flex items-center justify-between sticky top-0 bg-background/90 backdrop-blur-md z-10">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Link href="/teams" className="hover:text-foreground transition-colors">Teams</Link>
-          <ChevronRight className="h-3.5 w-3.5" />
-          <span className="text-foreground font-medium truncate max-w-[300px]">{team.name}</span>
+      <div className="px-6 py-5 border-b border-border/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sticky top-0 bg-background/90 backdrop-blur-md z-10">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground min-w-0">
+          <Link href="/teams" className="hover:text-foreground transition-colors shrink-0">Teams</Link>
+          <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+          <span className="text-foreground font-medium truncate">{team.name}</span>
         </div>
         {canEdit && (
-          <div className="flex gap-3">
-            <Button variant="outline" size="sm" onClick={handleOpenManage} className="h-8 shadow-none gap-2">
-              <Users className="h-4 w-4" /> Manage Members
+          <div className="flex flex-wrap sm:flex-nowrap gap-3 w-full sm:w-auto">
+            <Button variant="outline" size="sm" onClick={handleOpenManage} className="h-8 shadow-none gap-2 flex-1 sm:flex-initial">
+              <Users className="h-4 w-4 shrink-0" /> <span className="truncate">Manage Members</span>
             </Button>
-            <Button size="sm" variant="outline" onClick={handleOpenEdit} className="h-8 shadow-none gap-2">
-              <Settings2 className="h-4 w-4" /> Edit Team
+            <Button size="sm" variant="outline" onClick={handleOpenEdit} className="h-8 shadow-none gap-2 flex-1 sm:flex-initial">
+              <Settings2 className="h-4 w-4 shrink-0" /> <span className="truncate">Edit Team</span>
             </Button>
             {canDelete && (
               <Button size="sm" variant="destructive" onClick={handleDeleteTeam} className="h-8 shadow-none">
@@ -271,7 +271,7 @@ export function TeamDetailClient({ team, allEmployees = [], tasks = [], canEdit 
 
       {/* Edit Team Modal */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Team Configuration</DialogTitle>
           </DialogHeader>

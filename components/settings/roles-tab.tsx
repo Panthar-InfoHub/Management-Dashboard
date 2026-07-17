@@ -172,23 +172,23 @@ export function RolesTab() {
         </Dialog>
       </div>
 
-      <div className="flex gap-6 relative">
+      <div className="flex flex-col sm:flex-row gap-6 relative">
         {/* Roles Sidebar */}
-        <div className="w-48 shrink-0 flex flex-col gap-1">
+        <div className="w-full sm:w-48 shrink-0 flex sm:flex-col gap-2 overflow-x-auto pb-2 sm:pb-0 hide-scrollbar">
           {roles.map(role => (
             <button
               key={role.name}
               onClick={() => setSelectedRole(role.name)}
               className={cn(
-                "flex flex-col items-start px-3 py-2.5 rounded-md text-sm font-medium transition-all border border-transparent text-left",
+                "flex flex-col items-start px-3 py-2.5 rounded-md text-sm font-medium transition-all border border-transparent text-left shrink-0",
                 selectedRole === role.name 
                   ? "bg-primary/5 text-primary border-primary/10 shadow-sm" 
                   : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
               )}
             >
               <span className="flex items-center gap-2">
-                {role.name === "ADMIN" ? <Shield className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5 opacity-50" />}
-                {role.name}
+                {role.name === "ADMIN" ? <Shield className="h-3.5 w-3.5 shrink-0" /> : <Lock className="h-3.5 w-3.5 opacity-50 shrink-0" />}
+                <span className="truncate">{role.name}</span>
               </span>
               {role.isSystem && <span className="text-[10px] font-normal opacity-60 mt-0.5">System Default</span>}
             </button>

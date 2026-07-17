@@ -4,6 +4,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { Toaster } from "@/components/ui/sonner";
 import { AppShell } from "@/components/layout/app-shell";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import NextTopLoader from "nextjs-toploader";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -25,6 +26,10 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "Panthar",
   },
+  icons: {
+    icon: "/icon-192.png",
+    apple: "/icon-192.png",
+  },
 };
 
 export const viewport: Viewport = {
@@ -45,6 +50,7 @@ export default function RootLayout({
       <body className="min-h-full bg-background text-foreground">
         <ClerkProvider>
           <ThemeProvider>
+            <NextTopLoader color="hsl(var(--primary))" showSpinner={false} />
             {children}
             <Toaster />
           </ThemeProvider>

@@ -119,26 +119,26 @@ export function NewTaskForm({
   return (
     <div className="h-full flex flex-col bg-background">
       {/* Top Bar */}
-      <div className="px-6 py-4 border-b border-border/50 flex items-center justify-between sticky top-0 bg-background/95 backdrop-blur z-10">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild className="h-8 w-8" disabled={isPending}>
+      <div className="px-6 py-4 border-b border-border/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sticky top-0 bg-background/95 backdrop-blur z-10">
+        <div className="flex items-center gap-4 min-w-0">
+          <Button variant="ghost" size="icon" asChild className="h-8 w-8 shrink-0" disabled={isPending}>
             <Link href="/tasks">
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
-          <div>
-            <h1 className="text-lg font-semibold flex items-center gap-2">
-              <span className="bg-primary/10 text-primary p-1.5 rounded-md"><Plus className="h-4 w-4" /></span>
-              {initialData ? "Edit Task" : "Create New Task"}
+          <div className="min-w-0">
+            <h1 className="text-lg font-semibold flex items-center gap-2 truncate">
+              <span className="bg-primary/10 text-primary p-1.5 rounded-md shrink-0"><Plus className="h-4 w-4" /></span>
+              <span className="truncate">{initialData ? "Edit Task" : "Create New Task"}</span>
             </h1>
           </div>
         </div>
-        <div className="flex gap-3">
-          <Button variant="outline" asChild disabled={isPending}>
+        <div className="flex flex-wrap sm:flex-nowrap w-full sm:w-auto gap-3">
+          <Button variant="outline" asChild disabled={isPending} className="flex-1 sm:flex-initial">
             <Link href="/tasks">Cancel</Link>
           </Button>
-          <Button onClick={handleCreateTask} className="px-8" disabled={isPending}>
-            {isPending ? (initialData ? "Saving..." : "Creating...") : (initialData ? "Save Changes" : "Create Task")}
+          <Button onClick={handleCreateTask} className="flex-1 sm:flex-initial sm:px-8" disabled={isPending}>
+            {isPending ? "Saving..." : (initialData ? "Save Changes" : "Create Task")}
           </Button>
         </div>
       </div>

@@ -9,12 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { Plus, Filter, Search, ArrowUpRight, Calendar, DollarSign, FolderKanban } from "lucide-react";
 import { updateProjectStatusAction } from "@/lib/actions/project.actions";
+
 
 const statusColors: Record<string, string> = { ACTIVE: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20", PLANNING: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20 hover:bg-purple-500/20", ON_HOLD: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20 hover:bg-orange-500/20", COMPLETED: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20", ARCHIVED: "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20 hover:bg-gray-500/20" };
 const priorityColors: Record<string, string> = { CRITICAL: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20 hover:bg-red-500/20", HIGH: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20 hover:bg-orange-500/20", MEDIUM: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20", LOW: "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20 hover:bg-gray-500/20" };
@@ -62,13 +64,13 @@ export function ProjectsClient({ initialProjects, canCreate }: { initialProjects
 
   return (
     <div className="flex flex-col gap-6 p-6 h-[calc(100vh-64px)] min-w-0 overflow-hidden">
-      <div className="flex items-center justify-between shrink-0">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between shrink-0 gap-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Projects</h1>
           <p className="text-sm text-muted-foreground">Manage and track all active projects across your organization.</p>
         </div>
         {canCreate && (
-          <Button asChild size="sm" className="gap-2 text-xs">
+          <Button asChild size="sm" className="gap-2 text-xs w-full sm:w-auto">
             <Link href="/projects/new">
               <Plus className="h-3.5 w-3.5" /> New Project
             </Link>
@@ -216,36 +218,52 @@ export function ProjectsClient({ initialProjects, canCreate }: { initialProjects
             />
           ) : (
             <div className="border border-border/40 rounded-lg overflow-x-auto bg-background">
-              <div className="divide-y divide-border/40 min-w-[1000px]">
-                <div className="grid grid-cols-[minmax(250px,2fr)_minmax(120px,1fr)_minmax(150px,1fr)_minmax(150px,1fr)_minmax(120px,1fr)] gap-4 px-5 py-3 text-[11px] font-medium text-muted-foreground uppercase tracking-wider bg-muted/20">
-                  <span>Project</span><span>Status</span><span>Progress</span><span>Team</span><span>Deadline</span>
-                </div>
-                {filteredProjects.map((project) => {
-                const lead = project.lead;
-                return (
-                  <div 
-                    key={project.id} 
-                    onClick={() => router.push(`/projects/${project.id}`)}
-                    className="grid grid-cols-[minmax(250px,2fr)_minmax(120px,1fr)_minmax(150px,1fr)_minmax(150px,1fr)_minmax(120px,1fr)] gap-4 px-5 py-4 items-center hover:bg-muted/30 transition-colors cursor-pointer"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{project.name}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{lead?.firstName} {lead?.lastName}</p>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-                      Status: <Badge variant="outline" className={cn("px-1.5 py-0 rounded-sm shadow-none", statusColors[project.status])}>{project.status.replace("_", " ")}</Badge>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Progress value={project.computedProgress} className="h-1.5 flex-1" />
-                      <span className="text-[10px] font-medium">{project.computedProgress}%</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground">{project.team?.name || "-"}</span>
-                    <span className="text-xs text-muted-foreground">{project.endDate ? new Date(project.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "-"}</span>
-                  </div>
-                );
-              })}
+              <Table>
+                <TableHeader className="bg-muted/20">
+                  <TableRow>
+                    <TableHead className="min-w-[250px] font-medium text-[11px] uppercase tracking-wider">Project</TableHead>
+                    <TableHead className="min-w-[120px] font-medium text-[11px] uppercase tracking-wider">Status</TableHead>
+                    <TableHead className="min-w-[150px] font-medium text-[11px] uppercase tracking-wider">Progress</TableHead>
+                    <TableHead className="min-w-[150px] font-medium text-[11px] uppercase tracking-wider">Team</TableHead>
+                    <TableHead className="min-w-[120px] font-medium text-[11px] uppercase tracking-wider">Deadline</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredProjects.map((project) => {
+                  const lead = project.lead;
+                  return (
+                    <TableRow 
+                      key={project.id} 
+                      onClick={() => router.push(`/projects/${project.id}`)}
+                      className="cursor-pointer hover:bg-muted/30"
+                    >
+                      <TableCell>
+                        <p className="text-sm font-medium text-foreground">{project.name}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{lead?.firstName} {lead?.lastName}</p>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={cn("px-1.5 py-0 rounded-sm shadow-none", statusColors[project.status])}>
+                          {project.status.replace("_", " ")}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2 max-w-[150px]">
+                          <Progress value={project.computedProgress} className="h-1.5 flex-1" />
+                          <span className="text-[10px] font-medium shrink-0">{project.computedProgress}%</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {project.team?.name || "-"}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {project.endDate ? new Date(project.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "-"}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+                </TableBody>
+              </Table>
             </div>
-          </div>
           )}
         </TabsContent>
       </Tabs>

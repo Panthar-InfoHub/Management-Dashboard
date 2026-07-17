@@ -137,19 +137,19 @@ export function TaskDetailClient({ initialTask, projectTasks, canEditDetails = t
           <ChevronRight className="h-3.5 w-3.5" />
           <span className="text-foreground font-medium truncate max-w-[200px] md:max-w-[300px]">{task.title}</span>
         </div>
-        <div className="flex gap-2 self-end sm:self-auto shrink-0">
+        <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto shrink-0">
           {canEditDetails && (
-            <Button variant="outline" size="sm" className="h-8 shadow-none text-xs" asChild>
+            <Button variant="outline" size="sm" className="h-8 shadow-none text-xs flex-1 sm:flex-initial" asChild>
               <Link href={`/tasks/${task.id}/edit`}>Edit Task</Link>
             </Button>
           )}
             {canDelete && (
-              <Button variant="destructive" size="sm" className="h-8 shadow-none text-xs" onClick={handleDelete}>
+              <Button variant="destructive" size="sm" className="h-8 shadow-none text-xs flex-1 sm:flex-initial" onClick={handleDelete}>
                 Delete
               </Button>
             )}
           {canEditStatus && task.status !== "DONE" && (
-            <Button size="sm" className="h-8 shadow-none text-xs" onClick={() => handleStatusChange("DONE")}>
+            <Button size="sm" className="h-8 shadow-none text-xs flex-1 sm:flex-initial" onClick={() => handleStatusChange("DONE")}>
               Mark as Done
             </Button>
           )}
@@ -426,7 +426,7 @@ export function TaskDetailClient({ initialTask, projectTasks, canEditDetails = t
                         <Plus className="h-3.5 w-3.5 mr-2" /> Add a new subtask...
                       </Button>
                     </DialogTrigger>
-                  <DialogContent>
+                  <DialogContent className="max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                       <DialogTitle>Create Subtask</DialogTitle>
                     </DialogHeader>
@@ -441,7 +441,7 @@ export function TaskDetailClient({ initialTask, projectTasks, canEditDetails = t
                           disabled={isPending}
                         />
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <label className="text-xs font-medium">Priority</label>
                           <Select 

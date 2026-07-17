@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Search, Plus, Mail, Shield, Building2, UserPlus, MoreVertical, Calendar, Pencil, Trash2, Eye, EyeOff } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createEmployeeAction, updateEmployeeAction, deleteEmployeeAction } from "@/lib/actions/employee.actions";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -74,28 +75,24 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
 
   return (
     <div className="space-y-6 p-6 md:p-8 max-w-7xl mx-auto h-full overflow-y-auto selection:bg-primary/10">
-      <div className="flex items-center justify-between pb-6 border-b border-border/40">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-border/40">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            {isAdmin ? "Directory" : "Members"}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {isAdmin 
-              ? "Manage personnel, roles, and access across your organization." 
-              : "View members across your organization."}
-          </p>
+          <h1 className="text-xl font-semibold tracking-tight">Organization Members</h1>
+          <p className="text-sm text-muted-foreground">Manage members and their platform access.</p>
         </div>
         {canCreate && (
           <Dialog open={newEmpOpen} onOpenChange={setNewEmpOpen}>
             <DialogTrigger asChild>
-              <Button size="sm" className="gap-2 shadow-none"><UserPlus className="h-4 w-4" /> Add Member</Button>
+              <Button size="sm" className="gap-2 text-xs w-full sm:w-auto">
+                <UserPlus className="h-4 w-4" /> Add Member
+              </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-lg">
+            <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Invite New Member</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5 flex flex-col">
                     <label className="text-xs font-semibold text-muted-foreground">First Name</label>
                     <Input value={newEmp.firstName} onChange={e => setNewEmp({ ...newEmp, firstName: e.target.value })} placeholder="Jane" />
@@ -105,7 +102,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
                     <Input value={newEmp.lastName} onChange={e => setNewEmp({ ...newEmp, lastName: e.target.value })} placeholder="Doe" />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5 flex flex-col">
                     <label className="text-xs font-semibold text-muted-foreground">Email Address</label>
                     <Input value={newEmp.email} type="email" onChange={e => setNewEmp({ ...newEmp, email: e.target.value })} placeholder="jane@example.com" />
@@ -176,7 +173,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
       </div>
 
       <Dialog open={editEmpOpen} onOpenChange={setEditEmpOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Member</DialogTitle>
           </DialogHeader>
@@ -223,119 +220,110 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
       </div>
 
       <div className="border border-border/40 rounded-lg overflow-x-auto bg-background">
-        <div className="divide-y divide-border/40 bg-muted/5 min-w-[1000px]">
-          {/* Table Header */}
-          <div className={cn(
-            "grid gap-4 px-5 py-3 text-[11px] font-medium text-muted-foreground uppercase tracking-wider bg-muted/20",
-            isAdmin && (canUpdate || canDelete) ? "grid-cols-[minmax(250px,2fr)_minmax(180px,1.5fr)_minmax(180px,1.5fr)_minmax(120px,1fr)_40px]" :
-            isAdmin && !(canUpdate || canDelete) ? "grid-cols-[minmax(250px,2fr)_minmax(180px,1.5fr)_minmax(180px,1.5fr)_minmax(120px,1fr)]" :
-            !isAdmin && (canUpdate || canDelete) ? "grid-cols-[minmax(250px,2fr)_minmax(180px,1.5fr)_minmax(120px,1fr)_40px]" :
-            "grid-cols-[minmax(250px,2fr)_minmax(180px,1.5fr)_minmax(120px,1fr)]"
-          )}>
-            <span>Name & Title</span>
-            <span>Contact Info</span>
-            {isAdmin && <span>Status & System Role</span>}
-            <span>Joined</span>
-            {(canUpdate || canDelete) && <span className="text-right"></span>}
-          </div>
-          
-          {/* Table Rows */}
-          {filteredEmployees.length === 0 ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">No personnel found matching your search.</div>
-          ) : (
-            filteredEmployees.map(emp => (
-              <div key={emp.id} className={cn(
-                "grid gap-4 px-5 py-4 items-center hover:bg-muted/30 transition-colors",
-                isAdmin && (canUpdate || canDelete) ? "grid-cols-[minmax(250px,2fr)_minmax(180px,1.5fr)_minmax(180px,1.5fr)_minmax(120px,1fr)_40px]" :
-                isAdmin && !(canUpdate || canDelete) ? "grid-cols-[minmax(250px,2fr)_minmax(180px,1.5fr)_minmax(180px,1.5fr)_minmax(120px,1fr)]" :
-                !isAdmin && (canUpdate || canDelete) ? "grid-cols-[minmax(250px,2fr)_minmax(180px,1.5fr)_minmax(120px,1fr)_40px]" :
-                "grid-cols-[minmax(250px,2fr)_minmax(180px,1.5fr)_minmax(120px,1fr)]"
-              )}>
-                
-                {/* Column 1: Name & Title */}
-                <div className="flex items-center gap-4 min-w-0">
-                  <div className="relative shrink-0">
-                    <Avatar className="h-10 w-10 border border-border/40">
-                      <AvatarImage src={emp.avatarUrl} />
-                      <AvatarFallback className="bg-primary/5 text-sm font-medium text-foreground">{emp.firstName.charAt(0)}{emp.lastName.charAt(0)}</AvatarFallback>
-                    </Avatar>
-                    {emp.status === "ACTIVE" && (
-                      <span className="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-background" />
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{emp.firstName} {emp.lastName}</p>
-                    <p className="text-xs text-muted-foreground truncate mt-0.5">{emp.designation || "No Designation"}</p>
-                  </div>
-                </div>
-
-                {/* Column 2: Contact Info */}
-                <div className="flex flex-col gap-1.5 min-w-0">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground truncate">
-                    <Mail className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{emp.email}</span>
-                  </div>
-                  {emp.phone && (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground truncate">
-                      <Building2 className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{emp.phone}</span>
+        <Table className="min-w-[1000px]">
+          <TableHeader className="bg-muted/20">
+            <TableRow>
+              <TableHead className="min-w-[250px] font-medium text-[11px] uppercase tracking-wider">Name & Title</TableHead>
+              <TableHead className="min-w-[180px] font-medium text-[11px] uppercase tracking-wider">Contact Info</TableHead>
+              {isAdmin && <TableHead className="min-w-[180px] font-medium text-[11px] uppercase tracking-wider">Status & System Role</TableHead>}
+              <TableHead className="min-w-[120px] font-medium text-[11px] uppercase tracking-wider">Joined</TableHead>
+              {(canUpdate || canDelete) && <TableHead className="w-[50px]"></TableHead>}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filteredEmployees.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={isAdmin ? 5 : 4} className="h-24 text-center">
+                  <div className="p-8 text-center text-sm text-muted-foreground">No members found matching your search.</div>
+                </TableCell>
+              </TableRow>
+            ) : (
+              filteredEmployees.map(emp => (
+                <TableRow key={emp.id} className="hover:bg-muted/30">
+                  <TableCell>
+                    <div className="flex items-center gap-4 min-w-0">
+                      <div className="relative shrink-0">
+                        <Avatar className="h-10 w-10 border border-border/40">
+                          <AvatarImage src={emp.avatarUrl} />
+                          <AvatarFallback className="bg-primary/5 text-sm font-medium text-foreground">{emp.firstName.charAt(0)}{emp.lastName.charAt(0)}</AvatarFallback>
+                        </Avatar>
+                        {emp.status === "ACTIVE" && (
+                          <span className="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-background" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{emp.firstName} {emp.lastName}</p>
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">{emp.designation || "No Designation"}</p>
+                      </div>
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-col gap-1.5 min-w-0">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground truncate">
+                        <Mail className="h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate">{emp.email}</span>
+                      </div>
+                      {emp.phone && (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground truncate">
+                          <Building2 className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{emp.phone}</span>
+                        </div>
+                      )}
+                    </div>
+                  </TableCell>
+                  {isAdmin && (
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className={cn("text-[9px] px-2 py-0.5 shadow-none rounded-full border-border/40", roleColors[emp.role] || "bg-gray-500/10 text-gray-600 border-gray-500/20")}>
+                          {emp.role}
+                        </Badge>
+                        {emp.clerkId.startsWith("pending_") && (
+                          <Badge variant="outline" className="text-[9px] px-2 py-0.5 shadow-none rounded-full bg-amber-500/10 text-amber-600 border-amber-500/20">
+                            INVITED
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
                   )}
-                </div>
-
-                {/* Column 3: Status & Role (Admin only) */}
-                {isAdmin && (
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className={cn("text-[9px] px-2 py-0.5 shadow-none rounded-full border-border/40", roleColors[emp.role] || "bg-gray-500/10 text-gray-600 border-gray-500/20")}>
-                      {emp.role}
-                    </Badge>
-                    {emp.clerkId.startsWith("pending_") && (
-                      <Badge variant="outline" className="text-[9px] px-2 py-0.5 shadow-none rounded-full bg-amber-500/10 text-amber-600 border-amber-500/20">
-                        INVITED
-                      </Badge>
-                    )}
-                  </div>
-                )}
-
-                {/* Column 4: Joined Date */}
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Calendar className="h-3.5 w-3.5" />
-                  {new Date(emp.joinDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                </div>
-
-                {/* Actions */}
-                {(canUpdate || canDelete) && (
-                  <div className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {canUpdate && (
-                          <DropdownMenuItem onClick={() => {
-                            setEditingEmp({ id: emp.id, role: emp.role, designation: emp.designation || "" });
-                            setEditEmpOpen(true);
-                          }}>
-                            <Pencil className="h-4 w-4 mr-2" />
-                            Edit Role & Title
-                          </DropdownMenuItem>
-                        )}
-                        {canDelete && (
-                          <DropdownMenuItem className="text-red-600 focus:bg-red-50 focus:text-red-600 cursor-pointer" onClick={() => handleDeleteEmployee(emp.id)}>
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Remove Member
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-        </div>
+                  <TableCell>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Calendar className="h-3.5 w-3.5" />
+                      {new Date(emp.joinDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                    </div>
+                  </TableCell>
+                  {(canUpdate || canDelete) && (
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {canUpdate && (
+                            <DropdownMenuItem onClick={() => {
+                              setEditingEmp({ id: emp.id, role: emp.role, designation: emp.designation || "" });
+                              setEditEmpOpen(true);
+                            }}>
+                              <Pencil className="h-4 w-4 mr-2" />
+                              Edit Role & Title
+                            </DropdownMenuItem>
+                          )}
+                          {canDelete && (
+                            <DropdownMenuItem className="text-red-600 focus:bg-red-50 focus:text-red-600 cursor-pointer" onClick={() => handleDeleteEmployee(emp.id)}>
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Remove Member
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
       </div>
     </div>
   );

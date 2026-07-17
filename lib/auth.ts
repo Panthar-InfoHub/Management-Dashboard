@@ -13,12 +13,14 @@ export type AuthEmployee = Pick<
   "id" | "clerkId" | "email" | "firstName" | "lastName" | "role" | "status" | "teamId" | "avatarUrl" | "designation"
 >;
 
+import { cache } from "react";
+
 /**
  * Resolve the current Clerk session → our Employee record.
  * Call this at the top of every Server Action / API route.
  * Includes Just-In-Time (JIT) syncing if the webhook hasn't fired yet.
  */
-export async function getCurrentEmployee(): Promise<AuthEmployee> {
+export const getCurrentEmployee = cache(async (): Promise<AuthEmployee> => {
   const { userId } = await auth();
 
   if (!userId) {
@@ -93,9 +95,8 @@ export async function getCurrentEmployee(): Promise<AuthEmployee> {
       }
     }
   }
-
-  return employee;
-}
+  return employee as AuthEmployee;
+});
 
 /**
  * Shorthand: get current employee and assert a permission in one call.

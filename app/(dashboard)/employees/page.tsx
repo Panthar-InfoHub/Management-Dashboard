@@ -1,18 +1,17 @@
+import { Suspense } from "react";
 import { getEmployees } from "@/lib/queries/employee.queries";
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { EmployeesClient } from "@/components/employees/employees-client";
 import { getTeams } from "@/lib/queries/team.queries";
 import { db } from "@/lib/db";
+import EmployeesLoading from "./loading";
 
-export default async function EmployeesPage() {
-  const currentEmployee = await getCurrentEmployee();
-  const employees = await getEmployees();
-  const teams = await getTeams();
-  const roles = await db.systemRole.findMany({ select: { name: true } });
-
-  const canCreate = await checkPermission("employee:create");
-  const canUpdate = await checkPermission("employee:update");
-  const canDelete = await checkPermission("employee:delete");
+async function EmployeesData({ currentEmployee, canCreate, canUpdate, canDelete }: any) {
+  const [employees, teams, roles] = await Promise.all([
+    getEmployees(),
+    getTeams(),
+    db.systemRole.findMany({ select: { name: true } })
+  ]);
 
   return (
     <EmployeesClient 
@@ -24,5 +23,26 @@ export default async function EmployeesPage() {
       canUpdate={canUpdate}
       canDelete={canDelete}
     />
+  );
+}
+
+export default async function EmployeesPage() {
+  const currentEmployee = await getCurrentEmployee(); // fast
+
+  const [canCreate, canUpdate, canDelete] = await Promise.all([
+    checkPermission("employee:create"),
+    checkPermission("employee:update"),
+    checkPermission("employee:delete")
+  ]);
+
+  return (
+    <Suspense fallback={<EmployeesLoading />}>
+      <EmployeesData 
+        currentEmployee={currentEmployee}
+        canCreate={canCreate}
+        canUpdate={canUpdate}
+        canDelete={canDelete}
+      />
+    </Suspense>
   );
 }
