@@ -32,21 +32,22 @@ export async function createTaskAction(data: {
   });
 
   if (data.assigneeIds && data.assigneeIds.length > 0) {
-    const { createNotificationAction } = await import("./notification.actions");
-    await Promise.all(data.assigneeIds.map(id => {
-      if (id !== employee.id) {
-        return createNotificationAction({
+    const assigneesToNotify = data.assigneeIds.filter(id => id !== employee.id);
+    if (assigneesToNotify.length > 0) {
+      await db.notification.createMany({
+        data: assigneesToNotify.map(id => ({
           recipientId: id,
           type: "TASK_ASSIGNED",
           title: "New Task Assigned",
           message: `You were assigned a new task: ${task.title}`,
           actionUrl: `/tasks/${task.id}`
-        });
-      }
-    }));
+        }))
+      });
+    }
   }
 
-  revalidatePath("/", "layout");
+  revalidatePath("/projects");
+  revalidatePath(`/tasks/${task.id}`);
   return { success: true, taskId: task.id };
 }
 
@@ -71,7 +72,8 @@ export async function updateTaskAction(taskId: string, data: {
   if (!existingTask) throw new Error("Task not found");
 
   if (!hasGlobalPerm) {
-    if (existingTask.creatorId !== employee.id) {
+    const isAssignee = existingTask.assignees.some(a => a.id === employee.id);
+    if (existingTask.creatorId !== employee.id && !isAssignee) {
       throw new Error("You do not have permission to edit this task's details.");
     }
   }
@@ -94,7 +96,8 @@ export async function updateTaskAction(taskId: string, data: {
     }
   });
 
-  revalidatePath("/", "layout");
+  revalidatePath("/projects");
+  revalidatePath(`/tasks/${taskId}`);
   return { success: true, taskId: updatedTask.id };
 }
 

@@ -61,20 +61,28 @@ export async function createEmployeeAction(data: {
   }
 
   // 3. Create the database record
-  const employee = await db.employee.create({
-    data: {
-      clerkId: clerkUserId,
-      email: data.email,
-      firstName: data.firstName,
-      lastName: data.lastName,
-      role: data.role,
-      designation: data.designation,
-      avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${data.firstName} ${data.lastName}`,
-    }
-  });
+  try {
+    const employee = await db.employee.create({
+      data: {
+        clerkId: clerkUserId,
+        email: data.email,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        role: data.role,
+        designation: data.designation,
+        avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${data.firstName} ${data.lastName}`,
+      }
+    });
 
-  revalidatePath("/employees");
-  return employee;
+    revalidatePath("/employees");
+    return employee;
+  } catch (error: any) {
+    // If DB creation fails, attempt to rollback the Clerk user to prevent orphans
+    if (data.password && clerkUserId) {
+      await client.users.deleteUser(clerkUserId).catch(() => {});
+    }
+    throw new Error("Failed to save employee to database. Please try again.");
+  }
 }
 
 export async function updateEmployeeAction(id: string, data: {

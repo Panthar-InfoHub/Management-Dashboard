@@ -149,30 +149,34 @@ export async function getCompletionTrend(employee: AuthEmployee) {
   const rangeStart = startOfDay(subDays(now, 13));
 
   const [completed, created] = await Promise.all([
-    db.task.findMany({
-      where: { status: "DONE", completedAt: { gte: rangeStart } },
-      select: { completedAt: true },
-    }),
-    db.task.findMany({
-      where: { createdAt: { gte: rangeStart } },
-      select: { createdAt: true },
-    })
+    db.$queryRaw<{ date: Date, count: number }[]>`
+      SELECT DATE("completedAt") as date, COUNT(*)::int as count 
+      FROM "Task" 
+      WHERE status = 'DONE' AND "completedAt" >= ${rangeStart} 
+      GROUP BY DATE("completedAt")
+    `,
+    db.$queryRaw<{ date: Date, count: number }[]>`
+      SELECT DATE("createdAt") as date, COUNT(*)::int as count 
+      FROM "Task" 
+      WHERE "createdAt" >= ${rangeStart} 
+      GROUP BY DATE("createdAt")
+    `
   ]);
 
   const days = eachDayOfInterval({ start: rangeStart, end: now });
   const completedCounts = new Map<string, number>(days.map((d) => [format(d, "yyyy-MM-dd"), 0]));
   const createdCounts = new Map<string, number>(days.map((d) => [format(d, "yyyy-MM-dd"), 0]));
   
-  for (const t of completed) {
-    if (!t.completedAt) continue;
-    const key = format(t.completedAt, "yyyy-MM-dd");
-    if (completedCounts.has(key)) completedCounts.set(key, (completedCounts.get(key) ?? 0) + 1);
+  for (const row of completed) {
+    if (!row.date) continue;
+    const key = format(new Date(row.date), "yyyy-MM-dd");
+    if (completedCounts.has(key)) completedCounts.set(key, Number(row.count));
   }
 
-  for (const t of created) {
-    if (!t.createdAt) continue;
-    const key = format(t.createdAt, "yyyy-MM-dd");
-    if (createdCounts.has(key)) createdCounts.set(key, (createdCounts.get(key) ?? 0) + 1);
+  for (const row of created) {
+    if (!row.date) continue;
+    const key = format(new Date(row.date), "yyyy-MM-dd");
+    if (createdCounts.has(key)) createdCounts.set(key, Number(row.count));
   }
 
   return days.map((d) => ({

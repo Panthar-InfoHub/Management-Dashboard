@@ -68,30 +68,36 @@ export const getCurrentEmployee = cache(async (): Promise<AuthEmployee> => {
       console.log(`[JIT Sync] Linked invited profile for ${email} to Clerk ID`);
     } else {
       // Brand new user (not invited)
-      const userCount = await db.employee.count();
-      
-      // Allow the very first user ever to become the Admin
-      if (userCount === 0) {
-        employee = await db.employee.create({
-          data: {
-            clerkId: user.id,
-            email: email,
-            firstName: user.firstName || "Admin",
-            lastName: user.lastName || "User",
-            avatarUrl: user.imageUrl,
-            role: "ADMIN",
-          },
-          select: {
-            id: true, clerkId: true, email: true, firstName: true,
-            lastName: true, role: true, status: true, teamId: true,
-            avatarUrl: true, designation: true,
-          },
-        });
+      try {
+        employee = await db.$transaction(async (tx) => {
+          const userCount = await tx.employee.count();
+          
+          if (userCount === 0) {
+            return await tx.employee.create({
+              data: {
+                clerkId: user.id,
+                email: email,
+                firstName: user.firstName || "Admin",
+                lastName: user.lastName || "User",
+                avatarUrl: user.imageUrl,
+                role: "ADMIN",
+              },
+              select: {
+                id: true, clerkId: true, email: true, firstName: true,
+                lastName: true, role: true, status: true, teamId: true,
+                avatarUrl: true, designation: true,
+              },
+            });
+          } else {
+            throw new Error("INVITATION_REQUIRED");
+          }
+        }, { isolationLevel: "Serializable" });
         console.log(`[JIT Sync] Created initial ADMIN record for ${email}`);
-      } else {
-        // Platform is already initialized, reject uninvited users
-        console.log(`[Auth Blocked] Rejected uninvited signup attempt from ${email}`);
-        throw new Error("INVITATION_REQUIRED");
+      } catch (err: any) {
+        if (err.message === "INVITATION_REQUIRED") {
+          console.log(`[Auth Blocked] Rejected uninvited signup attempt from ${email}`);
+        }
+        throw err;
       }
     }
   }
