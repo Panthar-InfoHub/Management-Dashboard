@@ -10,8 +10,7 @@ export async function getKanbanTasks(filters?: { team?: string, project?: string
   let accessClause = canViewAll ? {} : {
     OR: [
       { project: { members: { some: { employeeId: employee.id } } } },
-      { assignees: { some: { id: employee.id } } },
-      { creatorId: employee.id }
+      { assignees: { some: { id: employee.id } } }
     ]
   };
 
@@ -93,8 +92,9 @@ export async function getTaskById(taskId: string) {
 
   if (!task) return null;
 
-  // Authorization: Admin/Manager sees all. Otherwise, must be creator, assignee, or project member
-  if (employee.role !== "ADMIN" && employee.role !== "MANAGER" && task.creatorId !== employee.id) {
+  const canViewAll = await checkPermission("task:update");
+
+  if (!canViewAll) {
     const isAssignee = task.assignees.some(a => a.id === employee.id);
     const isProjectMember = task.project.members.some(m => m.employeeId === employee.id);
     

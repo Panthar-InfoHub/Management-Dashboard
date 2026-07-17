@@ -4,8 +4,8 @@ import { NewTaskForm } from "@/components/tasks/new-task-form";
 import { notFound } from "next/navigation";
 
 export default async function EditTaskPage({ params }: { params: Promise<{ id: string }> }) {
-  const employee = await getCurrentEmployee();
   const { id } = await params;
+  const employee = await getCurrentEmployee();
 
   const task = await db.task.findUnique({
     where: { id },
@@ -22,7 +22,10 @@ export default async function EditTaskPage({ params }: { params: Promise<{ id: s
   }
 
   // Permission check
-  const canEdit = await checkPermission("task:update");
+  const canEditGlobal = await checkPermission("task:update");
+  const isAssignee = task.assignees.some((a: any) => a.id === employee.id);
+  const isProjectMember = task.project?.members.some((m: any) => m.employeeId === employee.id);
+  const canEdit = canEditGlobal || isAssignee || isProjectMember;
 
   if (!canEdit) {
     notFound();
