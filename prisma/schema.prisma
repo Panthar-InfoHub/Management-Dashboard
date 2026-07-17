@@ -47,11 +47,7 @@ enum ProjectStatus {
   ARCHIVED
 }
 
-enum ProjectHealth {
-  GOOD
-  AT_RISK
-  CRITICAL
-}
+
 
 enum LeaveType {
   CASUAL
@@ -65,15 +61,7 @@ enum LeaveStatus {
   CANCELLED
 }
 
-enum AuditAction {
-  CREATE
-  UPDATE
-  DELETE
-  STATUS_CHANGE
-  ASSIGNMENT
-  APPROVAL
-  REJECTION
-}
+
 
 // ─────────────────────────────────────────────
 // CORE MODELS
@@ -124,8 +112,6 @@ model Employee {
   leaveBalances  LeaveBalance[]
   attendance     Attendance[]
 
-  // ── System ──
-  auditLogs     AuditLog[]
   notifications Notification[]
 
   createdAt DateTime @default(now())
@@ -161,7 +147,6 @@ model Project {
   name        String
   description String?
   status      ProjectStatus @default(PLANNING)
-  health      ProjectHealth @default(GOOD)
   priority    TaskPriority  @default(MEDIUM)
   progress    Int           @default(0) // 0–100
 
@@ -333,22 +318,7 @@ model Attendance {
 // AUDIT & NOTIFICATIONS
 // ─────────────────────────────────────────────
 
-model AuditLog {
-  id          String      @id @default(cuid())
-  action      AuditAction
-  entity      String      // "Task", "Project", "Leave", etc.
-  entityId    String
-  description String
-  metadata    Json?       // flexible payload: { oldStatus, newStatus, ... }
-  actorId     String
-  actor       Employee    @relation(fields: [actorId], references: [id])
 
-  createdAt DateTime @default(now())
-
-  @@index([entity, entityId])
-  @@index([actorId])
-  @@index([createdAt])
-}
 
 model Notification {
   id         String   @id @default(cuid())

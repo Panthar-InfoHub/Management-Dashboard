@@ -1,167 +1,151 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { chartData } from "@/lib/mock-data";
-import { BarChart3, TrendingUp, Activity, PieChart } from "lucide-react";
+import { TrendingUp, Layers, Users } from "lucide-react";
 import {
-  Area, AreaChart, Bar, BarChart, CartesianGrid,
-  ResponsiveContainer, Tooltip, XAxis, YAxis, Cell,
+  AreaChart, Area,
+  BarChart, Bar,
+  PieChart, Pie, Cell,
+  Radar, RadarChart, PolarGrid, PolarAngleAxis,
+  XAxis, YAxis, CartesianGrid,
 } from "recharts";
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
+import { ROLE_COLORS, formatEnumLabel } from "@/lib/dashboard-colors";
 
-const CustomTooltip = ({ active, payload, label }: any) => {
-  if (!active || !payload?.length) return null;
+type DataPoint = { name: string; value: number };
+type TrendPoint = { date: string; value: number; created: number };
+
+interface ChartsData {
+  roles: DataPoint[];
+  teamWorkload: DataPoint[];
+}
+
+function buildRoleConfig(data: DataPoint[]): ChartConfig {
+  const config: ChartConfig = {};
+  data.forEach((entry) => {
+    config[entry.name] = { label: formatEnumLabel(entry.name), color: ROLE_COLORS[entry.name] ?? "#6b7280" };
+  });
+  return config;
+}
+
+function Panel({
+  icon: Icon,
+  iconClassName,
+  title,
+  description,
+  children,
+  className,
+}: {
+  icon: React.ElementType;
+  iconClassName: string;
+  title: string;
+  description: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="rounded-lg border border-border bg-popover px-3 py-2 shadow-md">
-      <p className="text-xs font-medium text-foreground">{label}</p>
-      {payload.map((p: any, i: number) => (
-        <p key={i} className="text-[11px] text-muted-foreground">
-          {p.name}: <span className="font-medium text-foreground">{p.value}</span>
-        </p>
-      ))}
+    <div className={`flex h-[320px] flex-col overflow-hidden rounded-xl border border-border/40 bg-background ${className ?? ""}`}>
+      <div className="flex items-center gap-3 border-b border-border/40 bg-muted/10 p-4">
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/40 bg-background ${iconClassName}`}>
+          <Icon className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          <p className="truncate text-[11px] text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      <div className="flex-1 p-4">{children}</div>
     </div>
   );
-};
+}
 
-export function DashboardCharts() {
+export function DashboardCharts({
+  chartData,
+  completionTrend,
+}: {
+  chartData: ChartsData | null;
+  completionTrend: TrendPoint[] | null;
+}) {
+  if (!chartData) return null;
+
+  const { roles, teamWorkload } = chartData;
+  const pRoles = roles.map((e) => ({ ...e, fill: ROLE_COLORS[e.name] ?? "#6b7280" }));
+  const totalEmployees = roles.reduce((sum, r) => sum + r.value, 0);
+
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      {/* Productivity Trend */}
-      <Card className="border-border/50">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-md bg-blue-500/10">
-                <TrendingUp className="h-3.5 w-3.5 text-blue-500" />
-              </div>
-              <CardTitle className="text-sm font-semibold">Company Productivity</CardTitle>
-            </div>
-            <Badge variant="secondary" className="text-[10px] text-green-500 bg-green-500/10 border-0">+12%</Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <div className="h-[200px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData.productivity}>
-                <defs>
-                  <linearGradient id="prodGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#0ea5e9" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="#0ea5e9" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="week" tick={{ fontSize: 11 }} className="text-muted-foreground" />
-                <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" domain={[60, 100]} />
-                <Tooltip content={<CustomTooltip />} />
-                <Area type="monotone" dataKey="value" name="Productivity" stroke="#0ea5e9" fill="url(#prodGradient)" strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
+      {/* 1. Completion vs Creation Trend */}
+      <Panel icon={TrendingUp} iconClassName="text-blue-500" title="Task Velocity" description="Tasks created vs completed, last 14 days" className="lg:col-span-2">
+        {completionTrend && completionTrend.length > 0 ? (
+          <ChartContainer config={{ value: { label: "Completed", color: "#3b82f6" }, created: { label: "Created", color: "#8b5cf6" } }} className="aspect-auto h-full w-full">
+            <AreaChart data={completionTrend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <defs>
+                <linearGradient id="completionGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.35} />
+                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="createdGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.35} />
+                  <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.5} />
+              <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} interval={1} />
+              <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11 }} allowDecimals={false} width={24} />
+              <ChartTooltip cursor={{ stroke: "var(--border)" }} content={<ChartTooltipContent />} />
+              <Area type="monotone" dataKey="created" stroke="#8b5cf6" strokeWidth={2} fill="url(#createdGradient)" />
+              <Area type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} fill="url(#completionGradient)" />
+            </AreaChart>
+          </ChartContainer>
+        ) : (
+          <div className="flex h-full items-center justify-center text-xs text-muted-foreground">No completions yet in this window.</div>
+        )}
+      </Panel>
 
-      {/* Sprint Velocity */}
-      <Card className="border-border/50">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-md bg-purple-500/10">
-                <Activity className="h-3.5 w-3.5 text-purple-500" />
-              </div>
-              <CardTitle className="text-sm font-semibold">Sprint Velocity</CardTitle>
-            </div>
-            <div className="flex gap-3 text-[10px]">
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-purple-500/40" /> Planned</span>
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-purple-500" /> Completed</span>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <div className="h-[200px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData.velocity} barGap={2}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="sprint" tick={{ fontSize: 11 }} className="text-muted-foreground" />
-                <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="planned" name="Planned" fill="#a855f7" radius={[3, 3, 0, 0]} opacity={0.3} />
-                <Bar dataKey="completed" name="Completed" fill="#a855f7" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Team Performance */}
-      <Card className="border-border/50">
-        <CardHeader className="pb-2">
-          <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-500/10">
-              <BarChart3 className="h-3.5 w-3.5 text-emerald-500" />
-            </div>
-            <CardTitle className="text-sm font-semibold">Team Performance</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <div className="h-[200px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData.teamPerformance} layout="vertical" barSize={14}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11 }} className="text-muted-foreground" domain={[0, 100]} />
-                <YAxis dataKey="team" type="category" tick={{ fontSize: 11 }} className="text-muted-foreground" width={60} />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="score" name="Score" radius={[0, 4, 4, 0]}>
-                  {chartData.teamPerformance.map((entry, i) => (
-                    <Cell key={i} fill="#10b981" fillOpacity={entry.score >= 90 ? 1 : entry.score >= 80 ? 0.6 : 0.3} />
+      {/* 2. Team Composition */}
+      <Panel icon={Users} iconClassName="text-emerald-500" title="Team Composition" description="Active members by role" className="lg:col-span-1">
+        <div className="flex h-full flex-col">
+          <div className="relative min-h-0 flex-1">
+            <ChartContainer config={buildRoleConfig(roles)} className="aspect-auto h-full w-full">
+              <PieChart>
+                <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
+                <Pie data={pRoles} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={48} outerRadius={70} paddingAngle={3} stroke="none">
+                  {pRoles.map((entry, index) => (
+                    <Cell key={index} fill={entry.fill} />
                   ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+                </Pie>
+              </PieChart>
+            </ChartContainer>
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-xl font-semibold tabular-nums text-foreground">{totalEmployees}</span>
+              <span className="text-[10px] text-muted-foreground">Members</span>
+            </div>
           </div>
-        </CardContent>
-      </Card>
+          <div className="mt-2 flex flex-wrap justify-center gap-x-3 gap-y-1.5 text-[10px]">
+            {pRoles.map((entry, index) => (
+              <span key={index} className="flex items-center gap-1.5 whitespace-nowrap">
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: entry.fill }} />
+                {formatEnumLabel(entry.name)} <span className="ml-0.5 font-medium text-foreground">{entry.value}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      </Panel>
 
-      {/* Task Completion */}
-      <Card className="border-border/50">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-md bg-cyan-500/10">
-                <PieChart className="h-3.5 w-3.5 text-cyan-500" />
-              </div>
-              <CardTitle className="text-sm font-semibold">Task Completion Trend</CardTitle>
-            </div>
-            <div className="flex gap-3 text-[10px]">
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-blue-500" /> Completed</span>
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-orange-500" /> Created</span>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <div className="h-[200px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData.taskCompletion}>
-                <defs>
-                  <linearGradient id="compGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#0ea5e9" stopOpacity={0.2} />
-                    <stop offset="100%" stopColor="#0ea5e9" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="creatGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#f97316" stopOpacity={0.1} />
-                    <stop offset="100%" stopColor="#f97316" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="day" tick={{ fontSize: 11 }} className="text-muted-foreground" />
-                <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" />
-                <Tooltip content={<CustomTooltip />} />
-                <Area type="monotone" dataKey="completed" name="Completed" stroke="#0ea5e9" fill="url(#compGradient)" strokeWidth={2} />
-                <Area type="monotone" dataKey="created" name="Created" stroke="#f97316" strokeOpacity={0.4} fill="url(#creatGradient)" strokeWidth={2} strokeDasharray="4 4" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
+      {/* 3. Team Workload */}
+      <Panel icon={Layers} iconClassName="text-indigo-500" title="Team Workload" description="Open tasks by team" className="lg:col-span-1">
+        {teamWorkload.length > 0 ? (
+          <ChartContainer config={{ value: { label: "Open Tasks", color: "#3b82f6" } }} className="aspect-auto h-full w-full">
+            <RadarChart data={teamWorkload} margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+              <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
+              <PolarGrid stroke="var(--border)" opacity={0.5} />
+              <PolarAngleAxis dataKey="name" tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} />
+              <Radar name="Tasks" dataKey="value" stroke="#3b82f6" strokeWidth={2} fill="#3b82f6" fillOpacity={0.3} />
+            </RadarChart>
+          </ChartContainer>
+        ) : (
+          <div className="flex h-full items-center justify-center text-xs text-muted-foreground">No teams yet.</div>
+        )}
+      </Panel>
     </div>
   );
 }

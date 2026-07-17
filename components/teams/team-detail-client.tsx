@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChevronRight, Edit, Users, Mail, LayoutDashboard, MoreVertical, CheckSquare, Settings2, Shield, CalendarIcon, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -46,7 +47,7 @@ export function TeamDetailClient({ team, allEmployees = [], tasks = [], canEdit 
       updateTeamAction(team.id, editData).then(() => {
         setEditOpen(false);
         router.refresh();
-      }).catch(err => console.error(err));
+      }).catch(err => toast.error("Failed to update team"));
     });
   };
 
@@ -57,7 +58,7 @@ export function TeamDetailClient({ team, allEmployees = [], tasks = [], canEdit 
       manageTeamMembersAction(team.id, finalMemberIds).then(() => {
         setManageOpen(false);
         router.refresh();
-      }).catch(err => console.error(err));
+      }).catch(err => toast.error("Failed to manage members"));
     });
   };
 

@@ -99,14 +99,5 @@ export async function getTaskById(taskId: string) {
     }
   }
 
-  // Fetch Activity (Audit logs for this task)
-  const auditLogs = await db.auditLog.findMany({
-    where: { entity: "Task", entityId: taskId },
-    orderBy: { createdAt: "desc" },
-    include: {
-      actor: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } }
-    }
-  });
-
-  return { ...task, activity: auditLogs };
+  return { ...task, activity: [] };
 }

@@ -175,7 +175,6 @@ async function main() {
         name: "Panthar Platform v3",
         description: "Complete platform rewrite with modern architecture",
         status: "ACTIVE",
-        health: "GOOD",
         priority: "CRITICAL",
         progress: 35,
         teamId: backend.id,

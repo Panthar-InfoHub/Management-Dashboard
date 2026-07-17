@@ -14,6 +14,9 @@ export async function createTaskAction(data: {
   blockers?: string;
 }) {
   const employee = await requireAuth("task:create");
+  if (employee.role !== "ADMIN" && employee.role !== "MANAGER") {
+    throw new Error("FORBIDDEN: Only admins and managers can create tasks");
+  }
 
   const task = await db.task.create({
     data: {
@@ -37,6 +40,53 @@ export async function createTaskAction(data: {
   return { success: true, taskId: task.id };
 }
 
+export async function updateTaskAction(taskId: string, data: {
+  title: string;
+  projectId: string;
+  description?: string;
+  assigneeIds?: string[];
+  priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  startDate?: Date;
+  dueDate?: Date;
+  blockers?: string;
+}) {
+  const employee = await getCurrentEmployee();
+  
+  const existingTask = await db.task.findUnique({
+    where: { id: taskId },
+    include: { project: { include: { members: true } }, assignees: true }
+  });
+
+  if (!existingTask) throw new Error("Task not found");
+
+  if (employee.role !== "ADMIN" && employee.role !== "MANAGER") {
+    const isAssignee = existingTask.assignees.some(a => a.id === employee.id);
+    const isProjectMember = existingTask.project.members.some(m => m.employeeId === employee.id);
+    if (!isAssignee && !isProjectMember) throw new Error("FORBIDDEN: Requires higher permission level");
+  }
+
+  const updatedTask = await db.task.update({
+    where: { id: taskId },
+    data: {
+      title: data.title,
+      description: data.description,
+      projectId: data.projectId,
+      priority: data.priority,
+      startDate: data.startDate ? new Date(data.startDate) : null,
+      dueDate: data.dueDate ? new Date(data.dueDate) : null,
+      blockers: data.blockers,
+      assignees: {
+        set: data.assigneeIds && data.assigneeIds.length > 0 
+          ? data.assigneeIds.map(id => ({ id })) 
+          : []
+      }
+    }
+  });
+
+  revalidatePath("/", "layout");
+  return { success: true, taskId: updatedTask.id };
+}
+
 export async function updateTaskStatusAction(taskId: string, newStatus: any) {
   const employee = await getCurrentEmployee();
 
@@ -55,7 +105,10 @@ export async function updateTaskStatusAction(taskId: string, newStatus: any) {
 
   const updatedTask = await db.task.update({
     where: { id: taskId },
-    data: { status: newStatus },
+    data: { 
+      status: newStatus,
+      completedAt: newStatus === "DONE" ? new Date() : null
+    },
     include: { blocking: true }
   });
 

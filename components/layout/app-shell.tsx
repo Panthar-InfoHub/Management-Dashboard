@@ -28,7 +28,7 @@ export function AppShell({ children, isAdmin }: { children: React.ReactNode, isA
           </div>
         </div>
         <CommandPalette isAdmin={isAdmin} />
-        <SubmitUpdateModal />
+        {/* <SubmitUpdateModal /> Hidden for now as requested */}
       </TooltipProvider>
     </ThemeProvider>
   );

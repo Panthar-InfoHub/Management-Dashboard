@@ -17,18 +17,15 @@ import {
 
 const navItems = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
-  { label: "Projects", href: "/projects", icon: FolderKanban, badge: "6" },
-  { label: "Tasks", href: "/tasks", icon: ClipboardCheck, badge: "10" },
+  { label: "Projects", href: "/projects", icon: FolderKanban },
+  { label: "Tasks", href: "/tasks", icon: ClipboardCheck },
   { label: "Teams", href: "/teams", icon: Users },
-  { label: "Members", href: "/employees", icon: UserCircle, badge: "12" },
-  { label: "Daily Updates", href: "/daily-updates", icon: MessageSquare, badge: "5" },
-  { label: "Calendar", href: "/calendar", icon: CalendarDays },
-  { label: "Documents", href: "/documents", icon: FileText },
+  { label: "Members", href: "/employees", icon: UserCircle },
   { label: "Reports", href: "/reports", icon: BarChart3 },
 ];
 
 const bottomItems = [
-  { label: "Notifications", href: "/notifications", icon: Bell, badge: "4" },
+  { label: "Notifications", href: "/notifications", icon: Bell },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 
@@ -92,7 +89,6 @@ export function Sidebar({ collapsed, setCollapsed, isMobile, isAdmin = false }: 
           >
             <Search className="h-3.5 w-3.5" />
             <span>Search…</span>
-            <kbd className="ml-auto rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px]">⌘K</kbd>
           </button>
         </div>
       )}

@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Plus, Check, Calendar as CalendarIcon, ChevronsUpDown, X } from "lucide-react";
 import Link from "next/link";
-import { createTaskAction } from "@/lib/actions/task.actions";
+import { createTaskAction, updateTaskAction } from "@/lib/actions/task.actions";
 import { format } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -20,10 +20,12 @@ import { toast } from "sonner";
 
 export function NewTaskForm({ 
   projects, 
-  employees 
+  employees,
+  initialData 
 }: { 
   projects: { id: string; name: string }[];
   employees: { id: string; firstName: string; lastName: string }[];
+  initialData?: any;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -39,14 +41,14 @@ export function NewTaskForm({
     dueDate: Date | undefined;
     blockers: string;
   }>({ 
-    title: "", 
-    description: "",
-    priority: "MEDIUM", 
-    assigneeIds: [],
-    project: projects[0]?.id || "",
-    startDate: new Date(),
-    dueDate: new Date(Date.now() + 7 * 86400000),
-    blockers: "",
+    title: initialData?.title || "", 
+    description: initialData?.description || "",
+    priority: initialData?.priority || "MEDIUM", 
+    assigneeIds: initialData?.assignees?.map((a: any) => a.id) || [],
+    project: initialData?.projectId || projects[0]?.id || "",
+    startDate: initialData?.startDate ? new Date(initialData.startDate) : new Date(),
+    dueDate: initialData?.dueDate ? new Date(initialData.dueDate) : new Date(Date.now() + 7 * 86400000),
+    blockers: initialData?.blockers || "",
   });
 
   const toggleAssignee = (id: string) => {
@@ -75,21 +77,42 @@ export function NewTaskForm({
     }
     
     startTransition(() => {
-      createTaskAction({
-        title: newTask.title,
-        projectId: newTask.project,
-        assigneeIds: newTask.assigneeIds,
-        priority: newTask.priority,
-        startDate: newTask.startDate,
-        dueDate: newTask.dueDate,
-        blockers: newTask.blockers
-      }).then(() => {
-        toast.success("Task created successfully!");
-        router.push("/tasks");
-      }).catch(err => {
-        console.error("Failed to create task", err);
-        toast.error("Failed to create task. Please try again.");
-      });
+      if (initialData) {
+        updateTaskAction(initialData.id, {
+          title: newTask.title,
+          description: newTask.description,
+          projectId: newTask.project,
+          assigneeIds: newTask.assigneeIds,
+          priority: newTask.priority,
+          startDate: newTask.startDate,
+          dueDate: newTask.dueDate,
+          blockers: newTask.blockers
+        }).then(() => {
+          toast.success("Task updated successfully!");
+          router.refresh();
+          router.push(`/tasks/${initialData.id}`);
+        }).catch(err => {
+          console.error("Failed to update task", err);
+          toast.error("Failed to update task. Please try again.");
+        });
+      } else {
+        createTaskAction({
+          title: newTask.title,
+          projectId: newTask.project,
+          assigneeIds: newTask.assigneeIds,
+          priority: newTask.priority,
+          startDate: newTask.startDate,
+          dueDate: newTask.dueDate,
+          blockers: newTask.blockers
+        }).then(() => {
+          toast.success("Task created successfully!");
+          router.refresh();
+          router.push("/tasks");
+        }).catch(err => {
+          console.error("Failed to create task", err);
+          toast.error("Failed to create task. Please try again.");
+        });
+      }
     });
   };
 
@@ -106,7 +129,7 @@ export function NewTaskForm({
           <div>
             <h1 className="text-lg font-semibold flex items-center gap-2">
               <span className="bg-primary/10 text-primary p-1.5 rounded-md"><Plus className="h-4 w-4" /></span>
-              Create New Task
+              {initialData ? "Edit Task" : "Create New Task"}
             </h1>
           </div>
         </div>
@@ -115,7 +138,7 @@ export function NewTaskForm({
             <Link href="/tasks">Cancel</Link>
           </Button>
           <Button onClick={handleCreateTask} className="px-8" disabled={isPending}>
-            {isPending ? "Creating..." : "Create Task"}
+            {isPending ? (initialData ? "Saving..." : "Creating...") : (initialData ? "Save Changes" : "Create Task")}
           </Button>
         </div>
       </div>

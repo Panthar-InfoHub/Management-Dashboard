@@ -1,67 +1,91 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { FolderKanban, ArrowRight } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { PROJECT_STATUS_COLORS, TASK_PRIORITY_COLORS, formatEnumLabel } from "@/lib/dashboard-colors";
 import Link from "next/link";
 
-const healthColors: Record<string, string> = {
-  GOOD: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20",
-  AT_RISK: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/20",
-  CRITICAL: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20 hover:bg-red-500/20",
-};
+interface ProjectSummary {
+  id: string;
+  name: string;
+  status: string;
+  priority: string;
+  computedProgress: number;
+  team: { name: string } | null;
+  lead?: { id: string; firstName: string; lastName: string; avatarUrl: string | null } | null;
+}
 
-const statusColors: Record<string, string> = {
-  ACTIVE: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20",
-  PLANNING: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20 hover:bg-purple-500/20",
-  ON_HOLD: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20 hover:bg-orange-500/20",
-  COMPLETED: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20",
-};
-
-export function ProjectsSummary({ projects }: { projects: any[] }) {
+export function ProjectsSummary({ projects }: { projects: ProjectSummary[] }) {
   return (
-    <Card className="border-border/50">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-indigo-500/10">
-              <FolderKanban className="h-3.5 w-3.5 text-indigo-500" />
-            </div>
-            <CardTitle className="text-sm font-semibold">Active Projects</CardTitle>
+    <div className="flex flex-col overflow-hidden rounded-xl border border-border/40 bg-background">
+      <div className="flex items-center justify-between gap-3 border-b border-border/40 bg-muted/10 p-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/40 bg-background">
+            <FolderKanban className="h-4.5 w-4.5 text-indigo-500" />
           </div>
-          <Link href="/projects" className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors">
-            View All <ArrowRight className="h-3 w-3" />
-          </Link>
+          <h3 className="text-sm font-semibold text-foreground">Active Projects</h3>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-2 pt-0">
-        {projects.map((project) => {
-          return (
-            <div key={project.id} className="group rounded-lg border border-transparent p-3 transition-all hover:border-border hover:bg-accent/30">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <p className="text-xs font-medium text-foreground truncate">{project.name}</p>
-                  <Badge variant="outline" className={cn("text-[9px] shrink-0", statusColors[project.status])}>{project.status.replace("_", " ")}</Badge>
-                </div>
-                <Badge variant="outline" className={cn("text-[9px] shrink-0", healthColors[project.health])}>{project.health.replace("_", " ")}</Badge>
+        <Link href="/projects" className="flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground">
+          View All <ArrowRight className="h-3 w-3" />
+        </Link>
+      </div>
+      <div className="space-y-1 p-3">
+        {projects.map((project) => (
+          <Link
+            key={project.id}
+            href={`/projects/${project.id}`}
+            className="group flex flex-col rounded-lg p-3 transition-colors hover:bg-accent/40"
+          >
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <p className="truncate text-xs font-medium text-foreground">{project.name}</p>
+                <Badge
+                  variant="outline"
+                  className="shrink-0 text-[9px]"
+                  style={{
+                    borderColor: `${PROJECT_STATUS_COLORS[project.status]}33`,
+                    backgroundColor: `${PROJECT_STATUS_COLORS[project.status]}1a`,
+                    color: PROJECT_STATUS_COLORS[project.status],
+                  }}
+                >
+                  {formatEnumLabel(project.status)}
+                </Badge>
+                {project.priority === "CRITICAL" && (
+                  <Badge
+                    variant="outline"
+                    className="shrink-0 text-[9px]"
+                    style={{
+                      borderColor: `${TASK_PRIORITY_COLORS.CRITICAL}33`,
+                      backgroundColor: `${TASK_PRIORITY_COLORS.CRITICAL}1a`,
+                      color: TASK_PRIORITY_COLORS.CRITICAL,
+                    }}
+                  >
+                    Critical
+                  </Badge>
+                )}
               </div>
-              <div className="flex items-center gap-3">
-                <Progress value={project.computedProgress} className="h-1.5 flex-1" />
-                <span className="text-[10px] font-medium text-muted-foreground shrink-0">{project.computedProgress}%</span>
-              </div>
-              <div className="mt-2 flex items-center justify-between">
-                <span className="text-[10px] text-muted-foreground">{project.team?.name || "No Team"}</span>
-              </div>
+              {project.lead && (
+                <Avatar className="h-5 w-5 shrink-0 rounded-full" title={`${project.lead.firstName} ${project.lead.lastName}`}>
+                  <AvatarImage src={project.lead.avatarUrl ?? undefined} />
+                  <AvatarFallback className="text-[8px]">{project.lead.firstName.charAt(0)}</AvatarFallback>
+                </Avatar>
+              )}
             </div>
-          );
-        })}
+            <div className="flex items-center gap-3">
+              <Progress value={project.computedProgress} className="h-1.5 flex-1" indicatorColor={PROJECT_STATUS_COLORS[project.status]} />
+              <span className="shrink-0 text-[10px] font-medium text-muted-foreground">{project.computedProgress}%</span>
+            </div>
+            <div className="mt-2 flex items-center justify-between">
+              <span className="text-[10px] text-muted-foreground">{project.team?.name ?? "No Team"}</span>
+            </div>
+          </Link>
+        ))}
         {projects.length === 0 && (
-          <div className="text-center py-6">
-            <p className="text-xs text-muted-foreground">You don't have any active projects yet.</p>
+          <div className="py-6 text-center">
+            <p className="text-xs text-muted-foreground">No active projects found.</p>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

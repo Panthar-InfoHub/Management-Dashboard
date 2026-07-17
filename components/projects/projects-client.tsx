@@ -19,6 +19,7 @@ import { updateProjectStatusAction } from "@/lib/actions/project.actions";
 const statusColors: Record<string, string> = { ACTIVE: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20", PLANNING: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20 hover:bg-purple-500/20", ON_HOLD: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20 hover:bg-orange-500/20", COMPLETED: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20", ARCHIVED: "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20 hover:bg-gray-500/20" };
 const priorityColors: Record<string, string> = { CRITICAL: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20 hover:bg-red-500/20", HIGH: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20 hover:bg-orange-500/20", MEDIUM: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20", LOW: "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20 hover:bg-gray-500/20" };
 
+
 export function ProjectsClient({ initialProjects, canCreate }: { initialProjects: any[], canCreate: boolean }) {
   const [projectList, setProjectList] = useState(initialProjects);
   const [search, setSearch] = useState("");
@@ -156,6 +157,7 @@ export function ProjectsClient({ initialProjects, canCreate }: { initialProjects
                       <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
                         Status: <Badge variant="outline" className={cn("px-1.5 py-0 rounded-sm shadow-none", statusColors[project.status])}>{project.status.replace("_", " ")}</Badge>
                       </div>
+
                       <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
                         Priority: <Badge variant="outline" className={cn("px-1.5 py-0 rounded-sm shadow-none", priorityColors[project.priority])}>{project.priority}</Badge>
                       </div>

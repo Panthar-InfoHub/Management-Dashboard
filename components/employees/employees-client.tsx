@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { createEmployeeAction, updateEmployeeAction, deleteEmployeeAction } from "@/lib/actions/employee.actions";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 const roleColors: Record<string, string> = { 
   ADMIN: "bg-purple-500/10 text-purple-600 border-purple-500/20", 
@@ -40,7 +41,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
         setNewEmp({ firstName: "", lastName: "", email: "", role: "EMPLOYEE", designation: "", password: "" });
         setSetCustomPassword(false);
         router.refresh();
-      }).catch(err => console.error(err));
+      }).catch(err => toast.error("Failed to add employee"));
     });
   };
 
@@ -51,7 +52,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
         setEditEmpOpen(false);
         setEditingEmp(null);
         router.refresh();
-      }).catch(err => console.error(err));
+      }).catch(err => toast.error("Failed to update employee"));
     });
   };
 
@@ -60,7 +61,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
     startTransition(() => {
       deleteEmployeeAction(id).then(() => {
         router.refresh();
-      }).catch(err => console.error(err));
+      }).catch(err => toast.error("Failed to delete employee"));
     });
   };
 

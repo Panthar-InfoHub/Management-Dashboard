@@ -44,26 +44,13 @@ export function CommandPalette({ isAdmin }: { isAdmin: boolean }) {
           <CommandItem onSelect={() => navigate("/tasks")} className="gap-2 px-4 py-2">
             <Plus className="h-4 w-4 text-muted-foreground" />
             <span>Create Task</span>
-            <CommandShortcut>⌘ T</CommandShortcut>
           </CommandItem>
           {isAdmin && (
             <CommandItem onSelect={() => navigate("/projects")} className="gap-2 px-4 py-2">
               <Plus className="h-4 w-4 text-muted-foreground" />
               <span>Create Project</span>
-              <CommandShortcut>⌘ P</CommandShortcut>
             </CommandItem>
           )}
-          <CommandItem 
-            onSelect={() => {
-              setOpen(false);
-              document.dispatchEvent(new CustomEvent("open-submit-update"));
-            }} 
-            className="gap-2 px-4 py-2"
-          >
-            <Zap className="h-4 w-4 text-muted-foreground" />
-            <span>Submit Daily Update</span>
-            <CommandShortcut>⌘ U</CommandShortcut>
-          </CommandItem>
         </CommandGroup>
 
         <CommandSeparator />
@@ -89,18 +76,6 @@ export function CommandPalette({ isAdmin }: { isAdmin: boolean }) {
             <UserCircle className="h-4 w-4 text-muted-foreground" />
             <span>Members</span>
           </CommandItem>
-          <CommandItem onSelect={() => navigate("/daily-updates")} className="gap-2 px-4 py-2">
-            <MessageSquare className="h-4 w-4 text-muted-foreground" />
-            <span>Daily Updates</span>
-          </CommandItem>
-          <CommandItem onSelect={() => navigate("/calendar")} className="gap-2 px-4 py-2">
-            <CalendarDays className="h-4 w-4 text-muted-foreground" />
-            <span>Calendar</span>
-          </CommandItem>
-          <CommandItem onSelect={() => navigate("/documents")} className="gap-2 px-4 py-2">
-            <FileText className="h-4 w-4 text-muted-foreground" />
-            <span>Documents</span>
-          </CommandItem>
           {isAdmin && (
             <>
               <CommandItem onSelect={() => navigate("/reports")} className="gap-2 px-4 py-2">
@@ -110,7 +85,6 @@ export function CommandPalette({ isAdmin }: { isAdmin: boolean }) {
               <CommandItem onSelect={() => navigate("/settings")} className="gap-2 px-4 py-2">
                 <Settings className="h-4 w-4 text-muted-foreground" />
                 <span>Settings</span>
-                <CommandShortcut>⌘ ,</CommandShortcut>
               </CommandItem>
             </>
           )}

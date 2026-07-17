@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,17 @@ const priorityColors: Record<string, string> = { CRITICAL: "bg-red-500/10 text-r
 export function TaskDetailClient({ initialTask, projectTasks, canEdit = true }: { initialTask: any, projectTasks?: any[], canEdit?: boolean }) {
   const router = useRouter();
   const [task, setTask] = useState(initialTask);
+  const [projectTasksList, setProjectTasksList] = useState(projectTasks || []);
+  
+  // Sync state with server props on revalidation
+  useEffect(() => {
+    setTask(initialTask);
+  }, [initialTask]);
+
+  useEffect(() => {
+    setProjectTasksList(projectTasks || []);
+  }, [projectTasks]);
+
   const [isPending, startTransition] = useTransition();
   const [expandedSubtasks, setExpandedSubtasks] = useState<Record<string, boolean>>({});
   const [isSubtaskDialogOpen, setIsSubtaskDialogOpen] = useState(false);
@@ -31,7 +42,7 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true }: 
   });
 
   // Build a fast lookup for subtasks
-  const tasksByParent = (projectTasks || []).reduce((acc: any, t: any) => {
+  const tasksByParent = projectTasksList.reduce((acc: any, t: any) => {
     if (t.parentId) {
       if (!acc[t.parentId]) acc[t.parentId] = [];
       acc[t.parentId].push(t);
@@ -97,6 +108,8 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true }: 
           setSubtaskForm(prev => ({ ...prev, title: "" }));
           router.refresh(); 
         }
+      }).catch(err => {
+        toast.error("Failed to create subtask");
       });
     });
   };
@@ -116,8 +129,8 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true }: 
         </div>
         <div className="flex gap-2 self-end sm:self-auto shrink-0">
           {canEdit && (
-            <Button variant="outline" size="sm" className="h-8 shadow-none text-xs">
-              Edit Task
+            <Button variant="outline" size="sm" className="h-8 shadow-none text-xs" asChild>
+              <Link href={`/tasks/${task.id}/edit`}>Edit Task</Link>
             </Button>
           )}
           {task.status !== "DONE" && (
@@ -293,8 +306,15 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true }: 
                                     <DropdownMenuItem 
                                       key={s} 
                                       onClick={() => {
+                                        const oldStatus = subtask.status;
+                                        setProjectTasksList(prev => prev.map(t => t.id === subtask.id ? { ...t, status: s } : t));
                                         startTransition(() => {
-                                          updateTaskStatusAction(subtask.id, s).then(() => router.refresh());
+                                          updateTaskStatusAction(subtask.id, s)
+                                            .then(() => router.refresh())
+                                            .catch(err => {
+                                              toast.error("Failed to update status");
+                                              setProjectTasksList(prev => prev.map(t => t.id === subtask.id ? { ...t, status: oldStatus } : t));
+                                            });
                                         });
                                       }} 
                                       className="text-xs cursor-pointer"
@@ -332,7 +352,11 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true }: 
                                   <DropdownMenuLabel className="text-xs">Assign To</DropdownMenuLabel>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem 
-                                    onClick={() => startTransition(() => { assignTaskAction(subtask.id, null).then(() => router.refresh()) })}
+                                    onClick={() => startTransition(() => { 
+                                      assignTaskAction(subtask.id, null)
+                                        .then(() => { toast.success("Task unassigned"); router.refresh(); })
+                                        .catch(() => toast.error("Failed to unassign task"));
+                                    })}
                                     className="text-xs text-red-500 cursor-pointer"
                                   >
                                     Unassign
@@ -341,7 +365,11 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true }: 
                                   {task.project.members.map((m: any) => (
                                     <DropdownMenuItem 
                                       key={m.employee.id} 
-                                      onClick={() => startTransition(() => { assignTaskAction(subtask.id, m.employee.id).then(() => router.refresh()) })}
+                                      onClick={() => startTransition(() => { 
+                                        assignTaskAction(subtask.id, m.employee.id)
+                                          .then(() => { toast.success("Task assigned"); router.refresh(); })
+                                          .catch(() => toast.error("Failed to assign task"));
+                                      })}
                                       className="text-xs cursor-pointer flex items-center gap-2"
                                     >
                                       <Avatar className="h-4 w-4">

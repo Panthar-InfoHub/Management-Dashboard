@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { Filter, Search, MessageSquare, ClipboardList, Clock, ChevronDown, ChevronRight as ChevronRightIcon } from "lucide-react";
 import { updateTaskStatusAction } from "@/lib/actions/task.actions";
@@ -32,12 +34,16 @@ export function KanbanBoard({
   initialTasks, 
   allowedProjects = [], 
   allowedTeams = [], 
-  allEmployees = [] 
+  allEmployees = [],
+  currentEmployeeId,
+  employeeRole
 }: { 
   initialTasks: any[], 
   allowedProjects?: any[], 
   allowedTeams?: any[], 
-  allEmployees?: any[] 
+  allEmployees?: any[],
+  currentEmployeeId: string,
+  employeeRole: string
 }) {
   const [taskList, setTaskList] = useState(initialTasks);
   // Remove local search state, we will use URL search params
@@ -50,16 +56,6 @@ export function KanbanBoard({
     e.stopPropagation();
     setExpandedTasks(prev => ({ ...prev, [id]: !prev[id] }));
   };
-
-  const tasksByParent = useMemo(() => {
-    return taskList.reduce((acc: any, t: any) => {
-      if (t.parentId) {
-        if (!acc[t.parentId]) acc[t.parentId] = [];
-        acc[t.parentId].push(t);
-      }
-      return acc;
-    }, {});
-  }, [taskList]);
 
   const urlTeam = searchParams.get("team") || "ALL";
   const urlProject = searchParams.get("project") || "ALL";
@@ -99,7 +95,6 @@ export function KanbanBoard({
   // The backend already filters `taskList`, but we keep this for optimistic UI rendering 
   // (e.g. when dragging a task, or when waiting for server component to reload)
   const filteredTasks = taskList.filter(t => {
-    if (t.parentId) return false;
     const matchSearch = t.title.toLowerCase().includes(urlSearch.toLowerCase()) || 
                         (t.project?.name || "").toLowerCase().includes(urlSearch.toLowerCase());
     const matchTeam = urlTeam === "ALL" || t.project?.team?.id === urlTeam;
@@ -174,6 +169,15 @@ export function KanbanBoard({
         </div>
         
         <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2 px-3 h-9 rounded-md border border-border/50 bg-background shrink-0">
+            <Switch 
+              id="my-tasks" 
+              checked={urlAssignee === currentEmployeeId} 
+              onCheckedChange={(checked) => updateUrlFilter("assignee", checked ? currentEmployeeId : "ALL")}
+            />
+            <Label htmlFor="my-tasks" className="text-xs font-medium cursor-pointer">My Tasks</Label>
+          </div>
+
           <Select value={urlTeam} onValueChange={(v) => updateUrlFilter("team", v)}>
             <SelectTrigger className="h-9 w-[130px] text-xs">
               <div className="flex items-center gap-2"><Filter className="h-3.5 w-3.5" /> <SelectValue placeholder="Team" /></div>
@@ -194,16 +198,18 @@ export function KanbanBoard({
             </SelectContent>
           </Select>
 
-          <Select value={urlAssignee} onValueChange={(v) => updateUrlFilter("assignee", v)}>
-            <SelectTrigger className="h-9 w-[130px] text-xs">
-              <div className="flex items-center gap-2"><Filter className="h-3.5 w-3.5" /> <SelectValue placeholder="Assignee" /></div>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All Assignees</SelectItem>
-              <SelectItem value="UNASSIGNED">Unassigned</SelectItem>
-              {assignees.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.firstName} {a.lastName}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          {(employeeRole === "ADMIN" || employeeRole === "MANAGER" || employeeRole === "TECH_LEAD") && (
+            <Select value={urlAssignee} onValueChange={(v) => updateUrlFilter("assignee", v)}>
+              <SelectTrigger className="h-9 w-[130px] text-xs">
+                <div className="flex items-center gap-2"><Filter className="h-3.5 w-3.5" /> <SelectValue placeholder="Assignee" /></div>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All Assignees</SelectItem>
+                <SelectItem value="UNASSIGNED">Unassigned</SelectItem>
+                {assignees.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.firstName} {a.lastName}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
         </div>
       </div>
 
@@ -254,77 +260,48 @@ export function KanbanBoard({
                           onClick={() => router.push(`/tasks/${task.id}`)}
                           className={cn("border-border/40 shadow-none hover:border-border transition-all hover:bg-muted/20 cursor-grab active:cursor-grabbing rounded-md", isPending && "opacity-80")}
                         >
-                          <CardContent className="p-3.5 space-y-3">
-                            <div className="flex flex-col gap-1.5">
-                              <div className="flex justify-between items-start gap-2">
-                                <Badge variant="outline" className={cn("text-[9px] px-1.5 py-0 rounded-sm shadow-none", priorityColors[task.priority])}>{task.priority}</Badge>
-                                <span className="text-[9px] font-medium text-muted-foreground truncate max-w-[100px] text-right">{task.project?.team?.name || "-"}</span>
+                          <CardContent className="p-2.5 flex flex-col gap-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex flex-col gap-0.5 min-w-0">
+                                {task.project?.name && (
+                                  <span className="text-[9px] font-medium text-muted-foreground uppercase tracking-wider truncate">
+                                    {task.project.team?.name ? `${task.project.team.name} › ` : ""}{task.project.name}
+                                  </span>
+                                )}
+                                <p className="text-xs font-semibold leading-tight text-foreground">{task.title}</p>
                               </div>
-                              <p className="text-sm font-medium leading-tight">{task.title}</p>
-                            </div>
-                            
-                            {task.project?.name && (
-                              <p className="text-[10px] font-medium text-muted-foreground truncate max-w-full">
-                                Project: {task.project.name}
-                              </p>
-                            )}
-
-                            <div className="flex flex-wrap gap-1">
-                              {task.labels?.slice(0, 2).map((l: string) => (
-                                <span key={l} className="rounded-full bg-accent px-1.5 py-0.5 text-[9px] text-muted-foreground">{l}</span>
-                              ))}
-                            </div>
-                            <div className="flex items-center justify-between pt-1 border-t border-border/30">
-                              <div className="flex items-center gap-1.5">
+                              <Avatar className="h-5 w-5 shrink-0 ring-1 ring-border/50">
                                 {assignee ? (
-                                  <Avatar className="h-4 w-4">
+                                  <>
                                     <AvatarImage src={assignee.avatarUrl} />
-                                    <AvatarFallback className="text-[7px] bg-primary/10">{assignee.firstName?.charAt(0)}</AvatarFallback>
-                                  </Avatar>
+                                    <AvatarFallback className="text-[8px] bg-primary/10">{assignee.firstName?.charAt(0)}</AvatarFallback>
+                                  </>
                                 ) : (
-                                  <div className="h-4 w-4 rounded-full border border-dashed border-border/50 bg-accent/50" />
+                                  <AvatarFallback className="text-[8px] bg-muted text-muted-foreground border-dashed">?</AvatarFallback>
                                 )}
-                              </div>
-                              <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                                {task.dueDate && (
-                                  <div className="flex items-center gap-1">
-                                    <Clock className="h-3 w-3" />
-                                    <span>{new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
-                                  </div>
-                                )}
-                              </div>
+                              </Avatar>
                             </div>
 
-                            {tasksByParent[task.id] && tasksByParent[task.id].length > 0 && (
-                              <div className="pt-2 border-t border-border/30 mt-2">
-                                <div 
-                                  className="flex items-center gap-1 cursor-pointer text-muted-foreground hover:text-foreground text-[10px] font-medium"
-                                  onClick={(e) => toggleTask(task.id, e)}
-                                >
-                                  {expandedTasks[task.id] ? <ChevronDown className="h-3 w-3" /> : <ChevronRightIcon className="h-3 w-3" />}
-                                  <span>{tasksByParent[task.id].length} Subtasks</span>
-                                </div>
-                                {expandedTasks[task.id] && (
-                                  <div className="flex flex-col gap-1.5 mt-2 pl-3 border-l border-border/50">
-                                    {tasksByParent[task.id].map((st: any) => (
-                                      <div 
-                                        key={st.id} 
-                                        className="flex items-center justify-between group/st"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          router.push(`/tasks/${st.id}`);
-                                        }}
-                                      >
-                                        <span className="text-[10px] text-muted-foreground truncate hover:text-foreground transition-colors cursor-pointer w-full pr-2">
-                                          {st.title}
-                                        </span>
-                                        <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", statusColors[st.status]?.split(" ")[0] || "bg-muted")} />
-                                      </div>
-                                    ))}
-                                  </div>
+                            <div className="flex items-center justify-between mt-1">
+                              <div className="flex items-center gap-1.5">
+                                <div className={cn("h-1.5 w-1.5 rounded-full shrink-0", priorityDots[task.priority] || "bg-muted")} title={`Priority: ${task.priority}`} />
+                                {task.dueDate && (
+                                  <span className="text-[9px] font-medium text-muted-foreground flex items-center gap-1">
+                                    <Clock className="h-2.5 w-2.5" />
+                                    {new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                  </span>
                                 )}
                               </div>
-                            )}
+                              
+                              {task.labels && task.labels.length > 0 && (
+                                <div className="flex gap-1 shrink-0">
+                                  {task.labels.slice(0, 1).map((l: string) => (
+                                    <span key={l} className="rounded text-[8px] font-medium bg-accent text-muted-foreground px-1 py-0.5 max-w-[60px] truncate">{l}</span>
+                                  ))}
+                                  {task.labels.length > 1 && <span className="rounded text-[8px] font-medium bg-accent text-muted-foreground px-1 py-0.5">+{task.labels.length - 1}</span>}
+                                </div>
+                              )}
+                            </div>
                           </CardContent>
                         </Card>
                       );
@@ -347,60 +324,40 @@ export function KanbanBoard({
               <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-4 px-5 py-3 text-[11px] font-medium text-muted-foreground uppercase tracking-wider bg-muted/20">
                 <span>Task</span><span>Status</span><span>Priority</span><span>Assignee</span><span>Due Date</span>
               </div>
-              {(() => {
-                const renderTree = (tasks: any[], depth = 0) => {
-                  return tasks.map(task => {
-                    const children = tasksByParent[task.id] || [];
-                    const isExpanded = expandedTasks[task.id];
-                    const assignee = task.assignees?.[0];
+              {filteredTasks.map(task => {
+                const assignee = task.assignees?.[0];
 
-                    return (
-                      <div key={task.id} className="flex flex-col">
-                        <div 
-                          onClick={() => router.push(`/tasks/${task.id}`)}
-                          className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-4 px-5 py-4 items-center hover:bg-muted/30 transition-colors cursor-pointer border-b border-border/40 last:border-b-0"
-                          style={{ paddingLeft: `calc(1.25rem + ${depth * 1.5}rem)` }}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            {children.length > 0 && (
-                              <button onClick={(e) => toggleTask(task.id, e)} className="p-0.5 hover:bg-accent rounded-sm shrink-0 mr-1.5">
-                                {isExpanded ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRightIcon className="h-3.5 w-3.5 text-muted-foreground" />}
-                              </button>
-                            )}
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-foreground truncate">{task.title}</p>
-                              <div className="flex gap-1 mt-0.5">
-                                {task.labels?.map((l: string) => <span key={l} className="text-[9px] text-muted-foreground bg-accent rounded-full px-1.5 py-0.5">{l}</span>)}
-                              </div>
-                            </div>
-                          </div>
-                          <Badge variant="outline" className={cn("text-[10px] w-fit", statusColors[task.status])}>{task.status.replace("_", " ")}</Badge>
-                          <Badge variant="outline" className={cn("text-[10px] w-fit", priorityColors[task.priority])}>{task.priority}</Badge>
-                          <div className="flex items-center gap-1.5">
-                            {assignee && (
-                              <>
-                                <Avatar className="h-4 w-4 shrink-0">
-                                  <AvatarImage src={assignee.avatarUrl} />
-                                  <AvatarFallback className="text-[7px] bg-primary/10">{assignee.firstName?.charAt(0)}</AvatarFallback>
-                                </Avatar>
-                                <span className="text-xs text-muted-foreground truncate">{assignee.firstName} {assignee.lastName}</span>
-                              </>
-                            )}
-                          </div>
-                          <span className="text-xs text-muted-foreground truncate">{task.dueDate ? new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "None"}</span>
+                return (
+                  <div 
+                    key={task.id}
+                    onClick={() => router.push(`/tasks/${task.id}`)}
+                    className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-4 px-5 py-4 items-center hover:bg-muted/30 transition-colors cursor-pointer border-b border-border/40 last:border-b-0"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{task.title}</p>
+                        <div className="flex gap-1 mt-0.5">
+                          {task.labels?.map((l: string) => <span key={l} className="text-[9px] text-muted-foreground bg-accent rounded-full px-1.5 py-0.5">{l}</span>)}
                         </div>
-                        {isExpanded && children.length > 0 && (
-                          <div className="flex flex-col w-full relative">
-                            {renderTree(children, depth + 1)}
-                          </div>
-                        )}
                       </div>
-                    );
-                  });
-                };
-
-                return renderTree(filteredTasks);
-              })()}
+                    </div>
+                    <Badge variant="outline" className={cn("text-[10px] w-fit", statusColors[task.status])}>{task.status.replace("_", " ")}</Badge>
+                    <Badge variant="outline" className={cn("text-[10px] w-fit", priorityColors[task.priority])}>{task.priority}</Badge>
+                    <div className="flex items-center gap-1.5">
+                      {assignee && (
+                        <>
+                          <Avatar className="h-4 w-4 shrink-0">
+                            <AvatarImage src={assignee.avatarUrl} />
+                            <AvatarFallback className="text-[7px] bg-primary/10">{assignee.firstName?.charAt(0)}</AvatarFallback>
+                          </Avatar>
+                          <span className="text-xs text-muted-foreground truncate">{assignee.firstName} {assignee.lastName}</span>
+                        </>
+                      )}
+                    </div>
+                    <span className="text-xs text-muted-foreground truncate">{task.dueDate ? new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "None"}</span>
+                  </div>
+                );
+              })}
             </div>
              </div>
           </TabsContent>

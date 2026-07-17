@@ -12,15 +12,6 @@ export async function updateProjectStatusAction(projectId: string, newStatus: an
     data: { status: newStatus }
   });
 
-  await db.auditLog.create({
-    data: {
-      action: "STATUS_CHANGE",
-      entity: "Project",
-      entityId: project.id,
-      description: `Moved project to ${newStatus}`,
-      actorId: employee.id
-    }
-  });
 
   revalidatePath("/projects");
   revalidatePath("/");
@@ -36,15 +27,6 @@ export async function updateProjectPriorityAction(projectId: string, newPriority
     data: { priority: newPriority }
   });
 
-  await db.auditLog.create({
-    data: {
-      action: "UPDATE",
-      entity: "Project",
-      entityId: project.id,
-      description: `Updated project priority to ${newPriority}`,
-      actorId: employee.id
-    }
-  });
 
   revalidatePath("/projects");
   revalidatePath(`/projects/${projectId}`);
@@ -100,15 +82,6 @@ export async function createProjectAction(data: {
     }
   });
 
-  await db.auditLog.create({
-    data: {
-      action: "CREATE",
-      entity: "Project",
-      entityId: project.id,
-      description: `Created project ${project.name}`,
-      actorId: employee.id
-    }
-  });
 
   revalidatePath("/projects");
   revalidatePath("/");
@@ -138,15 +111,6 @@ export async function updateProjectAction(projectId: string, data: {
     }
   });
 
-  await db.auditLog.create({
-    data: {
-      action: "UPDATE",
-      entity: "Project",
-      entityId: project.id,
-      description: `Updated project configuration`,
-      actorId: employee.id
-    }
-  });
 
   revalidatePath("/projects");
   revalidatePath(`/projects/${projectId}`);
@@ -164,15 +128,6 @@ export async function manageProjectMembersAction(projectId: string, memberIds: s
     })
   ]);
 
-  await db.auditLog.create({
-    data: {
-      action: "UPDATE",
-      entity: "Project",
-      entityId: projectId,
-      description: `Updated project roster (${memberIds.length} members)`,
-      actorId: employee.id
-    }
-  });
 
   revalidatePath("/projects");
   revalidatePath(`/projects/${projectId}`);
@@ -186,15 +141,6 @@ export async function deleteProjectAction(projectId: string) {
     where: { id: projectId }
   });
 
-  await db.auditLog.create({
-    data: {
-      action: "DELETE",
-      entity: "Project",
-      entityId: projectId,
-      description: `Deleted project`,
-      actorId: employee.id
-    }
-  });
 
   revalidatePath("/projects");
   return { success: true };

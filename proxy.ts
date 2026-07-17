@@ -2,18 +2,17 @@
 // Protected-first strategy: everything requires auth EXCEPT public routes.
 // This is the gatekeeper — all route protection happens here.
 
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-
-const isPublicRoute = createRouteMatcher([
-  "/sign-in(.*)",
-  "/sign-up(.*)",
-  "/api/webhooks(.*)",  // Clerk webhooks must be public
-]);
+import { clerkMiddleware } from "@clerk/nextjs/server";
 
 export default clerkMiddleware(async (auth, req) => {
-  if (!isPublicRoute(req)) {
-    await auth.protect();
+  const path = req.nextUrl.pathname;
+  
+  // Public routes that don't need protection
+  if (path.startsWith("/sign-in") || path.startsWith("/sign-up") || path.startsWith("/api/webhooks")) {
+    return;
   }
+  
+  await auth.protect();
 });
 
 export const config = {

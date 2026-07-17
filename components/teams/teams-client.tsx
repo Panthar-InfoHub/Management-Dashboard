@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Users, Plus, LayoutDashboard } from "lucide-react";
 import { createTeamAction } from "@/lib/actions/team.actions";
+import { toast } from "sonner";
 
 export function TeamsClient({ initialTeams, employees, isAdmin }: { initialTeams: any[], employees: any[], isAdmin: boolean }) {
   const [teamList, setTeamList] = useState(initialTeams);
@@ -27,7 +28,7 @@ export function TeamsClient({ initialTeams, employees, isAdmin }: { initialTeams
         setNewTeamOpen(false);
         setNewTeam({ name: "", description: "", leadId: "" });
         router.refresh();
-      }).catch(err => console.error(err));
+      }).catch(err => toast.error("Failed to create team"));
     });
   };
 

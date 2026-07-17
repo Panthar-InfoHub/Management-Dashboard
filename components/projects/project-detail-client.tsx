@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Calendar, CheckSquare, Clock, ChevronRight, ChevronDown, Plus, Users, Flag, TrendingUp, Settings2, Check } from "lucide-react";
@@ -73,7 +74,7 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
       updateProjectAction(project.id, editData).then(() => {
         setEditOpen(false);
         router.refresh();
-      }).catch(err => console.error(err));
+      }).catch(err => toast.error("Failed to update project"));
     });
   };
 
@@ -94,7 +95,7 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
       manageProjectMembersAction(project.id, finalMemberIds).then(() => {
         setManageOpen(false);
         router.refresh();
-      }).catch(err => console.error(err));
+      }).catch(err => toast.error("Failed to manage members"));
     });
   };
 
@@ -109,14 +110,14 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
   const handleQuickStatusChange = (newStatus: string) => {
     if (newStatus === project.status) return;
     startTransition(() => {
-      updateProjectStatusAction(project.id, newStatus).catch(err => console.error(err));
+      updateProjectStatusAction(project.id, newStatus).catch(err => toast.error("Failed to update status"));
     });
   };
 
   const handleQuickPriorityChange = (newPriority: string) => {
     if (newPriority === project.priority) return;
     startTransition(() => {
-      updateProjectPriorityAction(project.id, newPriority).catch(err => console.error(err));
+      updateProjectPriorityAction(project.id, newPriority).catch(err => toast.error("Failed to update priority"));
     });
   };
 

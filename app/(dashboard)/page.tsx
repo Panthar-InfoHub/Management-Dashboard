@@ -1,47 +1,55 @@
-import { ActionableWidgets } from "@/components/dashboard/productive-widgets";
-import { InsightsPanel } from "@/components/dashboard/insights-panel";
-import { DashboardCharts } from "@/components/dashboard/dashboard-charts";
-import { ActivityFeed } from "@/components/dashboard/activity-feed";
-import { TodayAgenda } from "@/components/dashboard/today-agenda";
+import { OverviewBlocks } from "@/components/dashboard/overview-blocks";
+import { PriorityPanels } from "@/components/dashboard/priority-panels";
 import { ProjectsSummary } from "@/components/dashboard/projects-summary";
 import { DashboardHeaderActions } from "@/components/dashboard/dashboard-header-actions";
-import { getDashboardActionableMetrics, getDashboardProjectsSummary, getDashboardActivityFeed } from "@/lib/queries/dashboard.queries";
+import { DashboardCharts } from "@/components/dashboard/dashboard-charts";
+import { getCurrentEmployee } from "@/lib/auth";
+import {
+  getDashboardOverview, getTaskRadar, getAttentionProjects, getDashboardProjectsSummary, getDashboardChartsData, getCompletionTrend,
+} from "@/lib/queries/dashboard.queries";
 
 export default async function DashboardPage() {
+  const employee = await getCurrentEmployee();
   const now = new Date();
   const greeting = now.getHours() < 12 ? "Good morning" : now.getHours() < 17 ? "Good afternoon" : "Good evening";
 
-  // Fetch real data from the DAL
-  const actionableMetrics = await getDashboardActionableMetrics();
-  const projectsSummary = await getDashboardProjectsSummary();
-  const activityFeed = await getDashboardActivityFeed();
+  const [overview, taskRadar, attentionProjects, projectsSummary, chartData, completionTrend] = await Promise.all([
+    getDashboardOverview(employee),
+    getTaskRadar(employee),
+    getAttentionProjects(employee),
+    getDashboardProjectsSummary(employee),
+    getDashboardChartsData(employee),
+    getCompletionTrend(employee),
+  ]);
 
   return (
-    <div className="space-y-6 p-6 h-full overflow-y-auto">
+    <div className="h-full space-y-8 overflow-y-auto p-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-foreground">{greeting}, Shiva</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">
+            {greeting}, {employee.firstName}
+          </h1>
           <p className="text-sm text-muted-foreground">
-            Here&apos;s what&apos;s happening across your organization today.
+            {overview.isAdmin
+              ? "Here's what's happening across your organization today."
+              : "Here's what's on your plate today."}
           </p>
         </div>
-        <DashboardHeaderActions />
+        <DashboardHeaderActions isAdmin={overview.isAdmin} />
       </div>
 
-      {/* Actionable Productive Row */}
-      <ActionableWidgets metrics={actionableMetrics} />
+      {/* Overview: 3 compound blocks, nothing to click through to understand */}
+      <OverviewBlocks overview={overview} />
 
-      {/* Charts Row */}
-      <div className="grid gap-4">
-        <DashboardCharts />
-      </div>
+      {/* Priority Panels: task radar + needs attention */}
+      <PriorityPanels isAdmin={overview.isAdmin} taskRadar={taskRadar} attentionProjects={attentionProjects} />
 
-      {/* Activity + Projects Row */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <ActivityFeed activities={activityFeed} />
-        <ProjectsSummary projects={projectsSummary} />
-      </div>
+      {/* Admin/Manager Only: Org-wide Charts */}
+      {chartData && <DashboardCharts chartData={chartData} completionTrend={completionTrend} />}
+
+      {/* Projects */}
+      <ProjectsSummary projects={projectsSummary} />
     </div>
   );
 }

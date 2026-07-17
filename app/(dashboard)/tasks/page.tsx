@@ -43,6 +43,8 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         allowedProjects={projects} 
         allowedTeams={teams} 
         allEmployees={allEmployees}
+        currentEmployeeId={employee.id}
+        employeeRole={employee.role}
       />
     </div>
   );

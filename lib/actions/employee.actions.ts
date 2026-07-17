@@ -75,7 +75,7 @@ export async function updateEmployeeAction(id: string, data: {
   });
 
   // Sync role to Clerk public metadata if the user has signed up
-  if (!employee.clerkId.startsWith("pending_")) {
+  if (!employee.clerkId.startsWith("pending_") && !employee.clerkId.startsWith("seed_")) {
     const client = await clerkClient();
     await client.users.updateUserMetadata(employee.clerkId, {
       publicMetadata: {
@@ -97,7 +97,7 @@ export async function deleteEmployeeAction(id: string) {
   });
 
   // If they have a real Clerk account, delete them from Clerk as well
-  if (!employee.clerkId.startsWith("pending_")) {
+  if (!employee.clerkId.startsWith("pending_") && !employee.clerkId.startsWith("seed_")) {
     try {
       const client = await clerkClient();
       await client.users.deleteUser(employee.clerkId);

@@ -56,15 +56,11 @@ export function TopNav() {
         >
           <Search className="h-4 w-4" />
           <span className="hidden text-xs sm:inline">Search</span>
-          <kbd className="hidden rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px] sm:inline">⌘K</kbd>
         </Button>
 
         <Separator orientation="vertical" className="mx-1 h-5" />
 
-        {/* Quick action */}
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-          <Plus className="h-4 w-4" />
-        </Button>
+
 
         {/* Notifications */}
         <DropdownMenu>
@@ -115,9 +111,7 @@ export function TopNav() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Separator orientation="vertical" className="mx-1 h-5" />
 
-        <Separator orientation="vertical" className="mx-1 h-5" />
 
         {/* User menu (Clerk) */}
         <div className="flex items-center pl-2">

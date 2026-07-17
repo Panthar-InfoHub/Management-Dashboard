@@ -2,8 +2,14 @@ import { db } from "@/lib/db";
 import { getCurrentEmployee } from "@/lib/auth";
 import { NewTaskForm } from "@/components/tasks/new-task-form";
 
+import { redirect } from "next/navigation";
+
 export default async function NewTaskPage() {
   const employee = await getCurrentEmployee();
+
+  if (employee.role !== "ADMIN" && employee.role !== "MANAGER") {
+    redirect("/");
+  }
 
   const projectWhereClause = employee.role === "ADMIN" ? {
     status: { not: "COMPLETED" as const }
