@@ -215,9 +215,9 @@ export function ProjectsClient({ initialProjects, canCreate }: { initialProjects
               className="mt-6 h-[400px]"
             />
           ) : (
-            <div className="border border-border/40 rounded-lg overflow-hidden bg-background">
-              <div className="divide-y divide-border/40">
-                <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-4 px-5 py-3 text-[11px] font-medium text-muted-foreground uppercase tracking-wider bg-muted/20">
+            <div className="border border-border/40 rounded-lg overflow-x-auto bg-background">
+              <div className="divide-y divide-border/40 min-w-[1000px]">
+                <div className="grid grid-cols-[minmax(250px,2fr)_minmax(120px,1fr)_minmax(150px,1fr)_minmax(150px,1fr)_minmax(120px,1fr)] gap-4 px-5 py-3 text-[11px] font-medium text-muted-foreground uppercase tracking-wider bg-muted/20">
                   <span>Project</span><span>Status</span><span>Progress</span><span>Team</span><span>Deadline</span>
                 </div>
                 {filteredProjects.map((project) => {
@@ -226,7 +226,7 @@ export function ProjectsClient({ initialProjects, canCreate }: { initialProjects
                   <div 
                     key={project.id} 
                     onClick={() => router.push(`/projects/${project.id}`)}
-                    className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-4 px-5 py-4 items-center hover:bg-muted/30 transition-colors cursor-pointer"
+                    className="grid grid-cols-[minmax(250px,2fr)_minmax(120px,1fr)_minmax(150px,1fr)_minmax(150px,1fr)_minmax(120px,1fr)] gap-4 px-5 py-4 items-center hover:bg-muted/30 transition-colors cursor-pointer"
                   >
                     <div>
                       <p className="text-sm font-medium text-foreground">{project.name}</p>

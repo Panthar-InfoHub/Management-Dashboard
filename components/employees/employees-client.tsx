@@ -222,15 +222,15 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
         </div>
       </div>
 
-      <div className="border border-border/40 rounded-lg overflow-hidden bg-background">
-        <div className="divide-y divide-border/40 bg-muted/5">
+      <div className="border border-border/40 rounded-lg overflow-x-auto bg-background">
+        <div className="divide-y divide-border/40 bg-muted/5 min-w-[1000px]">
           {/* Table Header */}
           <div className={cn(
             "grid gap-4 px-5 py-3 text-[11px] font-medium text-muted-foreground uppercase tracking-wider bg-muted/20",
-            isAdmin && (canUpdate || canDelete) ? "grid-cols-[2fr_1.5fr_1.5fr_1fr_40px]" :
-            isAdmin && !(canUpdate || canDelete) ? "grid-cols-[2fr_1.5fr_1.5fr_1fr]" :
-            !isAdmin && (canUpdate || canDelete) ? "grid-cols-[2fr_1.5fr_1fr_40px]" :
-            "grid-cols-[2fr_1.5fr_1fr]"
+            isAdmin && (canUpdate || canDelete) ? "grid-cols-[minmax(250px,2fr)_minmax(180px,1.5fr)_minmax(180px,1.5fr)_minmax(120px,1fr)_40px]" :
+            isAdmin && !(canUpdate || canDelete) ? "grid-cols-[minmax(250px,2fr)_minmax(180px,1.5fr)_minmax(180px,1.5fr)_minmax(120px,1fr)]" :
+            !isAdmin && (canUpdate || canDelete) ? "grid-cols-[minmax(250px,2fr)_minmax(180px,1.5fr)_minmax(120px,1fr)_40px]" :
+            "grid-cols-[minmax(250px,2fr)_minmax(180px,1.5fr)_minmax(120px,1fr)]"
           )}>
             <span>Name & Title</span>
             <span>Contact Info</span>
@@ -246,10 +246,10 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
             filteredEmployees.map(emp => (
               <div key={emp.id} className={cn(
                 "grid gap-4 px-5 py-4 items-center hover:bg-muted/30 transition-colors",
-                isAdmin && (canUpdate || canDelete) ? "grid-cols-[2fr_1.5fr_1.5fr_1fr_40px]" :
-                isAdmin && !(canUpdate || canDelete) ? "grid-cols-[2fr_1.5fr_1.5fr_1fr]" :
-                !isAdmin && (canUpdate || canDelete) ? "grid-cols-[2fr_1.5fr_1fr_40px]" :
-                "grid-cols-[2fr_1.5fr_1fr]"
+                isAdmin && (canUpdate || canDelete) ? "grid-cols-[minmax(250px,2fr)_minmax(180px,1.5fr)_minmax(180px,1.5fr)_minmax(120px,1fr)_40px]" :
+                isAdmin && !(canUpdate || canDelete) ? "grid-cols-[minmax(250px,2fr)_minmax(180px,1.5fr)_minmax(180px,1.5fr)_minmax(120px,1fr)]" :
+                !isAdmin && (canUpdate || canDelete) ? "grid-cols-[minmax(250px,2fr)_minmax(180px,1.5fr)_minmax(120px,1fr)_40px]" :
+                "grid-cols-[minmax(250px,2fr)_minmax(180px,1.5fr)_minmax(120px,1fr)]"
               )}>
                 
                 {/* Column 1: Name & Title */}

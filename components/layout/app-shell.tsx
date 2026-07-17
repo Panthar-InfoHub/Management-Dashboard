@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { ThemeProvider } from "@/components/providers/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopNav } from "@/components/layout/top-nav";
@@ -13,7 +12,6 @@ export function AppShell({ children, isAdmin }: { children: React.ReactNode, isA
   const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <ThemeProvider>
       <TooltipProvider delayDuration={0}>
         <div className="flex h-screen overflow-hidden">
           <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} isAdmin={isAdmin} />
@@ -30,6 +28,5 @@ export function AppShell({ children, isAdmin }: { children: React.ReactNode, isA
         <CommandPalette isAdmin={isAdmin} />
         {/* <SubmitUpdateModal /> Hidden for now as requested */}
       </TooltipProvider>
-    </ThemeProvider>
   );
 }

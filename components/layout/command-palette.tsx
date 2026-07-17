@@ -78,10 +78,7 @@ export function CommandPalette({ isAdmin }: { isAdmin: boolean }) {
           </CommandItem>
           {isAdmin && (
             <>
-              <CommandItem onSelect={() => navigate("/reports")} className="gap-2 px-4 py-2">
-                <BarChart3 className="h-4 w-4 text-muted-foreground" />
-                <span>Reports</span>
-              </CommandItem>
+
               <CommandItem onSelect={() => navigate("/settings")} className="gap-2 px-4 py-2">
                 <Settings className="h-4 w-4 text-muted-foreground" />
                 <span>Settings</span>

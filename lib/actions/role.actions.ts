@@ -5,14 +5,14 @@ import { requireAuth } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 
 export async function getSystemRolesAction() {
-  await requireAuth("settings:view");
+  await requireAuth("role:manage");
   return await db.systemRole.findMany({
     orderBy: { createdAt: 'asc' }
   });
 }
 
 export async function updateSystemRolePermissionsAction(name: string, permissions: string[]) {
-  await requireAuth("settings:view");
+  await requireAuth("role:manage");
   
   // Prevent removing admin permissions from the core ADMIN role
   if (name === "ADMIN") {
@@ -30,7 +30,7 @@ export async function updateSystemRolePermissionsAction(name: string, permission
 }
 
 export async function createSystemRoleAction(name: string, permissions: string[]) {
-  await requireAuth("settings:view");
+  await requireAuth("role:manage");
   
   const role = await db.systemRole.create({
     data: { 
@@ -46,7 +46,7 @@ export async function createSystemRoleAction(name: string, permissions: string[]
 }
 
 export async function deleteSystemRoleAction(name: string) {
-  await requireAuth("settings:view");
+  await requireAuth("role:manage");
 
   const role = await db.systemRole.findUnique({ where: { name } });
   if (role?.isSystem) {

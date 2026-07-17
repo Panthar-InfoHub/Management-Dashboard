@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { requireAuth } from "@/lib/auth";
+import { requireAuth, getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 
 export async function updateProjectStatusAction(projectId: string, newStatus: any) {
@@ -142,7 +142,10 @@ export async function manageProjectMembersAction(projectId: string, memberIds: s
   const employee = await getCurrentEmployee();
   const hasGlobalPerm = await checkPermission("project:update");
 
-  const existing = await db.project.findUnique({ where: { id: projectId } });
+  const existing = await db.project.findUnique({ 
+    where: { id: projectId },
+    include: { members: true }
+  });
   if (!existing) throw new Error("Project not found");
   if (!hasGlobalPerm && existing.leadId !== employee.id) {
     throw new Error("You do not have permission for this action.");
@@ -156,7 +159,22 @@ export async function manageProjectMembersAction(projectId: string, memberIds: s
     })
   ]);
 
+  // Calculate new members and notify them
+  const existingMemberIds = existing.members.map(m => m.employeeId);
+  const newlyAddedIds = memberIds.filter(id => !existingMemberIds.includes(id));
 
+  if (newlyAddedIds.length > 0) {
+    const { createNotificationAction } = await import("./notification.actions");
+    await Promise.all(newlyAddedIds.map(id => 
+      createNotificationAction({
+        recipientId: id,
+        type: "PROJECT_ADDED",
+        title: "Added to Project",
+        message: `You have been added to the project: ${existing.name}`,
+        actionUrl: `/projects/${existing.id}`
+      })
+    ));
+  }
   revalidatePath("/projects");
   revalidatePath(`/projects/${projectId}`);
   return { success: true };

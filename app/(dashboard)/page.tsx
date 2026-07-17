@@ -25,7 +25,7 @@ export default async function DashboardPage() {
   return (
     <div className="h-full space-y-8 overflow-y-auto p-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-foreground">
             {greeting}, {employee.firstName}

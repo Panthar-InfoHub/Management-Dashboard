@@ -176,7 +176,7 @@ export function KanbanBoard({
   const hasActiveFilters = urlTeam !== "ALL" || urlProject !== "ALL" || urlAssignee !== "ALL" || urlSearch !== "";
 
   return (
-    <div className="flex flex-col gap-4 flex-1 min-w-0 overflow-hidden">
+    <div className="flex flex-col gap-4 flex-1 min-w-0">
       <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0 flex-wrap">
         <div className="relative flex-1 w-full min-w-[200px]">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -249,20 +249,20 @@ export function KanbanBoard({
           className="mt-6 h-[400px]"
         />
       ) : (
-        <Tabs defaultValue="board" className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <Tabs defaultValue="board" className="flex-1 flex flex-col min-w-0">
           <TabsList className="shrink-0 w-fit">
           <TabsTrigger value="board" className="text-xs">Board</TabsTrigger>
           <TabsTrigger value="list" className="text-xs">List</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="board" className="mt-0 pt-4 flex-1 overflow-hidden focus-visible:outline-none">
-          <div className="flex overflow-x-auto pb-4 gap-4 h-full snap-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        <TabsContent value="board" className="mt-0 pt-4 flex-1 focus-visible:outline-none">
+          <div className="flex overflow-x-auto pb-4 gap-4 snap-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             {columns.map(col => {
               const colTasks = filteredTasks.filter(t => t.status === col.id);
               return (
                 <div 
                   key={col.id} 
-                  className="flex flex-col h-full bg-muted/10 rounded-lg p-2.5 border border-border/40 min-h-[400px] min-w-[280px] max-w-[280px] snap-center shrink-0"
+                  className="flex flex-col bg-muted/10 rounded-lg p-2.5 border border-border/40 min-h-[100px] min-w-[280px] max-w-[280px] snap-center shrink-0"
                   onDragOver={handleDragOver}
                   onDrop={(e) => handleDrop(e, col.id)}
                 >
@@ -272,7 +272,7 @@ export function KanbanBoard({
                       <span className="text-[10px] text-muted-foreground font-medium">{colTasks.length}</span>
                     </div>
                   </div>
-                  <div className="space-y-2 flex-1 overflow-y-auto pr-1 pb-4">
+                  <div className="space-y-2 flex-1 pr-1 pb-4">
                     {colTasks.map(task => {
                       const assignee = task.assignees && task.assignees.length > 0 ? task.assignees[0] : null;
                       const extraAssignees = task.assignees ? task.assignees.length - 1 : 0;
@@ -343,9 +343,9 @@ export function KanbanBoard({
         </TabsContent>
 
         <TabsContent value="list" className="mt-0 pt-4 flex-1 overflow-y-auto focus-visible:outline-none">
-          <div className="border border-border/40 rounded-lg overflow-hidden bg-background">
-            <div className="divide-y divide-border/40">
-              <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-4 px-5 py-3 text-[11px] font-medium text-muted-foreground uppercase tracking-wider bg-muted/20">
+          <div className="border border-border/40 rounded-lg overflow-x-auto bg-background">
+            <div className="divide-y divide-border/40 min-w-[1000px]">
+              <div className="grid grid-cols-[minmax(250px,2fr)_minmax(120px,1fr)_minmax(120px,1fr)_minmax(150px,1fr)_minmax(120px,1fr)] gap-4 px-5 py-3 text-[11px] font-medium text-muted-foreground uppercase tracking-wider bg-muted/20">
                 <span>Task</span><span>Status</span><span>Priority</span><span>Assignee</span><span>Due Date</span>
               </div>
               {filteredTasks.map(task => {
@@ -355,7 +355,7 @@ export function KanbanBoard({
                   <div 
                     key={task.id}
                     onClick={() => router.push(`/tasks/${task.id}`)}
-                    className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-4 px-5 py-4 items-center hover:bg-muted/30 transition-colors cursor-pointer border-b border-border/40 last:border-b-0"
+                    className="grid grid-cols-[minmax(250px,2fr)_minmax(120px,1fr)_minmax(120px,1fr)_minmax(150px,1fr)_minmax(120px,1fr)] gap-4 px-5 py-4 items-center hover:bg-muted/30 transition-colors cursor-pointer border-b border-border/40 last:border-b-0"
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <div className="min-w-0">

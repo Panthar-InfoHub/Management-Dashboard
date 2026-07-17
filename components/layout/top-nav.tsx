@@ -3,6 +3,7 @@
 import { useTheme } from "@/components/providers/theme-provider";
 import { UserButton, Show } from "@clerk/nextjs";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,27 +15,53 @@ import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
   Bell, ChevronRight, Moon, Sun, Monitor, Plus,
-  Search, Command, Menu,
+  Search, Command, Menu, CheckCheck
 } from "lucide-react";
-import { notifications } from "@/lib/mock-data";
+import { useEffect, useState, useTransition } from "react";
+import { getRecentNotificationsAction, markAllNotificationsAsReadAction } from "@/lib/actions/notification.actions";
+import { formatDistanceToNow } from "date-fns";
 import { Sidebar } from "./sidebar";
 
 export function TopNav() {
   const { theme, setTheme } = useTheme();
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [isPending, startTransition] = useTransition();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const pathname = usePathname();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    const fetchNotifs = async () => {
+      try {
+        const data = await getRecentNotificationsAction();
+        setNotifications(data);
+      } catch (e) {}
+    };
+    fetchNotifs();
+  }, []);
+
+  const unreadCount = notifications.filter(n => !n.isRead).length;
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-background/80 backdrop-blur-md px-6">
       {/* Mobile Menu & Breadcrumb */}
       <div className="flex items-center gap-3">
-        <Sheet>
+        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
           <SheetTrigger asChild>
             <Button variant="ghost" size="icon" className="md:hidden -ml-2 text-muted-foreground">
               <Menu className="h-5 w-5" />
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="p-0 w-64 border-r border-border">
-            <Sidebar collapsed={false} setCollapsed={() => {}} isMobile={true} />
+            <Sidebar collapsed={false} setCollapsed={() => setMobileMenuOpen(false)} isMobile={true} />
           </SheetContent>
         </Sheet>
         
@@ -77,22 +104,48 @@ export function TopNav() {
           <DropdownMenuContent align="end" className="w-80">
             <div className="flex items-center justify-between px-3 py-2">
               <p className="text-sm font-semibold">Notifications</p>
-              <Badge variant="secondary" className="text-[10px]">{unreadCount} new</Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="text-[10px]">{unreadCount} new</Badge>
+                {unreadCount > 0 && (
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-6 w-6" 
+                    disabled={isPending}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      startTransition(() => {
+                        markAllNotificationsAsReadAction().then(() => {
+                          setNotifications(notifications.map(n => ({ ...n, isRead: true })));
+                        });
+                      });
+                    }}
+                  >
+                    <CheckCheck className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
             </div>
             <DropdownMenuSeparator />
-            {notifications.slice(0, 5).map((n) => (
-              <DropdownMenuItem key={n.id} className="flex flex-col items-start gap-0.5 px-3 py-2">
-                <div className="flex w-full items-center gap-2">
-                  <span className={`text-xs font-medium ${n.read ? "text-muted-foreground" : "text-foreground"}`}>{n.title}</span>
-                  {!n.read && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-blue-500" />}
-                </div>
-                <span className="text-[11px] text-muted-foreground">{n.description}</span>
-                <span className="text-[10px] text-muted-foreground/60">{n.time}</span>
-              </DropdownMenuItem>
-            ))}
+            {notifications.length === 0 ? (
+              <div className="py-6 text-center text-sm text-muted-foreground">
+                No notifications yet.
+              </div>
+            ) : (
+              notifications.slice(0, 5).map((n) => (
+                <DropdownMenuItem key={n.id} className="flex flex-col items-start gap-0.5 px-3 py-2 cursor-pointer" onClick={() => window.location.href = n.actionUrl || "/notifications"}>
+                  <div className="flex w-full items-center gap-2">
+                    <span className={`text-xs font-medium ${n.isRead ? "text-muted-foreground" : "text-foreground"}`}>{n.title}</span>
+                    {!n.isRead && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-blue-500" />}
+                  </div>
+                  <span className="text-[11px] text-muted-foreground truncate w-full">{n.message}</span>
+                  <span className="text-[10px] text-muted-foreground/60">{formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}</span>
+                </DropdownMenuItem>
+              ))
+            )}
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="justify-center text-xs text-muted-foreground">
-              View All Notifications
+            <DropdownMenuItem asChild className="justify-center text-xs text-muted-foreground cursor-pointer">
+              <Link href="/notifications">View All Notifications</Link>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -101,7 +154,7 @@ export function TopNav() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-              {theme === "dark" ? <Moon className="h-4 w-4" /> : theme === "light" ? <Sun className="h-4 w-4" /> : <Monitor className="h-4 w-4" />}
+              {mounted && theme === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">

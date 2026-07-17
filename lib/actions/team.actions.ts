@@ -61,7 +61,10 @@ export async function manageTeamMembersAction(teamId: string, memberIds: string[
   const employee = await getCurrentEmployee();
   const hasGlobalPerm = await checkPermission("team:update");
 
-  const existing = await db.team.findUnique({ where: { id: teamId } });
+  const existing = await db.team.findUnique({ 
+    where: { id: teamId },
+    include: { members: true }
+  });
   if (!existing) throw new Error("Team not found");
   if (!hasGlobalPerm && existing.leadId !== employee.id) {
     throw new Error("You do not have permission for this action.");
@@ -76,6 +79,23 @@ export async function manageTeamMembersAction(teamId: string, memberIds: string[
       }
     }
   });
+
+  // Calculate new members and notify them
+  const existingMemberIds = existing.members.map(m => m.id);
+  const newlyAddedIds = memberIds.filter(id => !existingMemberIds.includes(id));
+
+  if (newlyAddedIds.length > 0) {
+    const { createNotificationAction } = await import("./notification.actions");
+    await Promise.all(newlyAddedIds.map(id => 
+      createNotificationAction({
+        recipientId: id,
+        type: "TEAM_ADDED",
+        title: "Added to Team",
+        message: `You have been added to the team: ${team.name}`,
+        actionUrl: `/teams/${team.id}`
+      })
+    ));
+  }
 
   revalidatePath("/teams");
   revalidatePath(`/teams/${teamId}`);

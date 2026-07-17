@@ -15,16 +15,18 @@ import {
   PanelLeftClose, PanelLeft,
 } from "lucide-react";
 
-const navItems = [
+type NavItem = { label: string; href: string; icon: any; badge?: string };
+
+const navItems: NavItem[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
   { label: "Projects", href: "/projects", icon: FolderKanban },
   { label: "Tasks", href: "/tasks", icon: ClipboardCheck },
   { label: "Teams", href: "/teams", icon: Users },
   { label: "Members", href: "/employees", icon: UserCircle },
-  { label: "Reports", href: "/reports", icon: BarChart3 },
+
 ];
 
-const bottomItems = [
+const bottomItems: NavItem[] = [
   { label: "Notifications", href: "/notifications", icon: Bell },
   { label: "Settings", href: "/settings", icon: Settings },
 ];

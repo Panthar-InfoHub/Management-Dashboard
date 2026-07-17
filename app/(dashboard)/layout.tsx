@@ -5,5 +5,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // Triggers JIT sync if the webhook didn't fire, ensuring the Employee record exists.
   const employee = await getCurrentEmployee();
   
-  return <AppShell isAdmin={employee.role === "ADMIN"}>{children}</AppShell>;
+  return (
+      <AppShell isAdmin={employee.role === "ADMIN"}>{children}</AppShell>
+  );
 }

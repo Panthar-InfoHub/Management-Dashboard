@@ -6,7 +6,6 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { hasPermission, type Permission } from "@/lib/permissions";
-import { getDefaultLeaveBalances } from "@/lib/leave-config";
 import type { Employee } from "@prisma/client";
 
 export type AuthEmployee = Pick<
@@ -79,9 +78,6 @@ export async function getCurrentEmployee(): Promise<AuthEmployee> {
             lastName: user.lastName || "User",
             avatarUrl: user.imageUrl,
             role: "ADMIN",
-            leaveBalances: {
-              create: getDefaultLeaveBalances(),
-            },
           },
           select: {
             id: true, clerkId: true, email: true, firstName: true,

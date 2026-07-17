@@ -8,7 +8,7 @@ export default clerkMiddleware(async (auth, req) => {
   const path = req.nextUrl.pathname;
   
   // Public routes that don't need protection
-  if (path.startsWith("/sign-in") || path.startsWith("/sign-up") || path.startsWith("/api/webhooks")) {
+  if (path.startsWith("/sign-in") || path.startsWith("/sign-up") || path.startsWith("/api/webhooks") || path === "/manifest.json") {
     return;
   }
   

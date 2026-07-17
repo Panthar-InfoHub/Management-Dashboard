@@ -7,7 +7,6 @@
 import { verifyWebhook } from "@clerk/nextjs/webhooks";
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
-import { getDefaultLeaveBalances } from "@/lib/leave-config";
 
 export async function POST(req: NextRequest) {
   let evt;
@@ -43,9 +42,6 @@ export async function POST(req: NextRequest) {
           avatarUrl: image_url ?? null,
           role: "EMPLOYEE", // default — admin promotes manually
           status: "ACTIVE",
-          leaveBalances: {
-            create: getDefaultLeaveBalances(),
-          },
         },
       });
       console.log(`[Webhook] Created employee for ${email} (${id})`);

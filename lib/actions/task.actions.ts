@@ -31,8 +31,20 @@ export async function createTaskAction(data: {
     }
   });
 
-  // Log audit
-  
+  if (data.assigneeIds && data.assigneeIds.length > 0) {
+    const { createNotificationAction } = await import("./notification.actions");
+    await Promise.all(data.assigneeIds.map(id => {
+      if (id !== employee.id) {
+        return createNotificationAction({
+          recipientId: id,
+          type: "TASK_ASSIGNED",
+          title: "New Task Assigned",
+          message: `You were assigned a new task: ${task.title}`,
+          actionUrl: `/tasks/${task.id}`
+        });
+      }
+    }));
+  }
 
   revalidatePath("/", "layout");
   return { success: true, taskId: task.id };
@@ -239,7 +251,16 @@ export async function assignTaskAction(taskId: string, assigneeId: string | null
     }
   });
 
-  
+  if (assigneeId && assigneeId !== employee.id) {
+    const { createNotificationAction } = await import("./notification.actions");
+    await createNotificationAction({
+      recipientId: assigneeId,
+      type: "TASK_ASSIGNED",
+      title: "Task Assigned",
+      message: `You were assigned to: ${task.title}`,
+      actionUrl: `/tasks/${task.id}`
+    });
+  }
 
   revalidatePath("/", "layout");
   return { success: true, task };
