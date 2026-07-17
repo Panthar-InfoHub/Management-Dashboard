@@ -1,11 +1,13 @@
 import { db } from "@/lib/db";
-import { getCurrentEmployee } from "@/lib/auth";
+import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 
 export async function getProjectsList() {
   const employee = await getCurrentEmployee();
 
+  const canViewAll = await checkPermission("project:update");
+  
   // Fetch all projects where the employee is explicitly a member or the project lead (Admins/Managers see all)
-  const whereClause = (employee.role === "ADMIN" || employee.role === "MANAGER") ? {} : {
+  const whereClause = canViewAll ? {} : {
     OR: [
       { members: { some: { employeeId: employee.id } } },
       { leadId: employee.id }

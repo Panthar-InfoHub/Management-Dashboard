@@ -16,14 +16,14 @@ export function AppShell({ children, isAdmin }: { children: React.ReactNode, isA
     <ThemeProvider>
       <TooltipProvider delayDuration={0}>
         <div className="flex h-screen overflow-hidden">
-          <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
+          <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} isAdmin={isAdmin} />
           <div 
             className={cn(
               "flex flex-1 flex-col min-w-0 transition-all duration-200 pl-0", 
               collapsed ? "md:pl-[60px]" : "md:pl-[240px]"
             )}
           >
-            <TopNav />
+            <TopNav isAdmin={isAdmin} />
             <main className="flex-1 min-h-0 overflow-y-auto bg-background/50">{children}</main>
           </div>
         </div>

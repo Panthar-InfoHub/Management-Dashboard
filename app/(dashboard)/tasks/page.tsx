@@ -7,7 +7,7 @@ import { getTeams } from "@/lib/queries/team.queries";
 import { getEmployees } from "@/lib/queries/employee.queries";
 import { KanbanBoard } from "@/components/tasks/kanban-board";
 
-import { getCurrentEmployee } from "@/lib/auth";
+import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 
 export default async function TasksPage({ searchParams }: { searchParams: Promise<{ [key: string]: string | undefined }> }) {
   const resolvedParams = await searchParams;
@@ -20,7 +20,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     getCurrentEmployee()
   ]);
 
-  const canEdit = employee.role === "ADMIN" || employee.role === "MANAGER";
+  const canEdit = await checkPermission("task:create");
 
   return (
     <div className="flex flex-col gap-6 p-6 h-[calc(100vh-64px)] min-w-0 overflow-hidden">

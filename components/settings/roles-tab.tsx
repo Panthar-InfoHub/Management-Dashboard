@@ -12,69 +12,51 @@ import { Separator } from "@/components/ui/separator";
 import { getSystemRolesAction, updateSystemRolePermissionsAction, createSystemRoleAction, deleteSystemRoleAction } from "@/lib/actions/role.actions";
 import { Shield, Folder, CheckSquare, Users, Building, FileText, Calendar, Clock, Lock, ShieldAlert, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 const PERMISSION_GROUPS = [
   {
     id: "task",
-    label: "Task Management",
+    label: "Tasks",
     icon: CheckSquare,
-    desc: "Control task creation, assignment, and status updates.",
+    desc: "Control task creation, modification, and deletion.",
     permissions: [
       { id: "task:create", label: "Create Tasks" },
-      { id: "task:assign", label: "Assign Tasks" },
-      { id: "task:update:own", label: "Update Own Tasks" },
-      { id: "task:update:any", label: "Update Any Tasks" },
-      { id: "task:delete", label: "Delete Tasks" },
-      { id: "task:move:own", label: "Move Own Tasks" },
-      { id: "task:move:any", label: "Move Any Tasks" }
+      { id: "task:update", label: "Update Tasks" },
+      { id: "task:delete", label: "Delete Tasks" }
     ]
   },
   {
     id: "project",
     label: "Projects",
     icon: Folder,
-    desc: "Manage project visibility and configuration.",
+    desc: "Manage project creation and configuration.",
     permissions: [
       { id: "project:create", label: "Create Projects" },
       { id: "project:update", label: "Edit Projects" },
-      { id: "project:delete", label: "Delete Projects" },
-      { id: "project:view", label: "View Projects" }
-    ]
-  },
-  {
-    id: "employee",
-    label: "Personnel & Directory",
-    icon: Users,
-    desc: "Manage employee records and role assignments.",
-    permissions: [
-      { id: "employee:view:all", label: "View Directory" },
-      { id: "employee:update:own", label: "Edit Own Profile" },
-      { id: "employee:update:any", label: "Edit Any Profile" },
-      { id: "employee:delete:any", label: "Remove Members" },
-      { id: "employee:role:change", label: "Change Roles" }
+      { id: "project:delete", label: "Delete Projects" }
     ]
   },
   {
     id: "team",
     label: "Teams",
     icon: Building,
-    desc: "Configure team structures and leads.",
+    desc: "Configure team structures.",
     permissions: [
       { id: "team:create", label: "Create Teams" },
       { id: "team:update", label: "Edit Teams" },
-      { id: "team:manage-members", label: "Manage Members" }
+      { id: "team:delete", label: "Delete Teams" }
     ]
   },
   {
-    id: "admin",
-    label: "Administration",
-    icon: ShieldAlert,
-    desc: "System-level configuration and audits.",
+    id: "employee",
+    label: "Personnel & Directory",
+    icon: Users,
+    desc: "Manage employee records.",
     permissions: [
-      { id: "reports:view", label: "View Analytics" },
-      { id: "reports:export", label: "Export Data" },
-      { id: "settings:view", label: "Manage Settings" },
-      { id: "audit:view", label: "View Audit Logs" }
+      { id: "employee:create", label: "Create Employees" },
+      { id: "employee:update", label: "Edit Employee Profiles" },
+      { id: "employee:delete", label: "Delete Employees" }
     ]
   }
 ];
@@ -90,7 +72,10 @@ export function RolesTab() {
     getSystemRolesAction().then(res => {
       setRoles(res);
       if (!selectedRole && res.length > 0) setSelectedRole(res[0].name);
-    }).catch(console.error);
+    }).catch((err: any) => {
+      console.error(err);
+      toast.error(err.message || "Failed to load roles");
+    });
   };
 
   useEffect(() => {
@@ -109,8 +94,14 @@ export function RolesTab() {
 
     startTransition(() => {
       updateSystemRolePermissionsAction(roleName, newPerms)
-        .then(fetchRoles)
-        .catch(fetchRoles);
+        .then(() => {
+          toast.success("Permissions updated");
+          fetchRoles();
+        })
+        .catch((err: any) => {
+          toast.error(err.message || "Failed to update permissions");
+          fetchRoles();
+        });
     });
   };
 
@@ -120,7 +111,10 @@ export function RolesTab() {
       createSystemRoleAction(newRoleName, []).then(() => {
         setNewRoleName("");
         setNewRoleOpen(false);
+        toast.success("Role created");
         fetchRoles();
+      }).catch((err: any) => {
+        toast.error(err.message || "Failed to create role");
       });
     });
   };
@@ -129,8 +123,11 @@ export function RolesTab() {
     if (!confirm(`Are you sure you want to delete the ${roleName} role? This cannot be undone.`)) return;
     startTransition(() => {
       deleteSystemRoleAction(roleName).then(() => {
-        setSelectedRole("MANAGER");
+        if (selectedRole === roleName) setSelectedRole(roles[0]?.name || null);
+        toast.success("Role deleted");
         fetchRoles();
+      }).catch((err: any) => {
+        toast.error(err.message || "Failed to delete role");
       });
     });
   };

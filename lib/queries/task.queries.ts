@@ -1,11 +1,13 @@
 import { db } from "@/lib/db";
-import { getCurrentEmployee } from "@/lib/auth";
+import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 
 export async function getKanbanTasks(filters?: { team?: string, project?: string, assignee?: string, search?: string }, skip = 0, take = 50) {
   const employee = await getCurrentEmployee();
 
+  const canViewAll = await checkPermission("task:update");
+  
   // For the Kanban board, fetch tasks the user has access to. Admins see all tasks.
-  let accessClause = (employee.role === "ADMIN" || employee.role === "MANAGER") ? {} : {
+  let accessClause = canViewAll ? {} : {
     OR: [
       { project: { members: { some: { employeeId: employee.id } } } },
       { assignees: { some: { id: employee.id } } },

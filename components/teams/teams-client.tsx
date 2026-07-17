@@ -12,7 +12,7 @@ import { Users, Plus, LayoutDashboard } from "lucide-react";
 import { createTeamAction } from "@/lib/actions/team.actions";
 import { toast } from "sonner";
 
-export function TeamsClient({ initialTeams, employees, isAdmin }: { initialTeams: any[], employees: any[], isAdmin: boolean }) {
+export function TeamsClient({ initialTeams, employees, canCreate = false }: { initialTeams: any[], employees: any[], canCreate?: boolean }) {
   const [teamList, setTeamList] = useState(initialTeams);
   const [newTeamOpen, setNewTeamOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -28,7 +28,7 @@ export function TeamsClient({ initialTeams, employees, isAdmin }: { initialTeams
         setNewTeamOpen(false);
         setNewTeam({ name: "", description: "", leadId: "" });
         router.refresh();
-      }).catch(err => toast.error("Failed to create team"));
+      }).catch((err: any) => toast.error(err.message || "Failed to create team"));
     });
   };
 
@@ -39,7 +39,7 @@ export function TeamsClient({ initialTeams, employees, isAdmin }: { initialTeams
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Teams</h1>
           <p className="text-sm text-muted-foreground mt-1">Manage functional groups and track project assignments.</p>
         </div>
-        {isAdmin && (
+        {canCreate && (
           <Dialog open={newTeamOpen} onOpenChange={setNewTeamOpen}>
             <DialogTrigger asChild>
               <Button size="sm" className="gap-2 shadow-none"><Plus className="h-4 w-4" /> Create Team</Button>
@@ -84,7 +84,7 @@ export function TeamsClient({ initialTeams, employees, isAdmin }: { initialTeams
           <Users className="mx-auto h-8 w-8 text-muted-foreground/50 mb-4" />
           <h3 className="text-lg font-medium text-foreground mb-1">No teams found</h3>
           <p className="text-sm text-muted-foreground mb-4">Get started by creating your first team.</p>
-          {isAdmin && (
+          {canCreate && (
             <Button variant="outline" onClick={() => setNewTeamOpen(true)}>Create Team</Button>
           )}
         </div>

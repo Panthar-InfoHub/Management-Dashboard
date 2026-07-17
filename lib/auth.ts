@@ -110,7 +110,7 @@ export async function requireAuth(permission: Permission): Promise<AuthEmployee>
   const hasPerm = await hasPermission(employee.role, permission);
   if (!hasPerm) {
     console.error(`[Auth] Forbidden: ${employee.email} (Role: ${employee.role}) attempted action requiring ${permission}`);
-    throw new Error("FORBIDDEN: Requires higher permission level");
+    throw new Error("You do not have permission for this action.");
   }
   return employee;
 }

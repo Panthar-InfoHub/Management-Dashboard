@@ -66,8 +66,8 @@ export function NewProjectForm({
         addTeamMembers: newProject.addTeamMembers
       }).then(() => {
         router.push("/projects");
-      }).catch(err => {
-        console.error("Failed to create project", err);
+      }).catch((err: any) => {
+        toast.error(err.message || "Failed to create project");
       });
     });
   };

@@ -14,13 +14,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Calendar, CheckSquare, Clock, ChevronRight, ChevronDown, Plus, Users, Flag, TrendingUp, Settings2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { updateProjectAction, manageProjectMembersAction, updateProjectStatusAction, updateProjectPriorityAction } from "@/lib/actions/project.actions";
+import { updateProjectAction, manageProjectMembersAction, updateProjectStatusAction, updateProjectPriorityAction, deleteProjectAction } from "@/lib/actions/project.actions";
 
 const statusColors: Record<string, string> = { ACTIVE: "bg-blue-500/10 text-blue-600 border-blue-500/20", PLANNING: "bg-purple-500/10 text-purple-600 border-purple-500/20", PAUSED: "bg-orange-500/10 text-orange-600 border-orange-500/20", COMPLETED: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20", ARCHIVED: "bg-gray-500/10 text-gray-600 border-gray-500/20" };
 const priorityColors: Record<string, string> = { CRITICAL: "bg-red-500/10 text-red-600 border-red-500/20", HIGH: "bg-orange-500/10 text-orange-600 border-orange-500/20", MEDIUM: "bg-blue-500/10 text-blue-600 border-blue-500/20", LOW: "bg-gray-500/10 text-gray-600 border-gray-500/20" };
 const taskStatusColors: Record<string, string> = { BACKLOG: "bg-gray-500/10 text-gray-600 border-gray-500/20", TODO: "bg-slate-500/10 text-slate-600 border-slate-500/20", IN_PROGRESS: "bg-blue-500/10 text-blue-600 border-blue-500/20", REVIEW: "bg-purple-500/10 text-purple-600 border-purple-500/20", TESTING: "bg-amber-500/10 text-amber-600 border-amber-500/20", DONE: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" };
 
-export function ProjectDetailClient({ project, allEmployees = [], allTeams = [], canEdit = true }: { project: any, allEmployees: any[], allTeams: any[], canEdit?: boolean }) {
+export function ProjectDetailClient({ project, allEmployees = [], allTeams = [], canEdit = true, canDelete = false }: { project: any, allEmployees: any[], allTeams: any[], canEdit?: boolean, canDelete?: boolean }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -74,7 +74,7 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
       updateProjectAction(project.id, editData).then(() => {
         setEditOpen(false);
         router.refresh();
-      }).catch(err => toast.error("Failed to update project"));
+      }).catch((err: any) => toast.error(err.message || "Failed to update project"));
     });
   };
 
@@ -95,7 +95,7 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
       manageProjectMembersAction(project.id, finalMemberIds).then(() => {
         setManageOpen(false);
         router.refresh();
-      }).catch(err => toast.error("Failed to manage members"));
+      }).catch((err: any) => toast.error(err.message || "Failed to manage members"));
     });
   };
 
@@ -110,14 +110,24 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
   const handleQuickStatusChange = (newStatus: string) => {
     if (newStatus === project.status) return;
     startTransition(() => {
-      updateProjectStatusAction(project.id, newStatus).catch(err => toast.error("Failed to update status"));
+      updateProjectStatusAction(project.id, newStatus).catch((err: any) => toast.error(err.message || "Failed to update status"));
     });
   };
 
   const handleQuickPriorityChange = (newPriority: string) => {
     if (newPriority === project.priority) return;
     startTransition(() => {
-      updateProjectPriorityAction(project.id, newPriority).catch(err => toast.error("Failed to update priority"));
+      updateProjectPriorityAction(project.id, newPriority).catch((err: any) => toast.error(err.message || "Failed to update priority"));
+    });
+  };
+
+  const handleDeleteProject = () => {
+    if (!confirm("Are you sure you want to delete this project? This action cannot be undone and will delete all associated tasks.")) return;
+    startTransition(() => {
+      deleteProjectAction(project.id).then(() => {
+        toast.success("Project deleted successfully");
+        router.push("/projects");
+      }).catch((err: any) => toast.error(err.message || "Failed to delete project"));
     });
   };
 
@@ -143,6 +153,11 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
                 <Plus className="h-3.5 w-3.5" /> Add Task
               </Link>
             </Button>
+            {canDelete && (
+              <Button size="sm" variant="destructive" onClick={handleDeleteProject} className="h-8 shadow-none">
+                Delete
+              </Button>
+            )}
           </div>
         )}
       </div>

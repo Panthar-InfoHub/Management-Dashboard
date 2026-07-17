@@ -12,13 +12,13 @@ import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChevronRight, Edit, Users, Mail, LayoutDashboard, MoreVertical, CheckSquare, Settings2, Shield, CalendarIcon, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { updateTeamAction, manageTeamMembersAction } from "@/lib/actions/team.actions";
+import { updateTeamAction, manageTeamMembersAction, deleteTeamAction } from "@/lib/actions/team.actions";
 
 const statusColors: Record<string, string> = { ACTIVE: "bg-blue-500/10 text-blue-600 border-blue-500/20", PLANNING: "bg-purple-500/10 text-purple-600 border-purple-500/20", PAUSED: "bg-orange-500/10 text-orange-600 border-orange-500/20", COMPLETED: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20", ARCHIVED: "bg-gray-500/10 text-gray-600 border-gray-500/20" };
 
 const taskStatusColors: Record<string, string> = { BACKLOG: "bg-gray-500/10 text-gray-600 border-gray-500/20", TODO: "bg-slate-500/10 text-slate-600 border-slate-500/20", IN_PROGRESS: "bg-blue-500/10 text-blue-600 border-blue-500/20", REVIEW: "bg-purple-500/10 text-purple-600 border-purple-500/20", TESTING: "bg-orange-500/10 text-orange-600 border-orange-500/20", DONE: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" };
 
-export function TeamDetailClient({ team, allEmployees = [], tasks = [], canEdit = true }: { team: any, allEmployees?: any[], tasks?: any[], canEdit?: boolean }) {
+export function TeamDetailClient({ team, allEmployees = [], tasks = [], canEdit = true, canDelete = false }: { team: any, allEmployees?: any[], tasks?: any[], canEdit?: boolean, canDelete?: boolean }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -47,7 +47,7 @@ export function TeamDetailClient({ team, allEmployees = [], tasks = [], canEdit 
       updateTeamAction(team.id, editData).then(() => {
         setEditOpen(false);
         router.refresh();
-      }).catch(err => toast.error("Failed to update team"));
+      }).catch((err: any) => toast.error(err.message || "Failed to update team"));
     });
   };
 
@@ -58,7 +58,17 @@ export function TeamDetailClient({ team, allEmployees = [], tasks = [], canEdit 
       manageTeamMembersAction(team.id, finalMemberIds).then(() => {
         setManageOpen(false);
         router.refresh();
-      }).catch(err => toast.error("Failed to manage members"));
+      }).catch((err: any) => toast.error(err.message || "Failed to manage members"));
+    });
+  };
+
+  const handleDeleteTeam = () => {
+    if (!confirm("Are you sure you want to delete this team? This action cannot be undone.")) return;
+    startTransition(() => {
+      deleteTeamAction(team.id).then(() => {
+        toast.success("Team deleted successfully");
+        router.push("/teams");
+      }).catch((err: any) => toast.error(err.message || "Failed to delete team"));
     });
   };
 
@@ -84,9 +94,14 @@ export function TeamDetailClient({ team, allEmployees = [], tasks = [], canEdit 
             <Button variant="outline" size="sm" onClick={handleOpenManage} className="h-8 shadow-none gap-2">
               <Users className="h-4 w-4" /> Manage Members
             </Button>
-            <Button size="sm" onClick={handleOpenEdit} className="h-8 shadow-none gap-2">
+            <Button size="sm" variant="outline" onClick={handleOpenEdit} className="h-8 shadow-none gap-2">
               <Settings2 className="h-4 w-4" /> Edit Team
             </Button>
+            {canDelete && (
+              <Button size="sm" variant="destructive" onClick={handleDeleteTeam} className="h-8 shadow-none">
+                Delete
+              </Button>
+            )}
           </div>
         )}
       </div>

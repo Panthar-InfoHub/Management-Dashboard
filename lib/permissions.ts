@@ -7,6 +7,8 @@ import { type Permission as LocalPermission } from "./permission-list";
 
 /** Check if a role has a specific permission. */
 export async function hasPermission(roleName: string, permission: LocalPermission): Promise<boolean> {
+  if (roleName === "ADMIN") return true;
+  
   const roleRecord = await db.systemRole.findUnique({
     where: { name: roleName }
   });

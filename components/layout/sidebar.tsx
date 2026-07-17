@@ -47,12 +47,12 @@ export function Sidebar({ collapsed, setCollapsed, isMobile, isAdmin = false }: 
       {/* Header with Logo and Collapse Toggle */}
       <div className={cn("flex h-14 items-center border-b border-border px-3", collapsed ? "justify-center" : "justify-between")}>
         <div className="flex items-center gap-2 overflow-hidden">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <Zap className="h-4 w-4" />
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white">
+            <img src="/images/black_logo.webp" alt="PantharInfoHub" className="h-6 w-6 object-contain" />
           </div>
           {!collapsed && (
             <div className="flex flex-col overflow-hidden">
-              <span className="truncate text-sm font-semibold text-foreground">Panthar</span>
+              <span className="truncate text-sm font-semibold text-foreground">PantharInfoHub</span>
             </div>
           )}
         </div>

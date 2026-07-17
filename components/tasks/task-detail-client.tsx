@@ -12,13 +12,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Clock, Calendar, AlertCircle, ChevronRight, CheckCircle2, Circle, MoreHorizontal, Plus, Link as LinkIcon, ShieldAlert, UserPlus, ChevronDown, ChevronRight as ChevronRightIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { updateTaskStatusAction, updateTaskPriorityAction, createSubtaskAction, setTaskBlockerAction, assignTaskAction } from "@/lib/actions/task.actions";
+import { updateTaskStatusAction, updateTaskPriorityAction, createSubtaskAction, setTaskBlockerAction, assignTaskAction, deleteTaskAction } from "@/lib/actions/task.actions";
 import { toast } from "sonner";
 
 const statusColors: Record<string, string> = { BACKLOG: "bg-gray-500/10 text-gray-600 border-gray-500/20", TODO: "bg-slate-500/10 text-slate-600 border-slate-500/20", IN_PROGRESS: "bg-blue-500/10 text-blue-600 border-blue-500/20", REVIEW: "bg-purple-500/10 text-purple-600 border-purple-500/20", TESTING: "bg-amber-500/10 text-amber-600 border-amber-500/20", DONE: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" };
 const priorityColors: Record<string, string> = { CRITICAL: "bg-red-500/10 text-red-600 border-red-500/20", HIGH: "bg-orange-500/10 text-orange-600 border-orange-500/20", MEDIUM: "bg-blue-500/10 text-blue-600 border-blue-500/20", LOW: "bg-gray-500/10 text-gray-600 border-gray-500/20" };
 
-export function TaskDetailClient({ initialTask, projectTasks, canEdit = true }: { initialTask: any, projectTasks?: any[], canEdit?: boolean }) {
+export function TaskDetailClient({ initialTask, projectTasks, canEdit = true, canDelete = false }: { initialTask: any, projectTasks?: any[], canEdit?: boolean, canDelete?: boolean }) {
   const router = useRouter();
   const [task, setTask] = useState(initialTask);
   const [projectTasksList, setProjectTasksList] = useState(projectTasks || []);
@@ -87,8 +87,8 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true }: 
           toast.success(blockerId ? "Blocker added" : "Blocker removed");
           router.refresh();
         }
-      }).catch(err => {
-        toast.error("Failed to update blocker");
+      }).catch((err: any) => {
+        toast.error(err.message || "Failed to set blocker");
       });
     });
   };
@@ -108,10 +108,20 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true }: 
           setSubtaskForm(prev => ({ ...prev, title: "" }));
           router.refresh(); 
         }
-      }).catch(err => {
-        toast.error("Failed to create subtask");
+      }).catch((err: any) => {
+        toast.error(err.message || "Failed to add subtask");
       });
     });
+  };
+  const handleDelete = async () => {
+    if (!confirm("Are you sure you want to delete this task? This cannot be undone.")) return;
+    try {
+      await deleteTaskAction(task.id);
+      toast.success("Task deleted");
+      router.push("/tasks");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to delete task");
+    }
   };
 
   return (
@@ -133,6 +143,11 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true }: 
               <Link href={`/tasks/${task.id}/edit`}>Edit Task</Link>
             </Button>
           )}
+            {canDelete && (
+              <Button variant="destructive" size="sm" className="h-8 shadow-none text-xs" onClick={handleDelete}>
+                Delete
+              </Button>
+            )}
           {task.status !== "DONE" && (
             <Button size="sm" className="h-8 shadow-none text-xs" onClick={() => handleStatusChange("DONE")}>
               Mark as Done
@@ -311,8 +326,8 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true }: 
                                         startTransition(() => {
                                           updateTaskStatusAction(subtask.id, s)
                                             .then(() => router.refresh())
-                                            .catch(err => {
-                                              toast.error("Failed to update status");
+                                            .catch((err: any) => {
+                                              toast.error(err.message || "Failed to unblock task");
                                               setProjectTasksList(prev => prev.map(t => t.id === subtask.id ? { ...t, status: oldStatus } : t));
                                             });
                                         });
@@ -355,7 +370,7 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true }: 
                                     onClick={() => startTransition(() => { 
                                       assignTaskAction(subtask.id, null)
                                         .then(() => { toast.success("Task unassigned"); router.refresh(); })
-                                        .catch(() => toast.error("Failed to unassign task"));
+                                        .catch((err: any) => toast.error(err.message || "Failed to unassign task"));
                                     })}
                                     className="text-xs text-red-500 cursor-pointer"
                                   >
@@ -368,7 +383,7 @@ export function TaskDetailClient({ initialTask, projectTasks, canEdit = true }: 
                                       onClick={() => startTransition(() => { 
                                         assignTaskAction(subtask.id, m.employee.id)
                                           .then(() => { toast.success("Task assigned"); router.refresh(); })
-                                          .catch(() => toast.error("Failed to assign task"));
+                                          .catch((err: any) => toast.error(err.message || "Failed to assign task"));
                                       })}
                                       className="text-xs cursor-pointer flex items-center gap-2"
                                     >

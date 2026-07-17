@@ -1,13 +1,13 @@
 import { getProjectsList } from "@/lib/queries/project.queries";
 import { ProjectsClient } from "@/components/projects/projects-client";
 
-import { getCurrentEmployee } from "@/lib/auth";
+import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 
 export default async function ProjectsPage() {
   const employee = await getCurrentEmployee();
   const projects = await getProjectsList();
 
-  const canCreate = employee.role === "ADMIN" || employee.role === "MANAGER";
+  const canCreate = await checkPermission("project:create");
 
   return <ProjectsClient initialProjects={projects} canCreate={canCreate} />;
 }

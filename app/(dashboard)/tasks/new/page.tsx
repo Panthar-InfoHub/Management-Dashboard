@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { getCurrentEmployee } from "@/lib/auth";
+import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { NewTaskForm } from "@/components/tasks/new-task-form";
 
 import { redirect } from "next/navigation";
@@ -7,11 +7,14 @@ import { redirect } from "next/navigation";
 export default async function NewTaskPage() {
   const employee = await getCurrentEmployee();
 
-  if (employee.role !== "ADMIN" && employee.role !== "MANAGER") {
+  const canCreate = await checkPermission("task:create");
+  if (!canCreate) {
     redirect("/");
   }
 
-  const projectWhereClause = employee.role === "ADMIN" ? {
+  const canSeeAllProjects = await checkPermission("project:update");
+
+  const projectWhereClause = canSeeAllProjects ? {
     status: { not: "COMPLETED" as const }
   } : {
     status: { not: "COMPLETED" as const },

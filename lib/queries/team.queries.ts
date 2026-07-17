@@ -1,11 +1,13 @@
 import { db } from "@/lib/db";
-import { getCurrentEmployee } from "@/lib/auth";
+import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 
 export async function getTeams() {
   const employee = await getCurrentEmployee();
   
+  const canViewAll = await checkPermission("team:update");
+  
   // Admin and Manager see all teams. Others see only teams they belong to or lead.
-  const whereClause = (employee.role === "ADMIN" || employee.role === "MANAGER") ? {} : {
+  const whereClause = canViewAll ? {} : {
     OR: [
       { members: { some: { id: employee.id } } },
       { leadId: employee.id }

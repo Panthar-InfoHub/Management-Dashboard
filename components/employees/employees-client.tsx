@@ -21,7 +21,7 @@ const roleColors: Record<string, string> = {
   EMPLOYEE: "bg-gray-500/10 text-gray-600 border-gray-500/20" 
 };
 
-export function EmployeesClient({ initialEmployees, teams, availableRoles = [], isAdmin }: { initialEmployees: any[], teams: any[], availableRoles?: string[], isAdmin: boolean }) {
+export function EmployeesClient({ initialEmployees, teams, availableRoles = [], isAdmin, canCreate = false, canUpdate = false, canDelete = false }: { initialEmployees: any[], teams: any[], availableRoles?: string[], isAdmin: boolean, canCreate?: boolean, canUpdate?: boolean, canDelete?: boolean }) {
   const [newEmpOpen, setNewEmpOpen] = useState(false);
   const [editEmpOpen, setEditEmpOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -41,7 +41,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
         setNewEmp({ firstName: "", lastName: "", email: "", role: "EMPLOYEE", designation: "", password: "" });
         setSetCustomPassword(false);
         router.refresh();
-      }).catch(err => toast.error("Failed to add employee"));
+      }).catch((err: any) => toast.error(err.message || "Failed to add employee"));
     });
   };
 
@@ -52,7 +52,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
         setEditEmpOpen(false);
         setEditingEmp(null);
         router.refresh();
-      }).catch(err => toast.error("Failed to update employee"));
+      }).catch((err: any) => toast.error(err.message || "Failed to update employee"));
     });
   };
 
@@ -61,7 +61,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
     startTransition(() => {
       deleteEmployeeAction(id).then(() => {
         router.refresh();
-      }).catch(err => toast.error("Failed to delete employee"));
+      }).catch((err: any) => toast.error(err.message || "Failed to delete employee"));
     });
   };
 
@@ -83,7 +83,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
               : "View members across your organization."}
           </p>
         </div>
-        {isAdmin && (
+        {canCreate && (
           <Dialog open={newEmpOpen} onOpenChange={setNewEmpOpen}>
             <DialogTrigger asChild>
               <Button size="sm" className="gap-2 shadow-none"><UserPlus className="h-4 w-4" /> Add Member</Button>
@@ -143,7 +143,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {availableRoles.map(roleName => (
+                      {availableRoles.filter(roleName => isAdmin || roleName !== "ADMIN").map(roleName => (
                         <SelectItem key={roleName} value={roleName}>{roleName}</SelectItem>
                       ))}
                     </SelectContent>
@@ -179,7 +179,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableRoles.map(roleName => (
+                    {availableRoles.filter(roleName => isAdmin || roleName !== "ADMIN").map(roleName => (
                       <SelectItem key={roleName} value={roleName}>{roleName}</SelectItem>
                     ))}
                   </SelectContent>
@@ -213,13 +213,16 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
           {/* Table Header */}
           <div className={cn(
             "grid gap-4 px-5 py-3 text-[11px] font-medium text-muted-foreground uppercase tracking-wider bg-muted/20",
-            isAdmin ? "grid-cols-[2fr_1.5fr_1.5fr_1fr_40px]" : "grid-cols-[2fr_1.5fr_1fr]"
+            isAdmin && (canUpdate || canDelete) ? "grid-cols-[2fr_1.5fr_1.5fr_1fr_40px]" :
+            isAdmin && !(canUpdate || canDelete) ? "grid-cols-[2fr_1.5fr_1.5fr_1fr]" :
+            !isAdmin && (canUpdate || canDelete) ? "grid-cols-[2fr_1.5fr_1fr_40px]" :
+            "grid-cols-[2fr_1.5fr_1fr]"
           )}>
             <span>Name & Title</span>
             <span>Contact Info</span>
             {isAdmin && <span>Status & System Role</span>}
             <span>Joined</span>
-            {isAdmin && <span className="text-right"></span>}
+            {(canUpdate || canDelete) && <span className="text-right"></span>}
           </div>
           
           {/* Table Rows */}
@@ -229,7 +232,10 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
             filteredEmployees.map(emp => (
               <div key={emp.id} className={cn(
                 "grid gap-4 px-5 py-4 items-center hover:bg-muted/30 transition-colors",
-                isAdmin ? "grid-cols-[2fr_1.5fr_1.5fr_1fr_40px]" : "grid-cols-[2fr_1.5fr_1fr]"
+                isAdmin && (canUpdate || canDelete) ? "grid-cols-[2fr_1.5fr_1.5fr_1fr_40px]" :
+                isAdmin && !(canUpdate || canDelete) ? "grid-cols-[2fr_1.5fr_1.5fr_1fr]" :
+                !isAdmin && (canUpdate || canDelete) ? "grid-cols-[2fr_1.5fr_1fr_40px]" :
+                "grid-cols-[2fr_1.5fr_1fr]"
               )}>
                 
                 {/* Column 1: Name & Title */}
@@ -284,7 +290,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
                 </div>
 
                 {/* Actions */}
-                {isAdmin && (
+                {(canUpdate || canDelete) && (
                   <div className="text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -293,17 +299,21 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => {
-                          setEditingEmp({ id: emp.id, role: emp.role, designation: emp.designation || "" });
-                          setEditEmpOpen(true);
-                        }}>
-                          <Pencil className="h-4 w-4 mr-2" />
-                          Edit Role & Title
-                        </DropdownMenuItem>
-                        <DropdownMenuItem className="text-red-600 focus:bg-red-50 focus:text-red-600 cursor-pointer" onClick={() => handleDeleteEmployee(emp.id)}>
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Remove Member
-                        </DropdownMenuItem>
+                        {canUpdate && (
+                          <DropdownMenuItem onClick={() => {
+                            setEditingEmp({ id: emp.id, role: emp.role, designation: emp.designation || "" });
+                            setEditEmpOpen(true);
+                          }}>
+                            <Pencil className="h-4 w-4 mr-2" />
+                            Edit Role & Title
+                          </DropdownMenuItem>
+                        )}
+                        {canDelete && (
+                          <DropdownMenuItem className="text-red-600 focus:bg-red-50 focus:text-red-600 cursor-pointer" onClick={() => handleDeleteEmployee(emp.id)}>
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Remove Member
+                          </DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>

@@ -13,7 +13,10 @@ export async function createEmployeeAction(data: {
   password?: string;
   designation?: string;
 }) {
-  const admin = await requireAuth("employee:update:any");
+  const currentEmployee = await requireAuth("employee:create");
+  if (data.role === "ADMIN" && currentEmployee.role !== "ADMIN") {
+    throw new Error("Only admins can create an ADMIN role.");
+  }
 
   const client = await clerkClient();
   let clerkUserId: string;
@@ -64,7 +67,15 @@ export async function updateEmployeeAction(id: string, data: {
   role: string;
   designation?: string;
 }) {
-  const admin = await requireAuth("employee:update:any");
+  const currentEmployee = await requireAuth("employee:update");
+
+  const target = await db.employee.findUnique({ where: { id } });
+  if (target?.role === "ADMIN" && currentEmployee.role !== "ADMIN") {
+    throw new Error("Only admins can modify an ADMIN user.");
+  }
+  if (data.role === "ADMIN" && currentEmployee.role !== "ADMIN") {
+    throw new Error("Only admins can assign an ADMIN role.");
+  }
 
   const employee = await db.employee.update({
     where: { id },
@@ -90,11 +101,24 @@ export async function updateEmployeeAction(id: string, data: {
 }
 
 export async function deleteEmployeeAction(id: string) {
-  const admin = await requireAuth("employee:delete:any");
+  const currentEmployee = await requireAuth("employee:delete");
 
-  const employee = await db.employee.delete({
-    where: { id }
-  });
+  const target = await db.employee.findUnique({ where: { id } });
+  if (target?.role === "ADMIN" && currentEmployee.role !== "ADMIN") {
+    throw new Error("Only admins can delete an ADMIN user.");
+  }
+
+  let employee;
+  try {
+    employee = await db.employee.delete({
+      where: { id }
+    });
+  } catch (error: any) {
+    if (error.code === 'P2003') {
+      throw new Error("Cannot delete this employee because they are currently assigned as a Team Lead, Project Lead, or Task Creator. Please reassign their responsibilities or mark their status as 'INACTIVE' instead.");
+    }
+    throw error;
+  }
 
   // If they have a real Clerk account, delete them from Clerk as well
   if (!employee.clerkId.startsWith("pending_") && !employee.clerkId.startsWith("seed_")) {

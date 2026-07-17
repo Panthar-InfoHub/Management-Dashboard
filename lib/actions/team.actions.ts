@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { requireAuth } from "@/lib/auth";
+import { requireAuth, getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 
 export async function createTeamAction(data: {
@@ -27,14 +27,20 @@ export async function createTeamAction(data: {
   revalidatePath("/teams");
   return team;
 }
-
 export async function updateTeamAction(teamId: string, data: {
   name: string;
   description?: string;
   color?: string;
   leadId: string;
 }) {
-  await requireAuth("team:update"); // Use proper permission from permission-list
+  const employee = await getCurrentEmployee();
+  const hasGlobalPerm = await checkPermission("team:update");
+
+  const existing = await db.team.findUnique({ where: { id: teamId } });
+  if (!existing) throw new Error("Team not found");
+  if (!hasGlobalPerm && existing.leadId !== employee.id) {
+    throw new Error("You do not have permission for this action.");
+  }
 
   const team = await db.team.update({
     where: { id: teamId },
@@ -52,7 +58,14 @@ export async function updateTeamAction(teamId: string, data: {
 }
 
 export async function manageTeamMembersAction(teamId: string, memberIds: string[]) {
-  await requireAuth("team:manage-members");
+  const employee = await getCurrentEmployee();
+  const hasGlobalPerm = await checkPermission("team:update");
+
+  const existing = await db.team.findUnique({ where: { id: teamId } });
+  if (!existing) throw new Error("Team not found");
+  if (!hasGlobalPerm && existing.leadId !== employee.id) {
+    throw new Error("You do not have permission for this action.");
+  }
 
   // Since prisma `set` replaces all relations, this is a clean sync
   const team = await db.team.update({
@@ -70,12 +83,21 @@ export async function manageTeamMembersAction(teamId: string, memberIds: string[
 }
 
 export async function deleteTeamAction(teamId: string) {
-  // Assuming we use admin:manage or a specific team:delete
-  await requireAuth("team:update"); 
+  const employee = await requireAuth("team:delete");
 
-  await db.team.delete({
-    where: { id: teamId }
-  });
+  const existing = await db.team.findUnique({ where: { id: teamId } });
+  if (!existing) throw new Error("Team not found");
+
+  try {
+    await db.team.delete({
+      where: { id: teamId }
+    });
+  } catch (error: any) {
+    if (error.code === 'P2003') {
+      throw new Error("Cannot delete this team because it still has active projects. Please delete or reassign all projects first.");
+    }
+    throw error;
+  }
 
   revalidatePath("/teams");
   return true;

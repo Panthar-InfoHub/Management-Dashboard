@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { getCurrentEmployee } from "@/lib/auth";
+import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { NewTaskForm } from "@/components/tasks/new-task-form";
 import { notFound } from "next/navigation";
 
@@ -22,9 +22,7 @@ export default async function EditTaskPage({ params }: { params: Promise<{ id: s
   }
 
   // Permission check
-  const isAssignee = task.assignees.some(a => a.id === employee.id);
-  const isProjectMember = task.project.members.some(m => m.employeeId === employee.id);
-  const canEdit = employee.role === "ADMIN" || employee.role === "MANAGER" || isAssignee || isProjectMember;
+  const canEdit = await checkPermission("task:update");
 
   if (!canEdit) {
     notFound();

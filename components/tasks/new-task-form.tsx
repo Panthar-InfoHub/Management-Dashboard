@@ -91,9 +91,8 @@ export function NewTaskForm({
           toast.success("Task updated successfully!");
           router.refresh();
           router.push(`/tasks/${initialData.id}`);
-        }).catch(err => {
-          console.error("Failed to update task", err);
-          toast.error("Failed to update task. Please try again.");
+        }).catch((err: any) => {
+          toast.error(err.message || "Failed to update task");
         });
       } else {
         createTaskAction({
@@ -108,9 +107,8 @@ export function NewTaskForm({
           toast.success("Task created successfully!");
           router.refresh();
           router.push("/tasks");
-        }).catch(err => {
-          console.error("Failed to create task", err);
-          toast.error("Failed to create task. Please try again.");
+        }).catch((err: any) => {
+          toast.error(err.message || "Failed to create task");
         });
       }
     });

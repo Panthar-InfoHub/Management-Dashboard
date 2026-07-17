@@ -146,9 +146,9 @@ export function KanbanBoard({
     startTransition(() => {
       updateTaskStatusAction(taskId, statusId).then(() => {
         toast.success("Task status updated");
-      }).catch(err => {
+      }).catch((err: any) => {
         setTaskList((prev) => prev.map(t => t.id === taskId ? { ...t, status: oldStatus } : t));
-        toast.error("Failed to update status");
+        toast.error(err.message || "Failed to update status");
         console.error("Failed to update status", err);
       });
     });
@@ -224,18 +224,16 @@ export function KanbanBoard({
             </SelectContent>
           </Select>
 
-          {(employeeRole === "ADMIN" || employeeRole === "MANAGER" || employeeRole === "TECH_LEAD") && (
-            <Select value={urlAssignee} onValueChange={(v) => updateUrlFilter("assignee", v)}>
-              <SelectTrigger className="h-9 w-[130px] text-xs">
-                <div className="flex items-center gap-2"><Filter className="h-3.5 w-3.5" /> <SelectValue placeholder="Assignee" /></div>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Assignees</SelectItem>
-                <SelectItem value="UNASSIGNED">Unassigned</SelectItem>
-                {assignees.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.firstName} {a.lastName}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          )}
+          <Select value={urlAssignee} onValueChange={(v) => updateUrlFilter("assignee", v)}>
+            <SelectTrigger className="h-9 w-[130px] text-xs">
+              <div className="flex items-center gap-2"><Filter className="h-3.5 w-3.5" /> <SelectValue placeholder="Assignee" /></div>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All Assignees</SelectItem>
+              <SelectItem value="UNASSIGNED">Unassigned</SelectItem>
+              {assignees.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.firstName} {a.lastName}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 

@@ -1,12 +1,10 @@
-import { KeyRound } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { RolesTab } from "@/components/settings/roles-tab";
-
 import { getCurrentEmployee } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { SettingsClient } from "@/components/settings/settings-client";
 
 export default async function SettingsPage() {
   const employee = await getCurrentEmployee();
+  
   if (employee.role !== "ADMIN") {
     redirect("/");
   }
@@ -18,12 +16,7 @@ export default async function SettingsPage() {
         <p className="text-sm text-muted-foreground">Manage your workspace preferences and configurations.</p>
       </div>
 
-      <div className="flex gap-6">
-        {/* Content */}
-        <div className="flex-1 min-w-0 pb-10">
-          <RolesTab />
-        </div>
-      </div>
+      <SettingsClient />
     </div>
   );
 }

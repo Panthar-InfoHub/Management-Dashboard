@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { requireAuth, getCurrentEmployee } from "@/lib/auth";
+import { requireAuth, getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { getKanbanTasks } from "@/lib/queries/task.queries";
 
@@ -15,9 +15,6 @@ export async function createTaskAction(data: {
   blockers?: string;
 }) {
   const employee = await requireAuth("task:create");
-  if (employee.role !== "ADMIN" && employee.role !== "MANAGER") {
-    throw new Error("FORBIDDEN: Only admins and managers can create tasks");
-  }
 
   const task = await db.task.create({
     data: {
@@ -52,6 +49,7 @@ export async function updateTaskAction(taskId: string, data: {
   blockers?: string;
 }) {
   const employee = await getCurrentEmployee();
+  const hasGlobalPerm = await checkPermission("task:update");
   
   const existingTask = await db.task.findUnique({
     where: { id: taskId },
@@ -60,10 +58,10 @@ export async function updateTaskAction(taskId: string, data: {
 
   if (!existingTask) throw new Error("Task not found");
 
-  if (employee.role !== "ADMIN" && employee.role !== "MANAGER") {
+  if (!hasGlobalPerm) {
     const isAssignee = existingTask.assignees.some(a => a.id === employee.id);
     const isProjectMember = existingTask.project.members.some(m => m.employeeId === employee.id);
-    if (!isAssignee && !isProjectMember) throw new Error("FORBIDDEN: Requires higher permission level");
+    if (!isAssignee && !isProjectMember) throw new Error("You do not have permission for this action.");
   }
 
   const updatedTask = await db.task.update({
@@ -90,6 +88,7 @@ export async function updateTaskAction(taskId: string, data: {
 
 export async function updateTaskStatusAction(taskId: string, newStatus: any) {
   const employee = await getCurrentEmployee();
+  const hasGlobalPerm = await checkPermission("task:update");
 
   const task = await db.task.findUnique({
     where: { id: taskId },
@@ -98,10 +97,10 @@ export async function updateTaskStatusAction(taskId: string, newStatus: any) {
 
   if (!task) throw new Error("Task not found");
 
-  if (employee.role !== "ADMIN" && employee.role !== "MANAGER") {
+  if (!hasGlobalPerm) {
     const isAssignee = task.assignees.some(a => a.id === employee.id);
     const isProjectMember = task.project.members.some(m => m.employeeId === employee.id);
-    if (!isAssignee && !isProjectMember) throw new Error("FORBIDDEN: Requires higher permission level");
+    if (!isAssignee && !isProjectMember) throw new Error("You do not have permission for this action.");
   }
 
   const updatedTask = await db.task.update({
@@ -131,7 +130,21 @@ export async function updateTaskStatusAction(taskId: string, newStatus: any) {
 }
 
 export async function updateTaskPriorityAction(taskId: string, newPriority: any) {
-  const employee = await requireAuth("task:update:any");
+  const employee = await getCurrentEmployee();
+  const hasGlobalPerm = await checkPermission("task:update");
+
+  const existingTask = await db.task.findUnique({
+    where: { id: taskId },
+    include: { project: { include: { members: true } }, assignees: true }
+  });
+
+  if (!existingTask) throw new Error("Task not found");
+
+  if (!hasGlobalPerm) {
+    const isAssignee = existingTask.assignees.some(a => a.id === employee.id);
+    const isProjectMember = existingTask.project.members.some(m => m.employeeId === employee.id);
+    if (!isAssignee && !isProjectMember) throw new Error("You do not have permission for this action.");
+  }
 
   const task = await db.task.update({
     where: { id: taskId },
@@ -146,6 +159,7 @@ export async function updateTaskPriorityAction(taskId: string, newPriority: any)
 
 export async function setTaskBlockerAction(taskId: string, blockerTaskId: string | null) {
   const employee = await getCurrentEmployee();
+  const hasGlobalPerm = await checkPermission("task:update");
 
   const task = await db.task.findUnique({
     where: { id: taskId },
@@ -154,10 +168,10 @@ export async function setTaskBlockerAction(taskId: string, blockerTaskId: string
 
   if (!task) throw new Error("Task not found");
 
-  if (employee.role !== "ADMIN" && employee.role !== "MANAGER") {
+  if (!hasGlobalPerm) {
     const isAssignee = task.assignees.some(a => a.id === employee.id);
     const isProjectMember = task.project.members.some(m => m.employeeId === employee.id);
-    if (!isAssignee && !isProjectMember) throw new Error("FORBIDDEN: Requires higher permission level");
+    if (!isAssignee && !isProjectMember) throw new Error("You do not have permission for this action.");
   }
 
   const updatedTask = await db.task.update({
@@ -171,6 +185,7 @@ export async function setTaskBlockerAction(taskId: string, blockerTaskId: string
 
 export async function createSubtaskAction(parentId: string, data: { title: string; assigneeId?: string; priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" }) {
   const employee = await getCurrentEmployee();
+  const hasGlobalPerm = await checkPermission("task:create");
 
   const parentTask = await db.task.findUnique({ 
     where: { id: parentId },
@@ -179,10 +194,10 @@ export async function createSubtaskAction(parentId: string, data: { title: strin
 
   if (!parentTask) throw new Error("Parent task not found");
 
-  if (employee.role !== "ADMIN" && employee.role !== "MANAGER") {
+  if (!hasGlobalPerm) {
     const isAssignee = parentTask.assignees.some(a => a.id === employee.id);
     const isProjectMember = parentTask.project.members.some(m => m.employeeId === employee.id);
-    if (!isAssignee && !isProjectMember) throw new Error("FORBIDDEN: Requires higher permission level");
+    if (!isAssignee && !isProjectMember) throw new Error("You do not have permission for this action.");
   }
 
   const subtask = await db.task.create({
@@ -201,7 +216,21 @@ export async function createSubtaskAction(parentId: string, data: { title: strin
 }
 
 export async function assignTaskAction(taskId: string, assigneeId: string | null) {
-  const employee = await requireAuth("task:assign");
+  const employee = await getCurrentEmployee();
+  const hasGlobalPerm = await checkPermission("task:update");
+
+  const existingTask = await db.task.findUnique({
+    where: { id: taskId },
+    include: { project: { include: { members: true } }, assignees: true }
+  });
+
+  if (!existingTask) throw new Error("Task not found");
+
+  if (!hasGlobalPerm) {
+    const isAssignee = existingTask.assignees.some(a => a.id === employee.id);
+    const isProjectMember = existingTask.project.members.some(m => m.employeeId === employee.id);
+    if (!isAssignee && !isProjectMember) throw new Error("You do not have permission for this action.");
+  }
 
   const task = await db.task.update({
     where: { id: taskId },
@@ -218,4 +247,18 @@ export async function assignTaskAction(taskId: string, assigneeId: string | null
 
 export async function loadMoreTasksAction(filters: any, skip: number) {
   return await getKanbanTasks(filters, skip, 50);
+}
+
+export async function deleteTaskAction(taskId: string) {
+  const employee = await requireAuth("task:delete");
+
+  const existingTask = await db.task.findUnique({
+    where: { id: taskId }
+  });
+
+  if (!existingTask) throw new Error("Task not found");
+
+  await db.task.delete({ where: { id: taskId } });
+  revalidatePath("/", "layout");
+  return { success: true };
 }

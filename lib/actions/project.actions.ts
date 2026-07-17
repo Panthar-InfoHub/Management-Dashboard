@@ -5,7 +5,14 @@ import { requireAuth } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 
 export async function updateProjectStatusAction(projectId: string, newStatus: any) {
-  const employee = await requireAuth("project:update");
+  const employee = await getCurrentEmployee();
+  const hasGlobalPerm = await checkPermission("project:update");
+
+  const existing = await db.project.findUnique({ where: { id: projectId } });
+  if (!existing) throw new Error("Project not found");
+  if (!hasGlobalPerm && existing.leadId !== employee.id) {
+    throw new Error("You do not have permission for this action.");
+  }
 
   const project = await db.project.update({
     where: { id: projectId },
@@ -20,7 +27,14 @@ export async function updateProjectStatusAction(projectId: string, newStatus: an
 }
 
 export async function updateProjectPriorityAction(projectId: string, newPriority: any) {
-  const employee = await requireAuth("project:update");
+  const employee = await getCurrentEmployee();
+  const hasGlobalPerm = await checkPermission("project:update");
+
+  const existing = await db.project.findUnique({ where: { id: projectId } });
+  if (!existing) throw new Error("Project not found");
+  if (!hasGlobalPerm && existing.leadId !== employee.id) {
+    throw new Error("You do not have permission for this action.");
+  }
 
   const project = await db.project.update({
     where: { id: projectId },
@@ -97,7 +111,14 @@ export async function updateProjectAction(projectId: string, data: {
   status: any;
   priority: any;
 }) {
-  const employee = await requireAuth("project:update");
+  const employee = await getCurrentEmployee();
+  const hasGlobalPerm = await checkPermission("project:update");
+
+  const existing = await db.project.findUnique({ where: { id: projectId } });
+  if (!existing) throw new Error("Project not found");
+  if (!hasGlobalPerm && existing.leadId !== employee.id) {
+    throw new Error("You do not have permission for this action.");
+  }
 
   const project = await db.project.update({
     where: { id: projectId },
@@ -118,7 +139,14 @@ export async function updateProjectAction(projectId: string, data: {
 }
 
 export async function manageProjectMembersAction(projectId: string, memberIds: string[]) {
-  const employee = await requireAuth("project:update");
+  const employee = await getCurrentEmployee();
+  const hasGlobalPerm = await checkPermission("project:update");
+
+  const existing = await db.project.findUnique({ where: { id: projectId } });
+  if (!existing) throw new Error("Project not found");
+  if (!hasGlobalPerm && existing.leadId !== employee.id) {
+    throw new Error("You do not have permission for this action.");
+  }
 
   // Sync ProjectMember relation (join table)
   await db.$transaction([
@@ -136,6 +164,9 @@ export async function manageProjectMembersAction(projectId: string, memberIds: s
 
 export async function deleteProjectAction(projectId: string) {
   const employee = await requireAuth("project:delete");
+
+  const existing = await db.project.findUnique({ where: { id: projectId } });
+  if (!existing) throw new Error("Project not found");
 
   await db.project.delete({
     where: { id: projectId }
