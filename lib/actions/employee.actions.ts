@@ -223,3 +223,20 @@ export async function generateEmployeeCodeAction(employeeId: string, type: "PANT
   revalidatePath("/employees");
   return result;
 }
+
+export async function getInvitationLinkAction(email: string) {
+  const currentEmployee = await requireAuth("employee:update");
+  if (currentEmployee.role !== "ADMIN" && currentEmployee.role !== "MANAGER") {
+    throw new Error("Not authorized to view invitations.");
+  }
+
+  const client = await clerkClient();
+  const invites = await client.invitations.getInvitationList({ status: "pending" });
+  const invite = invites.data.find((inv) => inv.emailAddress === email);
+  
+  if (!invite) {
+    throw new Error("No pending invitation found for this email in Clerk.");
+  }
+  
+  return invite.url;
+}

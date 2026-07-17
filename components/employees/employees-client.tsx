@@ -11,7 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Search, Plus, Mail, Shield, Building2, UserPlus, MoreVertical, Calendar, Pencil, Trash2, Eye, EyeOff, Copy } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { createEmployeeAction, updateEmployeeAction, deleteEmployeeAction, generateEmployeeCodeAction, reserveEmployeeSequenceAction } from "@/lib/actions/employee.actions";
+import { createEmployeeAction, updateEmployeeAction, deleteEmployeeAction, generateEmployeeCodeAction, reserveEmployeeSequenceAction, getInvitationLinkAction } from "@/lib/actions/employee.actions";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -78,6 +78,19 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
           setReservedSeq(null);
         })
         .catch((err: any) => toast.error(err.message || "Failed to generate code"));
+    });
+  };
+
+  const handleCopyInviteLink = (email: string) => {
+    startTransition(() => {
+      getInvitationLinkAction(email).then((link) => {
+        if (!link) {
+          toast.error("Invite link is not available.");
+          return;
+        }
+        navigator.clipboard.writeText(link);
+        toast.success("Invite link copied to clipboard!");
+      }).catch((err: any) => toast.error(err.message || "Failed to get invite link"));
     });
   };
 
@@ -507,6 +520,12 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
                             }}>
                               <Shield className="h-3.5 w-3.5 mr-2" />
                               Employee Codes
+                            </DropdownMenuItem>
+                          )}
+                          {isAdmin && emp.clerkId.startsWith("pending_") && (
+                            <DropdownMenuItem className="text-xs" onClick={() => handleCopyInviteLink(emp.email)}>
+                              <Copy className="h-3.5 w-3.5 mr-2" />
+                              Copy Invite Link
                             </DropdownMenuItem>
                           )}
                           {canDelete && (

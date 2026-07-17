@@ -1,11 +1,11 @@
-import { clerkClient } from "@clerk/nextjs/server";
+import { createClerkClient } from "@clerk/backend";
 import dotenv from "dotenv";
 
 dotenv.config({ path: ".env.local" });
 
 async function main() {
   try {
-    const client = await clerkClient();
+    const client = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY! });
     const invites = await client.invitations.getInvitationList();
     console.log(`Found Invitations: ${invites.totalCount}`);
     
