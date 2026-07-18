@@ -33,13 +33,9 @@ export function TeamsClient({ initialTeams, employees, canCreate = false }: { in
   };
 
   return (
-    <div className="space-y-6 p-6 md:p-8 max-w-7xl mx-auto h-full overflow-y-auto selection:bg-primary/10">
-      <div className="flex items-center justify-between pb-6 border-b border-border/40">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Teams</h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage functional groups and track project assignments.</p>
-        </div>
-        {canCreate && (
+    <div className="flex-1 overflow-y-auto pr-2">
+      {canCreate && (
+        <div className="flex justify-end mb-6">
           <Dialog open={newTeamOpen} onOpenChange={setNewTeamOpen}>
             <DialogTrigger asChild>
               <Button size="sm" className="gap-2 shadow-none"><Plus className="h-4 w-4" /> Create Team</Button>
@@ -76,8 +72,8 @@ export function TeamsClient({ initialTeams, employees, canCreate = false }: { in
               </div>
             </DialogContent>
           </Dialog>
-        )}
-      </div>
+        </div>
+      )}
 
       {teamList.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border/40 p-12 text-center bg-muted/10">

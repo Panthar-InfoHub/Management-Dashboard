@@ -7,43 +7,106 @@ import { getCurrentEmployee } from "@/lib/auth";
 import {
   getDashboardOverview, getTaskRadar, getAttentionProjects, getDashboardProjectsSummary, getDashboardChartsData, getCompletionTrend,
 } from "@/lib/queries/dashboard.queries";
-
+import { Skeleton } from "@/components/ui/skeleton";
 import { Suspense } from "react";
-import DashboardLoading from "./loading";
 
-async function DashboardData({ employee, overview }: { employee: any, overview: any }) {
-  const [taskRadar, attentionProjects, projectsSummary, chartData, completionTrend] = await Promise.all([
-    getTaskRadar(employee),
-    getAttentionProjects(employee),
-    getDashboardProjectsSummary(employee),
-    getDashboardChartsData(employee),
-    getCompletionTrend(employee),
-  ]);
-
+function PriorityPanelsSkeleton() {
   return (
-    <>
-      <OverviewBlocks overview={overview} />
-      <PriorityPanels isAdmin={overview.isAdmin} taskRadar={taskRadar} attentionProjects={attentionProjects} />
-      {chartData && <DashboardCharts chartData={chartData} completionTrend={completionTrend} />}
-      <ProjectsSummary projects={projectsSummary} />
-    </>
+    <div className="grid gap-4 md:grid-cols-2">
+      {[1, 2].map((i) => (
+        <div key={i} className="rounded-xl border border-border/40 bg-card shadow-sm">
+          <div className="space-y-2 border-b border-border/40 p-5">
+            <Skeleton className="h-4 w-32" />
+          </div>
+          <div className="space-y-3 p-4">
+            {[1, 2, 3].map((j) => (
+              <div key={j} className="flex items-center gap-3">
+                <Skeleton className="h-2 w-2 rounded-full" />
+                <div className="w-full space-y-1.5">
+                  <Skeleton className="h-3 w-2/3" />
+                  <Skeleton className="h-2.5 w-1/3" />
+                </div>
+                <Skeleton className="h-4 w-14 shrink-0" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
-export default async function DashboardPage() {
+function ChartsSkeleton() {
+  return (
+    <div className="grid gap-4 lg:grid-cols-3">
+      <div className="h-[320px] space-y-4 rounded-xl border border-border/40 bg-card p-4 shadow-sm lg:col-span-2">
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-9 w-9 rounded-xl" />
+          <Skeleton className="h-4 w-32" />
+        </div>
+        <Skeleton className="h-[240px] w-full rounded-md" />
+      </div>
+      <div className="h-[320px] space-y-4 rounded-xl border border-border/40 bg-card p-4 shadow-sm">
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-9 w-9 rounded-xl" />
+          <Skeleton className="h-4 w-28" />
+        </div>
+        <Skeleton className="h-[240px] w-full rounded-md" />
+      </div>
+    </div>
+  );
+}
+
+function ProjectsSummarySkeleton() {
+  return (
+    <div className="space-y-4 rounded-xl border border-border/40 bg-card p-4 shadow-sm">
+      <Skeleton className="h-5 w-40" />
+      <div className="space-y-3">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="space-y-2 rounded-lg border border-border/40 p-3">
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-3.5 w-1/3" />
+              <Skeleton className="h-5 w-5 rounded-full" />
+            </div>
+            <Skeleton className="h-1.5 w-full rounded-full" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+async function DashboardPriorityPanels({ employee, isAdmin }: { employee: any, isAdmin: boolean }) {
+  const [taskRadar, attentionProjects] = await Promise.all([
+    getTaskRadar(employee),
+    getAttentionProjects(employee)
+  ]);
+  return <PriorityPanels isAdmin={isAdmin} taskRadar={taskRadar} attentionProjects={attentionProjects} />;
+}
+
+async function DashboardChartsSection({ employee }: { employee: any }) {
+  const [chartData, completionTrend] = await Promise.all([
+    getDashboardChartsData(employee),
+    getCompletionTrend(employee)
+  ]);
+  if (!chartData) return null;
+  return <DashboardCharts chartData={chartData} completionTrend={completionTrend} />;
+}
+
+async function DashboardProjectsSummary({ employee }: { employee: any }) {
+  const projectsSummary = await getDashboardProjectsSummary(employee);
+  return <ProjectsSummary projects={projectsSummary} />;
+}
+
+async function DashboardHeaderAsync() {
   const employee = await getCurrentEmployee();
-  
-  // Fetch overview fast for the shell
   const overview = await getDashboardOverview(employee);
 
   const now = new Date();
   const greeting = now.getHours() < 12 ? "Good morning" : now.getHours() < 17 ? "Good afternoon" : "Good evening";
 
-
-
   return (
-    <div className="h-full space-y-8 overflow-y-auto p-6">
-      {/* Header */}
+    <>
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-foreground">
@@ -58,8 +121,47 @@ export default async function DashboardPage() {
         <DashboardHeaderActions isAdmin={overview.isAdmin} />
       </div>
 
-      <Suspense fallback={<DashboardLoading />}>
-        <DashboardData employee={employee} overview={overview} />
+      <OverviewBlocks overview={overview} />
+      
+      <Suspense fallback={<PriorityPanelsSkeleton />}>
+        <DashboardPriorityPanels employee={employee} isAdmin={overview.isAdmin} />
+      </Suspense>
+
+      <Suspense fallback={<ChartsSkeleton />}>
+        <DashboardChartsSection employee={employee} />
+      </Suspense>
+
+      <Suspense fallback={<ProjectsSummarySkeleton />}>
+        <DashboardProjectsSummary employee={employee} />
+      </Suspense>
+    </>
+  );
+}
+
+export default function DashboardPage() {
+  // Instantly return the static page shell
+  return (
+    <div className="h-full space-y-8 overflow-y-auto p-6">
+      <Suspense fallback={
+        <div className="space-y-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <Skeleton className="h-7 w-48" />
+              <Skeleton className="h-4 w-72" />
+            </div>
+            <Skeleton className="h-8 w-40" />
+          </div>
+          {/* We can rely on the nested skeletons once the header resolves */}
+          <div className="grid gap-4 md:grid-cols-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="overflow-hidden rounded-xl border border-border/40 bg-card p-5">
+                <Skeleton className="h-12 w-full" />
+              </div>
+            ))}
+          </div>
+        </div>
+      }>
+        <DashboardHeaderAsync />
       </Suspense>
     </div>
   );

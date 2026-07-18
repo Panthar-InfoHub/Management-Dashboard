@@ -53,12 +53,8 @@ export function NotificationsClient({ initialNotifications }: { initialNotificat
   const read = initialNotifications.filter(n => n.isRead);
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Notifications</h1>
-          <p className="text-sm text-muted-foreground">Stay up to date with your team.</p>
-        </div>
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex justify-end mb-4">
         <Button variant="secondary" size="sm" onClick={handleMarkAllRead} disabled={isPending || unread.length === 0} className="gap-2 text-xs">
           <CheckCheck className="h-3.5 w-3.5" /> Mark All Read
         </Button>

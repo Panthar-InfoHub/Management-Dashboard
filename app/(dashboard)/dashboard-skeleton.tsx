@@ -4,9 +4,13 @@ export default function DashboardLoading() {
   return (
     <div className="space-y-8 p-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="space-y-2">
-          <Skeleton className="h-7 w-48" />
-          <Skeleton className="h-4 w-[200px] sm:w-72" />
+        <div className="space-y-1">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">
+            Dashboard Overview
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Loading your organization metrics...
+          </p>
         </div>
         <Skeleton className="h-8 w-full sm:w-40" />
       </div>

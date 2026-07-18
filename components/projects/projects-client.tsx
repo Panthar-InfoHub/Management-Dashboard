@@ -43,13 +43,8 @@ export function ProjectsClient({ initialProjects, canCreate }: { initialProjects
 
   if (projectList.length === 0) {
     return (
-      <div className="space-y-6 p-6 h-[calc(100vh-4rem)] flex flex-col">
+      <div className="flex flex-col min-w-0 flex-1 overflow-hidden">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">Projects</h1>
-            <p className="text-sm text-muted-foreground">Manage and track all active projects across your organization.</p>
-          </div>
-        </div>
         
         <EmptyState 
           icon={FolderKanban}
@@ -59,16 +54,13 @@ export function ProjectsClient({ initialProjects, canCreate }: { initialProjects
           className="mt-6 h-[400px]"
         />
       </div>
+      </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-6 p-6 h-[calc(100vh-64px)] min-w-0 overflow-hidden">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between shrink-0 gap-4">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Projects</h1>
-          <p className="text-sm text-muted-foreground">Manage and track all active projects across your organization.</p>
-        </div>
+    <div className="flex flex-col gap-6 min-w-0 flex-1 overflow-hidden">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-end shrink-0 gap-4">
         {canCreate && (
           <Button asChild size="sm" className="gap-2 text-xs w-full sm:w-auto">
             <Link href="/projects/new">

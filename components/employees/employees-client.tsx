@@ -26,10 +26,11 @@ const roleColors: Record<string, string> = {
   EMPLOYEE: "bg-gray-500/10 text-gray-600 border-gray-500/20" 
 };
 
-export function EmployeesClient({ initialEmployees, teams, availableRoles = [], isAdmin, canCreate = false, canUpdate = false, canDelete = false }: { initialEmployees: any[], teams: any[], availableRoles?: string[], isAdmin: boolean, canCreate?: boolean, canUpdate?: boolean, canDelete?: boolean }) {
+export function EmployeesClient({ initialEmployees, teams, availableRoles = [], isAdmin, isManager = false, canCreate = false, canUpdate = false, canDelete = false }: { initialEmployees: any[], teams: any[], availableRoles?: string[], isAdmin: boolean, isManager?: boolean, canCreate?: boolean, canUpdate?: boolean, canDelete?: boolean }) {
   const [newEmpOpen, setNewEmpOpen] = useState(false);
   const [editEmpOpen, setEditEmpOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState("ALL");
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
@@ -136,17 +137,14 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
   };
 
   const filteredEmployees = initialEmployees.filter(e => 
-    (e.firstName + " " + e.lastName).toLowerCase().includes(searchQuery.toLowerCase()) || 
-    e.email.toLowerCase().includes(searchQuery.toLowerCase())
+    ((e.firstName + " " + e.lastName).toLowerCase().includes(searchQuery.toLowerCase()) || 
+    e.email.toLowerCase().includes(searchQuery.toLowerCase())) &&
+    (roleFilter === "ALL" || e.role === roleFilter)
   );
 
   return (
-    <div className="space-y-6 p-6 md:p-8 max-w-7xl mx-auto h-full overflow-y-auto selection:bg-primary/10">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-border/40">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Organization Members</h1>
-          <p className="text-sm text-muted-foreground">Manage members and their platform access.</p>
-        </div>
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-4 pb-6">
         {canCreate && (
           <Dialog open={newEmpOpen} onOpenChange={setNewEmpOpen}>
             <DialogTrigger asChild>
@@ -420,6 +418,19 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
+        <div className="w-[180px]">
+          <Select value={roleFilter} onValueChange={setRoleFilter}>
+            <SelectTrigger>
+              <SelectValue placeholder="Filter by Role" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All Roles</SelectItem>
+              {availableRoles.map(r => (
+                <SelectItem key={r} value={r}>{r}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <div className="border border-border/40 rounded-lg overflow-x-auto bg-background">
@@ -428,7 +439,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
             <TableRow>
               <TableHead className="min-w-[250px] font-medium text-[11px] uppercase tracking-wider">Name & Title</TableHead>
               <TableHead className="min-w-[180px] font-medium text-[11px] uppercase tracking-wider">Contact Info</TableHead>
-              {isAdmin && <TableHead className="min-w-[180px] font-medium text-[11px] uppercase tracking-wider">Status & System Role</TableHead>}
+              {(isAdmin || isManager) && <TableHead className="min-w-[180px] font-medium text-[11px] uppercase tracking-wider">Status & System Role</TableHead>}
               <TableHead className="min-w-[120px] font-medium text-[11px] uppercase tracking-wider">Joined</TableHead>
               {(canUpdate || canDelete) && <TableHead className="w-[50px]"></TableHead>}
             </TableRow>
@@ -436,7 +447,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
           <TableBody>
             {filteredEmployees.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={isAdmin ? 5 : 4} className="h-24 text-center">
+                <TableCell colSpan={(isAdmin || isManager) ? 5 : 4} className="h-24 text-center">
                   <div className="p-8 text-center text-sm text-muted-foreground">No members found matching your search.</div>
                 </TableCell>
               </TableRow>
@@ -474,7 +485,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
                       )}
                     </div>
                   </TableCell>
-                  {isAdmin && (
+                  {(isAdmin || isManager) && (
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Badge variant="outline" className={cn("text-[9px] px-2 py-0.5 shadow-none rounded-full border-border/40", roleColors[emp.role] || "bg-gray-500/10 text-gray-600 border-gray-500/20")}>
@@ -512,7 +523,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
                               Edit Role & Title
                             </DropdownMenuItem>
                           )}
-                          {isAdmin && (
+                          {(isAdmin || isManager) && (
                             <DropdownMenuItem className="text-xs" onClick={() => {
                               setCodeEmpTarget(emp);
                               setCodeType("PANTHAR");
@@ -522,7 +533,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
                               Employee Codes
                             </DropdownMenuItem>
                           )}
-                          {isAdmin && emp.clerkId.startsWith("pending_") && (
+                          {(isAdmin || isManager) && emp.clerkId.startsWith("pending_") && (
                             <DropdownMenuItem className="text-xs" onClick={() => handleCopyInviteLink(emp.email)}>
                               <Copy className="h-3.5 w-3.5 mr-2" />
                               Copy Invite Link

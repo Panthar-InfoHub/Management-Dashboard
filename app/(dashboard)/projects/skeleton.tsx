@@ -2,23 +2,19 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function ProjectsLoading() {
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <Skeleton className="h-7 w-32 mb-2" />
-          <Skeleton className="h-4 w-[200px] sm:w-72" />
-        </div>
+    <div className="flex flex-col gap-6 min-w-0 flex-1 overflow-hidden">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-end shrink-0 gap-4">
         <Skeleton className="h-9 w-full sm:w-28" />
       </div>
 
-      <div className="flex items-center gap-3 w-full">
+      <div className="flex items-center gap-3 w-full shrink-0">
         <Skeleton className="h-9 w-full max-w-sm" />
-        <Skeleton className="h-9 w-20 shrink-0" />
+        <Skeleton className="h-9 w-[130px] shrink-0" />
+        <Skeleton className="h-9 w-[130px] shrink-0" />
       </div>
 
-      <div className="mt-4">
+      <div className="mt-4 flex-1">
         <div className="flex gap-2 mb-6">
-          <Skeleton className="h-8 w-16" />
           <Skeleton className="h-8 w-16" />
           <Skeleton className="h-8 w-16" />
         </div>
@@ -33,7 +29,6 @@ export default function ProjectsLoading() {
                   <Skeleton className="h-3 w-5/6" />
                 </div>
                 <div className="flex gap-2">
-                  <Skeleton className="h-5 w-16" />
                   <Skeleton className="h-5 w-16" />
                   <Skeleton className="h-5 w-16" />
                 </div>
