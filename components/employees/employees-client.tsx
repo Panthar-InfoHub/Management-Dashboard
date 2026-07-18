@@ -34,7 +34,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
-  const [newEmp, setNewEmp] = useState({ firstName: "", lastName: "", email: "", role: availableRoles[0] || "EMPLOYEE", designation: "", password: "" });
+  const [newEmp, setNewEmp] = useState({ firstName: "", lastName: "", email: "", role: availableRoles[0] || "EMPLOYEE", designation: "", password: "", joinDate: new Date().toISOString().split("T")[0] });
   const [setCustomPassword, setSetCustomPassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [editingEmp, setEditingEmp] = useState<{ id: string; role: string; designation: string } | null>(null);
@@ -101,7 +101,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
     startTransition(() => {
       createEmployeeAction(newEmp).then(() => {
         setNewEmpOpen(false);
-        setNewEmp({ firstName: "", lastName: "", email: "", role: "EMPLOYEE", designation: "", password: "" });
+        setNewEmp({ firstName: "", lastName: "", email: "", role: "EMPLOYEE", designation: "", password: "", joinDate: new Date().toISOString().split("T")[0] });
         setSetCustomPassword(false);
         setShowPassword(false);
         router.refresh();
@@ -141,6 +141,12 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
     e.email.toLowerCase().includes(searchQuery.toLowerCase())) &&
     (roleFilter === "ALL" || e.role === roleFilter)
   );
+
+  const handleRowClick = (empId: string) => {
+    if (isAdmin || isManager) {
+      router.push(`/employees/${empId}`);
+    }
+  };
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -208,9 +214,15 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
                     </div>
                   </div>
                 </div>
-                <div className="space-y-1.5 flex flex-col">
-                  <label className="text-xs font-semibold text-muted-foreground">Designation / Title</label>
-                  <Input value={newEmp.designation} onChange={e => setNewEmp({ ...newEmp, designation: e.target.value })} placeholder="E.g. Senior Frontend Engineer" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5 flex flex-col">
+                    <label className="text-xs font-semibold text-muted-foreground">Designation / Title</label>
+                    <Input value={newEmp.designation} onChange={e => setNewEmp({ ...newEmp, designation: e.target.value })} placeholder="E.g. Senior Frontend Engineer" />
+                  </div>
+                  <div className="space-y-1.5 flex flex-col">
+                    <label className="text-xs font-semibold text-muted-foreground">Date of Joining</label>
+                    <Input type="date" value={newEmp.joinDate} onChange={e => setNewEmp({ ...newEmp, joinDate: e.target.value })} />
+                  </div>
                 </div>
                 <div className="space-y-1.5 flex flex-col">
                   <label className="text-xs font-semibold text-muted-foreground">System Role</label>
@@ -408,7 +420,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
         </DialogContent>
       </Dialog>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 mb-6">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input 
@@ -453,7 +465,15 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
               </TableRow>
             ) : (
               filteredEmployees.map(emp => (
-                <TableRow key={emp.id} className="hover:bg-muted/30">
+                <TableRow 
+                  key={emp.id} 
+                  className={cn("hover:bg-muted/30", (isAdmin || isManager) && "cursor-pointer")}
+                  onClick={(e) => {
+                    // Prevent row click if clicking on the dropdown or its children
+                    if ((e.target as HTMLElement).closest('.action-menu')) return;
+                    handleRowClick(emp.id);
+                  }}
+                >
                   <TableCell>
                     <div className="flex items-center gap-4 min-w-0">
                       <div className="relative shrink-0">
@@ -506,7 +526,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
                     </div>
                   </TableCell>
                   {(canUpdate || canDelete) && (
-                    <TableCell className="text-right">
+                    <TableCell className="text-right action-menu">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
@@ -514,35 +534,19 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-[180px]">
-                          {canUpdate && (
-                            <DropdownMenuItem className="text-xs" onClick={() => {
-                              setEditingEmp({ id: emp.id, role: emp.role, designation: emp.designation || "" });
-                              setEditEmpOpen(true);
-                            }}>
-                              <Pencil className="h-3.5 w-3.5 mr-2" />
-                              Edit Role & Title
-                            </DropdownMenuItem>
-                          )}
                           {(isAdmin || isManager) && (
-                            <DropdownMenuItem className="text-xs" onClick={() => {
-                              setCodeEmpTarget(emp);
-                              setCodeType("PANTHAR");
-                              setCodeEmpOpen(true);
-                            }}>
-                              <Shield className="h-3.5 w-3.5 mr-2" />
-                              Employee Codes
+                            <DropdownMenuItem className="text-xs" onClick={() => router.push(`/employees/${emp.id}`)}>
+                              <UserPlus className="h-3.5 w-3.5 mr-2" />
+                              View Profile
                             </DropdownMenuItem>
                           )}
                           {(isAdmin || isManager) && emp.clerkId.startsWith("pending_") && (
-                            <DropdownMenuItem className="text-xs" onClick={() => handleCopyInviteLink(emp.email)}>
+                            <DropdownMenuItem className="text-xs" onClick={(e) => {
+                              e.stopPropagation();
+                              handleCopyInviteLink(emp.email);
+                            }}>
                               <Copy className="h-3.5 w-3.5 mr-2" />
                               Copy Invite Link
-                            </DropdownMenuItem>
-                          )}
-                          {canDelete && (
-                            <DropdownMenuItem className="text-red-600 focus:bg-red-50 focus:text-red-600 cursor-pointer text-xs" onClick={() => handleDeleteClick(emp.id)}>
-                              <Trash2 className="h-3.5 w-3.5 mr-2" />
-                              Remove Member
                             </DropdownMenuItem>
                           )}
                         </DropdownMenuContent>

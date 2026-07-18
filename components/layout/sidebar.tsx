@@ -24,6 +24,7 @@ const navItems: NavItem[] = [
   { label: "Projects", href: "/projects", icon: FolderKanban },
   { label: "Teams", href: "/teams", icon: Users },
   { label: "Members", href: "/employees", icon: UserCircle },
+  { label: "Records", href: "/records", icon: FileText },
 ];
 
 const bottomItems: NavItem[] = [
@@ -98,7 +99,7 @@ export function Sidebar({ collapsed, setCollapsed, isMobile, isAdmin = false }: 
       {/* Nav */}
       <ScrollArea className="flex-1 px-2 py-1">
         <nav className="flex flex-col gap-0.5 mt-1">
-          {navItems.filter(item => isAdmin || item.label !== "Reports").map((item) => {
+          {navItems.filter(item => isAdmin || (item.label !== "Reports" && item.label !== "Records")).map((item) => {
             const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
             const link = (
               <Link

@@ -98,6 +98,11 @@ model Employee {
   // ── Notification relations ──
   notifications Notification[]
 
+  // ── Employment Records ──
+  employmentRecords EmploymentRecord[]
+  
+  exitDate DateTime? // Null means currently active
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -240,4 +245,22 @@ model Notification {
   
   @@index([recipientId])
   @@index([isRead])
+}
+
+model EmploymentRecord {
+  id          String    @id @default(cuid())
+  employeeId  String
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  designation String?   // e.g., "Frontend Intern", "Senior Developer"
+  
+  startDate   DateTime  @default(now())
+  endDate     DateTime? // Null means currently active role
+  
+  reason      String?   
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([employeeId])
 }

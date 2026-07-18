@@ -6,6 +6,9 @@ export async function getEmployees() {
   const isPrivileged = employee.role === "ADMIN" || employee.role === "MANAGER";
 
   const employees = await db.employee.findMany({
+    where: {
+      status: "ACTIVE"
+    },
     orderBy: {
       firstName: "asc"
     }
@@ -25,4 +28,20 @@ export async function getEmployees() {
   }
 
   return employees;
+}
+
+export async function getEmployeeById(id: string) {
+  const currentEmployee = await getCurrentEmployee();
+  const isPrivileged = currentEmployee.role === "ADMIN" || currentEmployee.role === "MANAGER";
+  
+  if (!isPrivileged) throw new Error("Unauthorized to view detailed employee profile");
+
+  return db.employee.findUnique({
+    where: { id },
+    include: {
+      employmentRecords: {
+        orderBy: { startDate: 'desc' }
+      }
+    }
+  });
 }
