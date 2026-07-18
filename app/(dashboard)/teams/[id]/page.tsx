@@ -7,23 +7,23 @@ import { TeamDetailClient } from "@/components/teams/team-detail-client";
 
 export default async function TeamDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const team = await getTeamById(id);
-  const allEmployees = await getEmployees();
-  const employee = await getCurrentEmployee();
-  const canUpdateGlobal = await checkPermission("team:update");
-  const canDelete = await checkPermission("team:delete");
+  const [team, allEmployees, employee, canUpdateGlobal, canDelete, tasks] = await Promise.all([
+    getTeamById(id),
+    getEmployees(),
+    getCurrentEmployee(),
+    checkPermission("team:update"),
+    checkPermission("team:delete"),
+    db.task.findMany({
+      where: { project: { teamId: id } },
+      include: {
+        assignees: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
+        project: { select: { name: true, id: true } }
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 20
+    })
+  ]);
   const canEdit = canUpdateGlobal || team?.leadId === employee.id;
-  
-  // Fetch tasks belonging to projects of this team
-  const tasks = await db.task.findMany({
-    where: { project: { teamId: id } },
-    include: {
-      assignees: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
-      project: { select: { name: true, id: true } }
-    },
-    orderBy: { updatedAt: "desc" },
-    take: 20
-  });
 
   if (!team) {
     notFound();

@@ -21,19 +21,19 @@ export default async function NewTaskPage() {
     members: { some: { employeeId: employee.id } }
   };
 
-  // Fetch projects the user can assign tasks to
-  const projects = await db.project.findMany({
-    where: projectWhereClause,
-    select: { id: true, name: true },
-    orderBy: { name: "asc" }
-  });
-
-  // Fetch active employees to act as assignees
-  const employees = await db.employee.findMany({
-    where: { status: "ACTIVE" },
-    select: { id: true, firstName: true, lastName: true },
-    orderBy: { firstName: "asc" }
-  });
+  // Fetch projects the user can assign tasks to, and active employees to act as assignees
+  const [projects, employees] = await Promise.all([
+    db.project.findMany({
+      where: projectWhereClause,
+      select: { id: true, name: true },
+      orderBy: { name: "asc" }
+    }),
+    db.employee.findMany({
+      where: { status: "ACTIVE" },
+      select: { id: true, firstName: true, lastName: true },
+      orderBy: { firstName: "asc" }
+    })
+  ]);
 
   return <NewTaskForm projects={projects} employees={employees} />;
 }

@@ -62,11 +62,11 @@ export default function TasksPage({ searchParams }: { searchParams: Promise<{ [k
 }
 
 async function TasksDataAsync({ searchParams }: { searchParams: Promise<{ [key: string]: string | undefined }> }) {
-  const resolvedParams = await searchParams;
-  
-  // Fetch fast/cached auth first
-  const employee = await getCurrentEmployee();
-  const canEdit = await checkPermission("task:create");
+  const [resolvedParams, employee, canEdit] = await Promise.all([
+    searchParams,
+    getCurrentEmployee(),
+    checkPermission("task:create")
+  ]);
 
   return <TasksData resolvedParams={resolvedParams} employee={employee} canEdit={canEdit} />;
 }

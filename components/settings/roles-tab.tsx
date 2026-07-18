@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -61,9 +61,9 @@ const PERMISSION_GROUPS = [
   }
 ];
 
-export function RolesTab() {
-  const [roles, setRoles] = useState<any[]>([]);
-  const [selectedRole, setSelectedRole] = useState<string | null>(null);
+export function RolesTab({ initialRoles }: { initialRoles: any[] }) {
+  const [roles, setRoles] = useState<any[]>(initialRoles);
+  const [selectedRole, setSelectedRole] = useState<string | null>(initialRoles[0]?.name ?? null);
   const [newRoleName, setNewRoleName] = useState("");
   const [newRoleOpen, setNewRoleOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -77,10 +77,6 @@ export function RolesTab() {
       toast.error(err.message || "Failed to load roles");
     });
   };
-
-  useEffect(() => {
-    fetchRoles();
-  }, []);
 
   const handleTogglePermission = (roleName: string, permission: string, checked: boolean) => {
     const role = roles.find(r => r.name === roleName);

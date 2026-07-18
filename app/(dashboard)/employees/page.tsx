@@ -23,15 +23,11 @@ export default function EmployeesPage() {
 }
 
 async function EmployeesDataAsync() {
-  const currentEmployee = await getCurrentEmployee(); // fast
-
-  const [canCreate, canUpdate, canDelete] = await Promise.all([
+  const [currentEmployee, canCreate, canUpdate, canDelete, employees, teams, roles] = await Promise.all([
+    getCurrentEmployee(),
     checkPermission("employee:create"),
     checkPermission("employee:update"),
-    checkPermission("employee:delete")
-  ]);
-
-  const [employees, teams, roles] = await Promise.all([
+    checkPermission("employee:delete"),
     getEmployees(),
     getTeams(),
     db.systemRole.findMany({ select: { name: true } })

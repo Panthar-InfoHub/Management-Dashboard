@@ -2,13 +2,19 @@ import { OverviewBlocks } from "@/components/dashboard/overview-blocks";
 import { PriorityPanels } from "@/components/dashboard/priority-panels";
 import { ProjectsSummary } from "@/components/dashboard/projects-summary";
 import { DashboardHeaderActions } from "@/components/dashboard/dashboard-header-actions";
-import { DashboardCharts } from "@/components/dashboard/dashboard-charts";
 import { getCurrentEmployee } from "@/lib/auth";
 import {
   getDashboardOverview, getTaskRadar, getAttentionProjects, getDashboardProjectsSummary, getDashboardChartsData, getCompletionTrend,
 } from "@/lib/queries/dashboard.queries";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Suspense } from "react";
+import dynamic from "next/dynamic";
+
+// recharts is a large client-only dependency used exclusively by this section;
+// splitting it into its own chunk keeps it out of the initial dashboard bundle.
+const DashboardCharts = dynamic(() =>
+  import("@/components/dashboard/dashboard-charts").then((mod) => mod.DashboardCharts)
+);
 
 function PriorityPanelsSkeleton() {
   return (

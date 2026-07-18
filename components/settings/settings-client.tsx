@@ -4,7 +4,7 @@ import { KeyRound } from "lucide-react";
 import { RolesTab } from "@/components/settings/roles-tab";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-export function SettingsClient() {
+export function SettingsClient({ initialRoles }: { initialRoles: any[] }) {
   return (
     <Tabs defaultValue="roles" className="flex flex-col gap-6">
       <div className="w-full overflow-x-auto pb-1">
@@ -17,7 +17,7 @@ export function SettingsClient() {
 
       <div className="flex-1 min-w-0 pb-10">
         <TabsContent value="roles" className="m-0 border-0 p-0 focus-visible:outline-none">
-          <RolesTab />
+          <RolesTab initialRoles={initialRoles} />
         </TabsContent>
       </div>
     </Tabs>

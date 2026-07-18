@@ -131,13 +131,10 @@ export async function updateTaskStatusAction(taskId: string, newStatus: any) {
 
   // Auto-unblock dependent tasks if this task is now DONE
   if (newStatus === "DONE" && updatedTask.blocking && updatedTask.blocking.length > 0) {
-    for (const blockedTask of updatedTask.blocking) {
-      await db.task.update({
-        where: { id: blockedTask.id },
-        data: { blockedById: null }
-      });
-      
-    }
+    await db.task.updateMany({
+      where: { id: { in: updatedTask.blocking.map((t) => t.id) } },
+      data: { blockedById: null }
+    });
   }
 
   revalidatePath("/", "layout");

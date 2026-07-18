@@ -22,10 +22,12 @@ export default function TeamsPage() {
 }
 
 async function TeamsDataAsync() {
-  await getCurrentEmployee();
-  const canCreate = await checkPermission("team:create");
-  const teams = await getTeams();
-  const employees = await getEmployees();
+  const [, canCreate, teams, employees] = await Promise.all([
+    getCurrentEmployee(),
+    checkPermission("team:create"),
+    getTeams(),
+    getEmployees()
+  ]);
   return (
     <TeamsClient 
       initialTeams={JSON.parse(JSON.stringify(teams))} 
