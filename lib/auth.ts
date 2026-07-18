@@ -42,8 +42,14 @@ export const getCurrentEmployee = cache(async (): Promise<AuthEmployee> => {
     const user = await currentUser();
     if (!user) throw new Error("Unauthorized: user not found in Clerk");
 
-    const email = user.emailAddresses[0]?.emailAddress;
-    if (!email) throw new Error("User must have an email address");
+    // Use the verified primary email specifically — not emailAddresses[0], which
+    // isn't guaranteed to be the primary or even a verified address, and could be
+    // used to link a Clerk account to someone else's pre-provisioned Employee record.
+    const primaryEmail = user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId);
+    if (!primaryEmail || primaryEmail.verification?.status !== "verified") {
+      throw new Error("Unauthorized: primary email address is not verified");
+    }
+    const email = primaryEmail.emailAddress;
 
     // Check if the user was invited manually from the dashboard (exists by email)
     const existingEmployee = await db.employee.findUnique({
@@ -67,40 +73,20 @@ export const getCurrentEmployee = cache(async (): Promise<AuthEmployee> => {
       });
       console.log(`[JIT Sync] Linked invited profile for ${email} to Clerk ID`);
     } else {
-      // Brand new user (not invited)
-      try {
-        employee = await db.$transaction(async (tx) => {
-          const userCount = await tx.employee.count();
-          
-          if (userCount === 0) {
-            return await tx.employee.create({
-              data: {
-                clerkId: user.id,
-                email: email,
-                firstName: user.firstName || "Admin",
-                lastName: user.lastName || "User",
-                avatarUrl: user.imageUrl,
-                role: "ADMIN",
-              },
-              select: {
-                id: true, clerkId: true, email: true, firstName: true,
-                lastName: true, role: true, status: true, teamId: true,
-                avatarUrl: true, designation: true,
-              },
-            });
-          } else {
-            throw new Error("INVITATION_REQUIRED");
-          }
-        }, { isolationLevel: "Serializable" });
-        console.log(`[JIT Sync] Created initial ADMIN record for ${email}`);
-      } catch (err: any) {
-        if (err.message === "INVITATION_REQUIRED") {
-          console.log(`[Auth Blocked] Rejected uninvited signup attempt from ${email}`);
-        }
-        throw err;
-      }
+      // Brand new user, not invited. Signups are invite-only — the first ADMIN
+      // is provisioned manually (sign up, then set the role directly in the
+      // database), so there is no automatic bootstrap path here. Auto-creating
+      // an ADMIN whenever the Employee table happened to be empty was a standing
+      // account-takeover risk (e.g. after the last employee is removed).
+      console.log(`[Auth Blocked] Rejected uninvited signup attempt from ${email}`);
+      throw new Error("INVITATION_REQUIRED");
     }
   }
+
+  if (employee.status === "INACTIVE") {
+    throw new Error("FORBIDDEN: This account has been deactivated.");
+  }
+
   return employee as AuthEmployee;
 });
 

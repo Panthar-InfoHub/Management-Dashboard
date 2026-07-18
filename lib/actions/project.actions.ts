@@ -164,9 +164,9 @@ export async function manageProjectMembersAction(projectId: string, memberIds: s
   const newlyAddedIds = memberIds.filter(id => !existingMemberIds.includes(id));
 
   if (newlyAddedIds.length > 0) {
-    const { createNotificationAction } = await import("./notification.actions");
-    await Promise.all(newlyAddedIds.map(id => 
-      createNotificationAction({
+    const { createNotification } = await import("@/lib/notifications");
+    await Promise.all(newlyAddedIds.map(id =>
+      createNotification({
         recipientId: id,
         type: "PROJECT_ADDED",
         title: "Added to Project",

@@ -31,10 +31,15 @@ export async function updateSystemRolePermissionsAction(name: string, permission
 
 export async function createSystemRoleAction(name: string, permissions: string[]) {
   await requireAuth("role:manage");
-  
+
+  const normalizedName = name.toUpperCase().replace(/\s+/g, '_');
+  if (normalizedName === "ADMIN") {
+    throw new Error("Cannot create a role named ADMIN.");
+  }
+
   const role = await db.systemRole.create({
-    data: { 
-      name: name.toUpperCase().replace(/\s+/g, '_'), 
+    data: {
+      name: normalizedName,
       permissions,
       isSystem: false
     }

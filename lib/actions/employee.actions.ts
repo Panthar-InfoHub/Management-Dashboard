@@ -17,6 +17,12 @@ export async function createEmployeeAction(data: {
   if (data.role === "ADMIN" && currentEmployee.role !== "ADMIN") {
     throw new Error("Only admins can create an ADMIN role.");
   }
+  if (currentEmployee.role !== "ADMIN") {
+    const targetRole = await db.systemRole.findUnique({ where: { name: data.role } });
+    if (targetRole?.permissions.includes("role:manage")) {
+      throw new Error("Only admins can create an employee with role-management permissions.");
+    }
+  }
 
   const client = await clerkClient();
   let clerkUserId: string;
@@ -92,11 +98,22 @@ export async function updateEmployeeAction(id: string, data: {
   const currentEmployee = await requireAuth("employee:update");
 
   const target = await db.employee.findUnique({ where: { id } });
-  if (target?.role === "ADMIN" && currentEmployee.role !== "ADMIN") {
+  if (!target) throw new Error("Employee not found");
+
+  if (id === currentEmployee.id && data.role !== target.role) {
+    throw new Error("You cannot change your own role.");
+  }
+  if (target.role === "ADMIN" && currentEmployee.role !== "ADMIN") {
     throw new Error("Only admins can modify an ADMIN user.");
   }
   if (data.role === "ADMIN" && currentEmployee.role !== "ADMIN") {
     throw new Error("Only admins can assign an ADMIN role.");
+  }
+  if (data.role !== target.role && currentEmployee.role !== "ADMIN") {
+    const targetRole = await db.systemRole.findUnique({ where: { name: data.role } });
+    if (targetRole?.permissions.includes("role:manage")) {
+      throw new Error("Only admins can assign a role with role-management permissions.");
+    }
   }
 
   const employee = await db.employee.update({
@@ -228,6 +245,16 @@ export async function getInvitationLinkAction(email: string) {
   const currentEmployee = await requireAuth("employee:update");
   if (currentEmployee.role !== "ADMIN" && currentEmployee.role !== "MANAGER") {
     throw new Error("Not authorized to view invitations.");
+  }
+
+  // A Manager may only fetch invite links for non-ADMIN invitees — otherwise a
+  // Manager could hijack a pre-provisioned ADMIN's pending invitation and
+  // complete the sign-up themselves.
+  if (currentEmployee.role !== "ADMIN") {
+    const invitedEmployee = await db.employee.findUnique({ where: { email } });
+    if (invitedEmployee?.role === "ADMIN") {
+      throw new Error("Only admins can view invitations for an ADMIN account.");
+    }
   }
 
   const client = await clerkClient();

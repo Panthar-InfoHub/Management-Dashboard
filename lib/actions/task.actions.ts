@@ -210,6 +210,11 @@ export async function createSubtaskAction(parentId: string, data: { title: strin
     const isAssignee = parentTask.assignees.some(a => a.id === employee.id);
     const isProjectMember = parentTask.project.members.some(m => m.employeeId === employee.id);
     if (!isAssignee && !isProjectMember) throw new Error("You do not have permission for this action.");
+
+    // Without task:create/task:update, you can only assign the subtask to yourself.
+    if (data.assigneeId && data.assigneeId !== employee.id) {
+      throw new Error("You can only assign this subtask to yourself.");
+    }
   }
 
   const subtask = await db.task.create({
@@ -252,8 +257,8 @@ export async function assignTaskAction(taskId: string, assigneeId: string | null
   });
 
   if (assigneeId && assigneeId !== employee.id) {
-    const { createNotificationAction } = await import("./notification.actions");
-    await createNotificationAction({
+    const { createNotification } = await import("@/lib/notifications");
+    await createNotification({
       recipientId: assigneeId,
       type: "TASK_ASSIGNED",
       title: "Task Assigned",

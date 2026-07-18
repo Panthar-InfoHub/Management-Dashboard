@@ -4,16 +4,14 @@ const { PrismaNeon } = require('@prisma/adapter-neon');
 const adapter = new PrismaNeon({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
+// Must match lib/permission-list.ts's Permission type exactly — these are the
+// only strings lib/permissions.ts ever checks against.
 const ALL_PERMISSIONS = [
-  "task:create", "task:assign", "task:update:own", "task:update:any", "task:delete", "task:move:own", "task:move:any",
-  "project:create", "project:update", "project:delete", "project:view",
-  "team:create", "team:update", "team:manage-members",
-  "employee:view:all", "employee:update:own", "employee:update:any", "employee:role:change",
-  "update:submit", "update:view:team", "update:view:all",
-  "leave:request", "leave:approve", "leave:view:team", "leave:view:all", "leave:balance:edit",
-  "attendance:view:own", "attendance:view:team", "attendance:view:all", "attendance:edit",
-  "reports:view", "reports:export",
-  "settings:view", "audit:view"
+  "task:create", "task:update", "task:delete",
+  "project:create", "project:update", "project:delete",
+  "team:create", "team:update", "team:delete",
+  "employee:create", "employee:update", "employee:delete",
+  "role:manage"
 ];
 
 async function main() {
@@ -26,33 +24,28 @@ async function main() {
     create: { name: "ADMIN", permissions: ALL_PERMISSIONS, isSystem: true }
   });
 
-  // Manager has most permissions
-  const managerPerms = ALL_PERMISSIONS.filter(p => !p.includes("delete") && !p.includes("settings") && !p.includes("audit") && !p.includes("export"));
+  // Manager has most permissions, but not delete or role management
+  const managerPerms = ALL_PERMISSIONS.filter(p => !p.includes("delete") && p !== "role:manage");
   await prisma.systemRole.upsert({
     where: { name: "MANAGER" },
     update: { permissions: managerPerms, isSystem: true },
     create: { name: "MANAGER", permissions: managerPerms, isSystem: true }
   });
 
-  // Employee has basic permissions
-  const employeePerms = [
-    "task:update:own", "task:move:own", "project:view", "employee:update:own",
-    "update:submit", "leave:request", "attendance:view:own"
-  ];
+  // Employee and Intern get no global permissions — their access to tasks is
+  // entirely resource-scoped (assignee/project-member checks in task.actions.ts),
+  // not a blanket role permission. Granting e.g. "task:update" here would bypass
+  // those per-task ownership checks for every task in the org.
   await prisma.systemRole.upsert({
     where: { name: "EMPLOYEE" },
-    update: { permissions: employeePerms, isSystem: true },
-    create: { name: "EMPLOYEE", permissions: employeePerms, isSystem: true }
+    update: { permissions: [], isSystem: true },
+    create: { name: "EMPLOYEE", permissions: [], isSystem: true }
   });
 
-  // Intern has read-only or very restricted permissions
-  const internPerms = [
-    "project:view", "attendance:view:own", "update:submit"
-  ];
   await prisma.systemRole.upsert({
     where: { name: "INTERN" },
-    update: { permissions: internPerms, isSystem: false },
-    create: { name: "INTERN", permissions: internPerms, isSystem: false }
+    update: { permissions: [], isSystem: false },
+    create: { name: "INTERN", permissions: [], isSystem: false }
   });
 
   console.log("Seeded Roles successfully!");

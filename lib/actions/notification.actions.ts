@@ -4,20 +4,6 @@ import { db } from "@/lib/db";
 import { getCurrentEmployee } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 
-export async function createNotificationAction(data: {
-  recipientId: string;
-  type: string;
-  title: string;
-  message: string;
-  actionUrl?: string;
-}) {
-  const notification = await db.notification.create({
-    data
-  });
-  
-  return notification;
-}
-
 export async function getUnreadNotificationsCountAction() {
   const employee = await getCurrentEmployee();
   if (!employee) return 0;

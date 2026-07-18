@@ -4,14 +4,24 @@
 
 import { clerkMiddleware } from "@clerk/nextjs/server";
 
+// Segment-bounded checks — a plain startsWith("/sign-in") would also match an
+// unintended future route like /sign-in-anything. Note: this middleware is a
+// UX convenience (redirect unauthenticated users early), not the real security
+// boundary — every page/action independently enforces auth via getCurrentEmployee().
+function isPublicPath(path: string): boolean {
+  return (
+    path === "/sign-in" || path.startsWith("/sign-in/") ||
+    path === "/sign-up" || path.startsWith("/sign-up/") ||
+    path === "/api/webhooks" || path.startsWith("/api/webhooks/") ||
+    path === "/manifest.json"
+  );
+}
+
 export default clerkMiddleware(async (auth, req) => {
-  const path = req.nextUrl.pathname;
-  
-  // Public routes that don't need protection
-  if (path.startsWith("/sign-in") || path.startsWith("/sign-up") || path.startsWith("/api/webhooks") || path === "/manifest.json") {
+  if (isPublicPath(req.nextUrl.pathname)) {
     return;
   }
-  
+
   await auth.protect();
 });
 
