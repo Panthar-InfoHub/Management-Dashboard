@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useUser } from "@clerk/nextjs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopNav } from "@/components/layout/top-nav";
@@ -8,8 +9,12 @@ import { CommandPalette } from "@/components/layout/command-palette";
 import { SubmitUpdateModal } from "@/components/modals/submit-update-modal";
 import { cn } from "@/lib/utils";
 
-export function AppShell({ children, isAdmin }: { children: React.ReactNode, isAdmin: boolean }) {
+export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
+  const { user } = useUser();
+  // Role is synced to Clerk publicMetadata by employee actions —
+  // reading it here avoids a blocking server-side DB call in the layout.
+  const isAdmin = (user?.publicMetadata as any)?.role === "ADMIN";
 
   return (
       <TooltipProvider delayDuration={0}>
@@ -30,3 +35,4 @@ export function AppShell({ children, isAdmin }: { children: React.ReactNode, isA
       </TooltipProvider>
   );
 }
+

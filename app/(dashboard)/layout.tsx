@@ -1,11 +1,8 @@
 import { AppShell } from "@/components/layout/app-shell";
-import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 
-export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  // Triggers JIT sync if the webhook didn't fire, ensuring the Employee record exists.
-  const employee = await getCurrentEmployee();
-  
-  return (
-      <AppShell isAdmin={employee.role === "ADMIN"}>{children}</AppShell>
-  );
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  // No async work here — the layout renders instantly so loading.tsx can
+  // show immediately on navigation.  isAdmin is derived client-side from
+  // Clerk's publicMetadata (already in the JWT, no DB call needed).
+  return <AppShell>{children}</AppShell>;
 }

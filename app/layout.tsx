@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Toaster } from "@/components/ui/sonner";
-import { AppShell } from "@/components/layout/app-shell";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { SWProvider } from "@/components/providers/sw-provider";
 import { OfflineOverlay } from "@/components/providers/offline-overlay";
@@ -54,7 +53,7 @@ export default function RootLayout({
           <ThemeProvider>
             <SWProvider />
             <OfflineOverlay />
-            <NextTopLoader color="hsl(var(--primary))" showSpinner={false} />
+            <NextTopLoader color="#6366f1" height={3} showSpinner={false} />
             {children}
             <Toaster />
           </ThemeProvider>
