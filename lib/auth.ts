@@ -93,12 +93,14 @@ export const getCurrentEmployee = cache(async (): Promise<AuthEmployee> => {
 /**
  * Shorthand: get current employee and assert a permission in one call.
  * Returns the employee if authorized; throws otherwise.
+ * Optionally checks if the user has the permission scoped to a specific project.
  */
-export async function requireAuth(permission: Permission): Promise<AuthEmployee> {
+export async function requireAuth(permission: Permission, projectId?: string): Promise<AuthEmployee> {
   const employee = await getCurrentEmployee();
-  const hasPerm = await hasPermission(employee.role, permission);
+  const hasPerm = await hasPermission(employee.role, permission, employee.id, projectId);
   if (!hasPerm) {
-    console.error(`[Auth] Forbidden: ${employee.email} (Role: ${employee.role}) attempted action requiring ${permission}`);
+    const scopeStr = projectId ? ` for project ${projectId}` : "";
+    console.error(`[Auth] Forbidden: ${employee.email} (Role: ${employee.role}) attempted action requiring ${permission}${scopeStr}`);
     throw new Error("You do not have permission for this action.");
   }
   return employee;
@@ -107,11 +109,12 @@ export async function requireAuth(permission: Permission): Promise<AuthEmployee>
 /**
  * Check a permission for the current user without throwing.
  * Useful for conditional rendering in RSCs.
+ * Optionally checks if the user has the permission scoped to a specific project.
  */
-export async function checkPermission(permission: Permission): Promise<boolean> {
+export async function checkPermission(permission: Permission, projectId?: string): Promise<boolean> {
   try {
     const employee = await getCurrentEmployee();
-    return await hasPermission(employee.role, permission);
+    return await hasPermission(employee.role, permission, employee.id, projectId);
   } catch {
     return false;
   }

@@ -4,6 +4,26 @@ import { db } from "@/lib/db";
 import { requireAuth, getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { getKanbanTasks } from "@/lib/queries/task.queries";
+import type { TaskStatus, TaskPriority } from "@/lib/generated/prisma";
+
+// ─── Validation Helpers ───
+
+const VALID_STATUSES: TaskStatus[] = ["BACKLOG", "TODO", "IN_PROGRESS", "REVIEW", "TESTING", "DONE"];
+const VALID_PRIORITIES: TaskPriority[] = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
+
+function assertValidStatus(value: unknown): asserts value is TaskStatus {
+  if (!VALID_STATUSES.includes(value as TaskStatus)) {
+    throw new Error(`Invalid task status: ${String(value)}`);
+  }
+}
+
+function assertValidPriority(value: unknown): asserts value is TaskPriority {
+  if (!VALID_PRIORITIES.includes(value as TaskPriority)) {
+    throw new Error(`Invalid task priority: ${String(value)}`);
+  }
+}
+
+// ─── Actions ───
 
 export async function createTaskAction(data: {
   title: string;
@@ -16,9 +36,13 @@ export async function createTaskAction(data: {
 }) {
   const employee = await requireAuth("task:create");
 
+  if (!data.title?.trim()) throw new Error("Task title is required.");
+  if (!data.projectId?.trim()) throw new Error("Project ID is required.");
+  assertValidPriority(data.priority);
+
   const task = await db.task.create({
     data: {
-      title: data.title,
+      title: data.title.trim(),
       projectId: data.projectId,
       creatorId: employee.id,
       priority: data.priority,
@@ -48,6 +72,7 @@ export async function createTaskAction(data: {
 
   revalidatePath("/projects");
   revalidatePath(`/tasks/${task.id}`);
+  revalidatePath("/");
   return { success: true, taskId: task.id };
 }
 
@@ -63,7 +88,10 @@ export async function updateTaskAction(taskId: string, data: {
 }) {
   const employee = await getCurrentEmployee();
   const hasGlobalPerm = await checkPermission("task:update");
-  
+
+  if (!data.title?.trim()) throw new Error("Task title is required.");
+  assertValidPriority(data.priority);
+
   const existingTask = await db.task.findUnique({
     where: { id: taskId },
     include: { project: { include: { members: true } }, assignees: true }
@@ -81,7 +109,7 @@ export async function updateTaskAction(taskId: string, data: {
   const updatedTask = await db.task.update({
     where: { id: taskId },
     data: {
-      title: data.title,
+      title: data.title.trim(),
       description: data.description,
       projectId: data.projectId,
       priority: data.priority,
@@ -98,10 +126,13 @@ export async function updateTaskAction(taskId: string, data: {
 
   revalidatePath("/projects");
   revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/");
   return { success: true, taskId: updatedTask.id };
 }
 
-export async function updateTaskStatusAction(taskId: string, newStatus: any) {
+export async function updateTaskStatusAction(taskId: string, newStatus: string) {
+  assertValidStatus(newStatus);
+
   const employee = await getCurrentEmployee();
   const hasGlobalPerm = await checkPermission("task:update");
 
@@ -122,12 +153,12 @@ export async function updateTaskStatusAction(taskId: string, newStatus: any) {
     where: { id: taskId },
     data: { 
       status: newStatus,
-      completedAt: newStatus === "DONE" ? new Date() : null
+      completedAt: newStatus === "DONE" ? new Date() : null,
+      completionNote: newStatus === "DONE" ? undefined : null,
+      prLink: newStatus === "DONE" ? undefined : null
     },
     include: { blocking: true }
   });
-
-  
 
   // Auto-unblock dependent tasks if this task is now DONE
   if (newStatus === "DONE" && updatedTask.blocking && updatedTask.blocking.length > 0) {
@@ -137,11 +168,16 @@ export async function updateTaskStatusAction(taskId: string, newStatus: any) {
     });
   }
 
-  revalidatePath("/", "layout");
+  revalidatePath("/tasks");
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/projects");
+  revalidatePath("/");
   return { success: true, task: updatedTask };
 }
 
-export async function updateTaskPriorityAction(taskId: string, newPriority: any) {
+export async function updateTaskPriorityAction(taskId: string, newPriority: string) {
+  assertValidPriority(newPriority);
+
   const employee = await getCurrentEmployee();
   const hasGlobalPerm = await checkPermission("task:update");
 
@@ -163,9 +199,9 @@ export async function updateTaskPriorityAction(taskId: string, newPriority: any)
     data: { priority: newPriority }
   });
 
-  
-
-  revalidatePath("/", "layout");
+  revalidatePath("/tasks");
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/");
   return { success: true, task };
 }
 
@@ -191,13 +227,17 @@ export async function setTaskBlockerAction(taskId: string, blockerTaskId: string
     data: { blockedById: blockerTaskId }
   });
 
-  revalidatePath("/", "layout");
+  revalidatePath("/tasks");
+  revalidatePath(`/tasks/${taskId}`);
   return { success: true, task: updatedTask };
 }
 
 export async function createSubtaskAction(parentId: string, data: { title: string; assigneeId?: string; priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" }) {
   const employee = await getCurrentEmployee();
   const hasGlobalPerm = await checkPermission("task:create");
+
+  if (!data.title?.trim()) throw new Error("Subtask title is required.");
+  assertValidPriority(data.priority);
 
   const parentTask = await db.task.findUnique({ 
     where: { id: parentId },
@@ -219,7 +259,7 @@ export async function createSubtaskAction(parentId: string, data: { title: strin
 
   const subtask = await db.task.create({
     data: {
-      title: data.title,
+      title: data.title.trim(),
       projectId: parentTask.projectId,
       parentId: parentId,
       creatorId: employee.id,
@@ -228,7 +268,8 @@ export async function createSubtaskAction(parentId: string, data: { title: strin
     }
   });
 
-  revalidatePath("/", "layout");
+  revalidatePath("/tasks");
+  revalidatePath(`/tasks/${parentId}`);
   return { success: true, subtask };
 }
 
@@ -267,11 +308,13 @@ export async function assignTaskAction(taskId: string, assigneeId: string | null
     });
   }
 
-  revalidatePath("/", "layout");
+  revalidatePath("/tasks");
+  revalidatePath(`/tasks/${taskId}`);
   return { success: true, task };
 }
 
-export async function loadMoreTasksAction(filters: any, skip: number) {
+export async function loadMoreTasksAction(filters: { team?: string; project?: string; assignee?: string; search?: string }, skip: number) {
+  // getKanbanTasks internally calls getCurrentEmployee() for auth
   return await getKanbanTasks(filters, skip, 50);
 }
 
@@ -285,6 +328,9 @@ export async function deleteTaskAction(taskId: string) {
   if (!existingTask) throw new Error("Task not found");
 
   await db.task.delete({ where: { id: taskId } });
-  revalidatePath("/", "layout");
+
+  revalidatePath("/tasks");
+  revalidatePath("/projects");
+  revalidatePath("/");
   return { success: true };
 }

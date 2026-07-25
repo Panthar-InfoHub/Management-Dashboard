@@ -4,9 +4,12 @@ import { useEffect, useRef } from "react";
 import { getRecentNotificationsAction } from "@/lib/actions/notification.actions";
 import { usePathname } from "next/navigation";
 
+const MAX_CONSECUTIVE_FAILURES = 3;
+
 export function NotificationListener() {
   const pathname = usePathname();
   const notifiedIds = useRef<Set<string>>(new Set());
+  const failureCount = useRef(0);
 
   useEffect(() => {
     // We intentionally do not auto-request permission here.
@@ -17,10 +20,20 @@ export function NotificationListener() {
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
+    // Reset failure count on route change (new session context)
+    failureCount.current = 0;
 
     const checkNotifications = async () => {
+      // Circuit breaker: stop polling after consecutive failures
+      if (failureCount.current >= MAX_CONSECUTIVE_FAILURES) {
+        clearInterval(interval);
+        return;
+      }
+
       try {
         const recent = await getRecentNotificationsAction();
+        // Reset on success
+        failureCount.current = 0;
         const unread = recent.filter(n => !n.isRead);
 
         if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
@@ -29,7 +42,7 @@ export function NotificationListener() {
               // Trigger browser notification
               const browserNotif = new Notification(notification.title, {
                 body: notification.message,
-                icon: "/favicon.ico", // Or appropriate icon
+                icon: "/favicon.ico",
               });
 
               if (notification.actionUrl) {
@@ -43,8 +56,9 @@ export function NotificationListener() {
             }
           });
         }
-      } catch (e) {
-        console.error("Failed to fetch notifications", e);
+      } catch {
+        failureCount.current += 1;
+        // If we've hit the limit, the next tick will clear the interval
       }
     };
 

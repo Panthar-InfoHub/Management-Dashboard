@@ -16,11 +16,13 @@ import { Calendar, CheckSquare, Clock, ChevronRight, ChevronDown, Plus, Users, F
 import { cn } from "@/lib/utils";
 import { updateProjectAction, manageProjectMembersAction, updateProjectStatusAction, updateProjectPriorityAction, deleteProjectAction } from "@/lib/actions/project.actions";
 
+import { MemberPermissionsDialog } from "./member-permissions-dialog";
+
 const statusColors: Record<string, string> = { ACTIVE: "bg-blue-500/10 text-blue-600 border-blue-500/20", PLANNING: "bg-purple-500/10 text-purple-600 border-purple-500/20", PAUSED: "bg-orange-500/10 text-orange-600 border-orange-500/20", COMPLETED: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20", ARCHIVED: "bg-gray-500/10 text-gray-600 border-gray-500/20" };
 const priorityColors: Record<string, string> = { CRITICAL: "bg-red-500/10 text-red-600 border-red-500/20", HIGH: "bg-orange-500/10 text-orange-600 border-orange-500/20", MEDIUM: "bg-blue-500/10 text-blue-600 border-blue-500/20", LOW: "bg-gray-500/10 text-gray-600 border-gray-500/20" };
 const taskStatusColors: Record<string, string> = { BACKLOG: "bg-gray-500/10 text-gray-600 border-gray-500/20", TODO: "bg-slate-500/10 text-slate-600 border-slate-500/20", IN_PROGRESS: "bg-blue-500/10 text-blue-600 border-blue-500/20", REVIEW: "bg-purple-500/10 text-purple-600 border-purple-500/20", TESTING: "bg-amber-500/10 text-amber-600 border-amber-500/20", DONE: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" };
 
-export function ProjectDetailClient({ project, allEmployees = [], allTeams = [], canEdit = true, canDelete = false }: { project: any, allEmployees: any[], allTeams: any[], canEdit?: boolean, canDelete?: boolean }) {
+export function ProjectDetailClient({ project, allEmployees = [], allTeams = [], canEdit = true, canDelete = false, canDelegate = false }: { project: any, allEmployees: any[], allTeams: any[], canEdit?: boolean, canDelete?: boolean, canDelegate?: boolean }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -76,6 +78,15 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
         router.refresh();
       }).catch((err: any) => toast.error(err.message || "Failed to update project"));
     });
+  };
+
+  // Permission Delegation State
+  const [permOpen, setPermOpen] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<any>(null);
+
+  const handleOpenPermissions = (member: any) => {
+    setSelectedMember(member);
+    setPermOpen(true);
   };
 
   // Manage Members State
@@ -395,6 +406,17 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
                             <Badge variant="secondary" className="text-[9px] mt-0.5 h-4 px-1.5 leading-none bg-primary/10 text-primary border-primary/20">Lead</Badge>
                           )}
                         </div>
+                        {canDelegate && m.employeeId !== project.leadId && (
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => handleOpenPermissions(m)}
+                            title="Manage Permissions"
+                          >
+                            <Settings2 className="h-3.5 w-3.5 text-muted-foreground" />
+                          </Button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -532,6 +554,15 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Member Permissions Dialog */}
+      <MemberPermissionsDialog 
+        open={permOpen}
+        onOpenChange={setPermOpen}
+        projectId={project.id}
+        member={selectedMember}
+        delegatedPerms={project.delegatedPerms || []}
+      />
     </div>
   );
 }

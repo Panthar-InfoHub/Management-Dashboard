@@ -9,6 +9,8 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
 export default async function EmployeeProfilePage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+
   return (
     <div className="space-y-6 p-6 md:p-8 w-full h-full overflow-y-auto selection:bg-primary/10">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-border/40">
@@ -23,7 +25,7 @@ export default async function EmployeeProfilePage({ params }: { params: Promise<
         </div>
       </div>
       <Suspense fallback={<ProfileLoading />}>
-        <EmployeeProfileDataAsync id={(await params).id} />
+        <EmployeeProfileDataAsync id={id} />
       </Suspense>
     </div>
   );

@@ -4,11 +4,6 @@ import { ProjectsClient } from "@/components/projects/projects-client";
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 import ProjectsLoading from "./skeleton";
 
-async function ProjectsData({ canCreate }: { canCreate: boolean }) {
-  const projects = await getProjectsList();
-  return <ProjectsClient initialProjects={projects} canCreate={canCreate} />;
-}
-
 export default function ProjectsPage() {
   // Instantly render the page shell and stream the data
   return (

@@ -56,6 +56,9 @@ export async function getProjectById(projectId: string) {
           assignees: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } }
         },
         orderBy: { updatedAt: "desc" }
+      },
+      delegatedPerms: {
+        select: { id: true, employeeId: true, permission: true, grantedBy: true }
       }
     }
   });

@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
 
   const eventType = evt.type;
 
-  // ── User Created → Create Employee ──
+  // ── User Created → Link to existing Employee (invite-only) ──
   if (eventType === "user.created") {
     const { id, email_addresses, first_name, last_name, image_url } = evt.data;
     const email = email_addresses[0]?.email_address;
@@ -33,22 +33,32 @@ export async function POST(req: NextRequest) {
     const surname = `${last_name ?? ""}`.trim();
 
     try {
-      await db.employee.create({
-        data: {
-          clerkId: id,
-          email,
-          firstName: name || "New",
-          lastName: surname || "User",
-          avatarUrl: image_url ?? null,
-          role: "EMPLOYEE", // default — admin promotes manually
-          status: "ACTIVE",
-        },
-      });
-      console.log(`[Webhook] Created employee for ${email} (${id})`);
+      // Only create/link if the employee was pre-provisioned (invited) via the dashboard.
+      // This is consistent with the invite-only model — brand-new signups without
+      // a pre-existing Employee record are blocked by getCurrentEmployee() anyway.
+      const existingEmployee = await db.employee.findUnique({ where: { email } });
+
+      if (existingEmployee) {
+        // Link the Clerk ID to the pre-provisioned employee record
+        await db.employee.update({
+          where: { email },
+          data: {
+            clerkId: id,
+            ...(name && { firstName: name }),
+            ...(surname && { lastName: surname }),
+            avatarUrl: image_url ?? existingEmployee.avatarUrl,
+          },
+        });
+        console.log(`[Webhook] Linked invited employee ${email} to Clerk ID ${id}`);
+      } else {
+        // Not invited — do NOT auto-create. The JIT sync in getCurrentEmployee()
+        // will block them with INVITATION_REQUIRED.
+        console.log(`[Webhook] Skipped uninvited user ${email} (${id})`);
+      }
     } catch (err) {
       // Handle duplicate — idempotent on retries
       if ((err as { code?: string }).code === "P2002") {
-        console.log(`[Webhook] Employee already exists for ${id}, skipping`);
+        console.log(`[Webhook] Employee already linked for ${id}, skipping`);
       } else {
         throw err;
       }

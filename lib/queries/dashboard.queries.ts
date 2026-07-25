@@ -13,50 +13,96 @@ function isAdminOrManager(employee: AuthEmployee) {
 /** Role-aware overview: three compound blocks bundling related stats, so nothing needs a click to be understood. */
 export async function getDashboardOverview(employee: AuthEmployee) {
   const now = new Date();
+  const todayStart = startOfDay(now);
   const weekStart = startOfWeek(now, { weekStartsOn: 1 });
   const monthStart = startOfMonth(now);
   const weekEnd = addDays(now, 7);
 
   if (isAdminOrManager(employee)) {
-    const [activeProjects, planningProjects, completedProjects, openTasks, overdueTasks, completedThisWeek, teamMembers, teams, interns] =
-      await Promise.all([
-        db.project.count({ where: { status: "ACTIVE" } }),
-        db.project.count({ where: { status: "PLANNING" } }),
-        db.project.count({ where: { status: "COMPLETED" } }),
-        db.task.count({ where: { status: { in: OPEN_TASK_STATUSES } } }),
-        db.task.count({ where: { status: { not: "DONE" }, dueDate: { lt: now } } }),
-        db.task.count({ where: { status: "DONE", completedAt: { gte: weekStart } } }),
-        db.employee.count({ where: { status: "ACTIVE" } }),
-        db.team.count(),
-        db.employee.count({ where: { status: "ACTIVE", role: "INTERN" } }),
-      ]);
+    // Phase 2.1 Optimization: Consolidate 9 DB roundtrips into 1 raw SQL query
+    const results = await db.$queryRaw<any[]>`
+      SELECT 
+        (SELECT COUNT(*) FROM "Project" WHERE status = 'ACTIVE') as "activeProjects",
+        (SELECT COUNT(*) FROM "Project" WHERE status = 'PLANNING') as "planningProjects",
+        (SELECT COUNT(*) FROM "Project" WHERE status = 'COMPLETED') as "completedProjects",
+        (SELECT COUNT(*) FROM "Task" WHERE status IN ('BACKLOG', 'TODO', 'IN_PROGRESS', 'REVIEW', 'TESTING')) as "openTasks",
+        (SELECT COUNT(*) FROM "Task" WHERE status != 'DONE' AND "dueDate" < ${todayStart}) as "overdueTasks",
+        (SELECT COUNT(*) FROM "Task" WHERE status = 'DONE' AND "completedAt" >= ${weekStart}) as "completedThisWeek",
+        (SELECT COUNT(*) FROM "Employee" WHERE status = 'ACTIVE') as "teamMembers",
+        (SELECT COUNT(*) FROM "Team") as "teams",
+        (SELECT COUNT(*) FROM "Employee" WHERE status = 'ACTIVE' AND role = 'INTERN') as "interns"
+    `;
+
+    const stats = results[0];
 
     return {
       isAdmin: true as const,
-      projects: { active: activeProjects, planning: planningProjects, completed: completedProjects },
-      tasks: { open: openTasks, overdue: overdueTasks, completedThisWeek },
-      people: { members: teamMembers, teams, interns },
+      projects: { 
+        active: Number(stats.activeProjects), 
+        planning: Number(stats.planningProjects), 
+        completed: Number(stats.completedProjects) 
+      },
+      tasks: { 
+        open: Number(stats.openTasks), 
+        overdue: Number(stats.overdueTasks), 
+        completedThisWeek: Number(stats.completedThisWeek) 
+      },
+      people: { 
+        members: Number(stats.teamMembers), 
+        teams: Number(stats.teams), 
+        interns: Number(stats.interns) 
+      },
     };
   }
 
-  const [myOpenTasks, myDueThisWeek, myOverdueTasks, myCompletedThisWeek, myCompletedThisMonth, myActiveProjects, myLeadProjects] =
-    await Promise.all([
-      db.task.count({ where: { assignees: { some: { id: employee.id } }, status: { not: "DONE" } } }),
-      db.task.count({
-        where: { assignees: { some: { id: employee.id } }, status: { not: "DONE" }, dueDate: { gte: now, lte: weekEnd } },
-      }),
-      db.task.count({ where: { assignees: { some: { id: employee.id } }, status: { not: "DONE" }, dueDate: { lt: now } } }),
-      db.task.count({ where: { assignees: { some: { id: employee.id } }, status: "DONE", completedAt: { gte: weekStart } } }),
-      db.task.count({ where: { assignees: { some: { id: employee.id } }, status: "DONE", completedAt: { gte: monthStart } } }),
-      db.project.count({ where: { members: { some: { employeeId: employee.id } }, status: { in: ["ACTIVE", "PLANNING"] } } }),
-      db.project.count({ where: { leadId: employee.id, status: { in: ["ACTIVE", "PLANNING"] } } }),
-    ]);
+  // Regular Employee Dashboard (7 queries into 1)
+  const results = await db.$queryRaw<any[]>`
+    SELECT
+      (SELECT COUNT(*) FROM "Task" t 
+       INNER JOIN "_TaskAssignees" ta ON t.id = ta."A" 
+       WHERE ta."B" = ${employee.id} AND t.status != 'DONE') as "myOpenTasks",
+      
+      (SELECT COUNT(*) FROM "Task" t 
+       INNER JOIN "_TaskAssignees" ta ON t.id = ta."A" 
+       WHERE ta."B" = ${employee.id} AND t.status != 'DONE' AND t."dueDate" >= ${now} AND t."dueDate" <= ${weekEnd}) as "myDueThisWeek",
+      
+      (SELECT COUNT(*) FROM "Task" t 
+       INNER JOIN "_TaskAssignees" ta ON t.id = ta."A" 
+       WHERE ta."B" = ${employee.id} AND t.status != 'DONE' AND t."dueDate" < ${todayStart}) as "myOverdueTasks",
+       
+      (SELECT COUNT(*) FROM "Task" t 
+       INNER JOIN "_TaskAssignees" ta ON t.id = ta."A" 
+       WHERE ta."B" = ${employee.id} AND t.status = 'DONE' AND t."completedAt" >= ${weekStart}) as "myCompletedThisWeek",
+       
+      (SELECT COUNT(*) FROM "Task" t 
+       INNER JOIN "_TaskAssignees" ta ON t.id = ta."A" 
+       WHERE ta."B" = ${employee.id} AND t.status = 'DONE' AND t."completedAt" >= ${monthStart}) as "myCompletedThisMonth",
+       
+      (SELECT COUNT(*) FROM "Project" p 
+       INNER JOIN "ProjectMember" pm ON p.id = pm."projectId" 
+       WHERE pm."employeeId" = ${employee.id} AND p.status IN ('ACTIVE', 'PLANNING')) as "myActiveProjects",
+       
+      (SELECT COUNT(*) FROM "Project" WHERE "leadId" = ${employee.id} AND status IN ('ACTIVE', 'PLANNING')) as "myLeadProjects"
+  `;
+  
+  const stats = results[0];
 
   return {
     isAdmin: false as const,
-    tasks: { open: myOpenTasks, dueThisWeek: myDueThisWeek, overdue: myOverdueTasks },
-    completed: { thisMonth: myCompletedThisMonth, thisWeek: myCompletedThisWeek },
-    projects: { active: myActiveProjects, leading: myLeadProjects, designation: employee.designation ?? employee.role },
+    tasks: { 
+      open: Number(stats.myOpenTasks), 
+      dueThisWeek: Number(stats.myDueThisWeek), 
+      overdue: Number(stats.myOverdueTasks) 
+    },
+    completed: { 
+      thisMonth: Number(stats.myCompletedThisMonth), 
+      thisWeek: Number(stats.myCompletedThisWeek) 
+    },
+    projects: { 
+      active: Number(stats.myActiveProjects), 
+      leading: Number(stats.myLeadProjects), 
+      designation: employee.designation ?? employee.role 
+    },
   };
 }
 
@@ -65,6 +111,7 @@ export async function getTaskRadar(employee: AuthEmployee) {
   const admin = isAdminOrManager(employee);
 
   const now = new Date();
+  const todayStart = startOfDay(now);
   const weekEnd = addDays(now, 7);
 
   const tasks = await db.task.findMany({
@@ -87,7 +134,7 @@ export async function getTaskRadar(employee: AuthEmployee) {
     dueDate: t.dueDate,
     project: t.project,
     assignees: t.assignees,
-    isOverdue: t.dueDate ? t.dueDate < now : false,
+    isOverdue: t.dueDate ? t.dueDate < todayStart : false,
   }));
 }
 
@@ -95,10 +142,11 @@ export async function getTaskRadar(employee: AuthEmployee) {
 export async function getAttentionProjects(employee: AuthEmployee) {
   const admin = isAdminOrManager(employee);
   const now = new Date();
+  const todayStart = startOfDay(now);
 
   const conditions: Prisma.ProjectWhereInput[] = [
     { status: { in: ["ACTIVE", "PLANNING"] } },
-    { OR: [{ priority: "CRITICAL" }, { endDate: { lt: now } }] },
+    { OR: [{ priority: "CRITICAL" }, { endDate: { lt: todayStart } }] },
   ];
   if (!admin) {
     conditions.push({ OR: [{ members: { some: { employeeId: employee.id } } }, { leadId: employee.id }] });
@@ -111,7 +159,7 @@ export async function getAttentionProjects(employee: AuthEmployee) {
     take: 20,
   });
 
-  return projects.map((p) => ({ ...p, isOverdue: p.endDate ? p.endDate < now : false }));
+  return projects.map((p) => ({ ...p, isOverdue: p.endDate ? p.endDate < todayStart : false }));
 }
 
 /** Active/planning projects, most recently updated first, with computed progress. */

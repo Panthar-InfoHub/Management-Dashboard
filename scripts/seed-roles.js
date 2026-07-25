@@ -7,11 +7,11 @@ const prisma = new PrismaClient({ adapter });
 // Must match lib/permission-list.ts's Permission type exactly — these are the
 // only strings lib/permissions.ts ever checks against.
 const ALL_PERMISSIONS = [
-  "task:create", "task:update", "task:delete",
+  "task:create", "task:update", "task:delete", "task:assign",
   "project:create", "project:update", "project:delete",
   "team:create", "team:update", "team:delete",
   "employee:create", "employee:update", "employee:delete",
-  "role:manage"
+  "role:manage", "permission:delegate"
 ];
 
 async function main() {

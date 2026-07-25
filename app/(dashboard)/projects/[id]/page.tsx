@@ -7,13 +7,14 @@ import { ProjectDetailClient } from "@/components/projects/project-detail-client
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [project, allEmployees, allTeams, employee, canUpdateGlobal, canDelete] = await Promise.all([
+  const [project, allEmployees, allTeams, employee, canUpdateGlobal, canDelete, canDelegate] = await Promise.all([
     getProjectById(id),
     getEmployees(),
     getTeams(),
     getCurrentEmployee(),
     checkPermission("project:update"),
-    checkPermission("project:delete")
+    checkPermission("project:delete"),
+    checkPermission("permission:delegate")
   ]);
   const canEdit = canUpdateGlobal || project?.leadId === employee.id;
 
@@ -27,5 +28,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     allTeams={allTeams}
     canEdit={canEdit}
     canDelete={canDelete}
+    canDelegate={canDelegate}
   />;
 }

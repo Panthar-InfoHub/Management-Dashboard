@@ -236,23 +236,52 @@ export async function deleteEmployeeAction(id: string) {
   const currentEmployee = await requireAuth("employee:delete");
 
   const target = await db.employee.findUnique({ where: { id } });
+  if (!target) throw new Error("Employee not found");
   if (target?.role === "ADMIN" && currentEmployee.role !== "ADMIN") {
     throw new Error("Only admins can delete an ADMIN user.");
   }
-
-  let employee;
-  try {
-    employee = await db.employee.delete({
-      where: { id }
-    });
-  } catch (error: any) {
-    if (error.code === 'P2003') {
-      throw new Error("Cannot delete this employee because they are currently assigned as a Team Lead, Project Lead, or Task Creator. Please reassign their responsibilities or mark their status as 'INACTIVE' instead.");
-    }
-    throw error;
+  if (target.id === currentEmployee.id) {
+    throw new Error("You cannot delete your own account.");
   }
 
-  // If they have a real Clerk account, delete them from Clerk as well
+  // Check if they are currently leading any projects or teams
+  const ledProjects = await db.project.count({ where: { leadId: id, status: { not: "ARCHIVED" } } });
+  if (ledProjects > 0) {
+    throw new Error("Cannot delete this employee because they are the Lead of one or more active projects. Please reassign those projects first.");
+  }
+
+  const ledTeams = await db.team.count({ where: { leadId: id } });
+  if (ledTeams > 0) {
+    throw new Error("Cannot delete this employee because they are the Lead of a team. Please reassign the team lead first.");
+  }
+
+  // Soft-delete: mark as INACTIVE and set exit date.
+  // This preserves audit trails (tasks they created, employment records, etc.)
+  // and avoids FK cascade failures.
+  const employee = await db.$transaction(async (tx) => {
+    // Close any active employment records
+    await tx.employmentRecord.updateMany({
+      where: { employeeId: id, endDate: null },
+      data: { endDate: new Date(), reason: "Account removed" },
+    });
+
+    // Remove from project memberships
+    await tx.projectMember.deleteMany({
+      where: { employeeId: id },
+    });
+
+    // Mark as INACTIVE
+    return tx.employee.update({
+      where: { id },
+      data: {
+        status: "INACTIVE",
+        exitDate: new Date(),
+        teamId: null,
+      },
+    });
+  });
+
+  // If they have a real Clerk account, delete them from Clerk to revoke access
   if (!employee.clerkId.startsWith("pending_") && !employee.clerkId.startsWith("seed_")) {
     try {
       const client = await clerkClient();
@@ -263,6 +292,7 @@ export async function deleteEmployeeAction(id: string) {
   }
 
   revalidatePath("/employees");
+  revalidatePath("/");
   return employee;
 }
 
@@ -370,6 +400,22 @@ export async function transitionRoleAction(employeeId: string, data: { newRole: 
   const target = await db.employee.findUnique({ where: { id: employeeId } });
   if (!target) throw new Error("Employee not found.");
 
+  const startDateObj = new Date(data.startDate);
+  
+  // Ensure the new role doesn't start before they were even hired
+  if (startDateObj < target.joinDate) {
+    throw new Error("The new role's start date cannot be before the employee's original join date.");
+  }
+
+  // Ensure the new role doesn't start before their current role started
+  const currentRecord = await db.employmentRecord.findFirst({
+    where: { employeeId: employeeId, endDate: null }
+  });
+  
+  if (currentRecord && startDateObj < currentRecord.startDate) {
+    throw new Error("The new role's start date cannot be before the start date of their current role.");
+  }
+
   // Transaction
   const updatedEmployee = await db.$transaction(async (tx) => {
     // 1. Close current active employment record
@@ -430,6 +476,17 @@ export async function offboardEmployeeAction(employeeId: string, data: { endDate
 
   if (target.role === "ADMIN" && currentEmployee.role !== "ADMIN") {
     throw new Error("Only admins can offboard an ADMIN.");
+  }
+
+  // Check if they are currently leading any projects or teams
+  const ledProjects = await db.project.count({ where: { leadId: employeeId, status: { not: "ARCHIVED" } } });
+  if (ledProjects > 0) {
+    throw new Error("Cannot offboard this employee because they are the Lead of one or more active projects. Please reassign those projects first.");
+  }
+
+  const ledTeams = await db.team.count({ where: { leadId: employeeId } });
+  if (ledTeams > 0) {
+    throw new Error("Cannot offboard this employee because they are the Lead of a team. Please reassign the team lead first.");
   }
 
   await db.$transaction(async (tx) => {

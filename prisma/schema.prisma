@@ -100,6 +100,9 @@ model Employee {
 
   // ── Employment Records ──
   employmentRecords EmploymentRecord[]
+
+  // ── Per-user permission overrides ──
+  employeePermissions EmployeePermission[]
   
   exitDate DateTime? // Null means currently active
 
@@ -149,6 +152,7 @@ model Project {
 
   tasks   Task[]
   members ProjectMember[]
+  delegatedPerms EmployeePermission[] // Permissions specifically scoped to this project
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -263,4 +267,26 @@ model EmploymentRecord {
   updatedAt   DateTime  @updatedAt
 
   @@index([employeeId])
+}
+
+// ── Per-User Permission Delegation ──
+// Allows admins/managers to grant specific permissions to individual users
+// without changing their role. Checked by hasPermission() after role perms.
+model EmployeePermission {
+  id          String    @id @default(cuid())
+  employeeId  String
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  permission  String    // e.g., "task:create", "task:update"
+  
+  // Optional scope: If set, this permission ONLY applies to this specific project
+  projectId   String?
+  project     Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  grantedBy   String    // employee ID of the admin/manager who granted this
+  grantedAt   DateTime  @default(now())
+  expiresAt   DateTime? // null = permanent, otherwise auto-expires
+
+  @@unique([employeeId, permission, projectId]) // Ensures no duplicate permission for the same scope
+  @@index([employeeId])
+  @@index([projectId])
 }

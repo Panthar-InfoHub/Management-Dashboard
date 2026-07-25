@@ -3,8 +3,30 @@
 import { db } from "@/lib/db";
 import { requireAuth, getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
+import type { ProjectStatus, TaskPriority } from "@/lib/generated/prisma";
 
-export async function updateProjectStatusAction(projectId: string, newStatus: any) {
+// ─── Validation Helpers ───
+
+const VALID_PROJECT_STATUSES: ProjectStatus[] = ["PLANNING", "ACTIVE", "PAUSED", "COMPLETED", "ARCHIVED"];
+const VALID_PRIORITIES: TaskPriority[] = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
+
+function assertValidProjectStatus(value: unknown): asserts value is ProjectStatus {
+  if (!VALID_PROJECT_STATUSES.includes(value as ProjectStatus)) {
+    throw new Error(`Invalid project status: ${String(value)}`);
+  }
+}
+
+function assertValidPriority(value: unknown): asserts value is TaskPriority {
+  if (!VALID_PRIORITIES.includes(value as TaskPriority)) {
+    throw new Error(`Invalid priority: ${String(value)}`);
+  }
+}
+
+// ─── Actions ───
+
+export async function updateProjectStatusAction(projectId: string, newStatus: string) {
+  assertValidProjectStatus(newStatus);
+
   const employee = await getCurrentEmployee();
   const hasGlobalPerm = await checkPermission("project:update");
 
@@ -19,14 +41,16 @@ export async function updateProjectStatusAction(projectId: string, newStatus: an
     data: { status: newStatus }
   });
 
-
   revalidatePath("/projects");
+  revalidatePath(`/projects/${projectId}`);
   revalidatePath("/");
 
   return { success: true, project };
 }
 
-export async function updateProjectPriorityAction(projectId: string, newPriority: any) {
+export async function updateProjectPriorityAction(projectId: string, newPriority: string) {
+  assertValidPriority(newPriority);
+
   const employee = await getCurrentEmployee();
   const hasGlobalPerm = await checkPermission("project:update");
 
@@ -41,7 +65,6 @@ export async function updateProjectPriorityAction(projectId: string, newPriority
     data: { priority: newPriority }
   });
 
-
   revalidatePath("/projects");
   revalidatePath(`/projects/${projectId}`);
 
@@ -53,13 +76,19 @@ export async function createProjectAction(data: {
   description?: string;
   leadId: string;
   teamId: string;
-  status: any;
-  priority: any;
+  status: string;
+  priority: string;
   startDate?: Date;
   endDate?: Date;
   addTeamMembers?: boolean;
 }) {
   const employee = await requireAuth("project:create");
+
+  if (!data.name?.trim()) throw new Error("Project name is required.");
+  if (!data.leadId?.trim()) throw new Error("Project lead is required.");
+  if (!data.teamId?.trim()) throw new Error("Team is required.");
+  assertValidProjectStatus(data.status);
+  assertValidPriority(data.priority);
 
   let membersToAdd = [
     { employeeId: data.leadId },
@@ -72,7 +101,7 @@ export async function createProjectAction(data: {
       include: { members: { select: { id: true } } }
     });
     if (team) {
-      team.members.forEach((m: any) => {
+      team.members.forEach((m: { id: string }) => {
         if (!membersToAdd.find((x) => x.employeeId === m.id)) {
           membersToAdd.push({ employeeId: m.id });
         }
@@ -82,12 +111,12 @@ export async function createProjectAction(data: {
 
   const project = await db.project.create({
     data: {
-      name: data.name,
+      name: data.name.trim(),
       description: data.description,
       leadId: data.leadId,
       teamId: data.teamId,
-      status: data.status,
-      priority: data.priority,
+      status: data.status as ProjectStatus,
+      priority: data.priority as TaskPriority,
       startDate: data.startDate,
       endDate: data.endDate,
       members: {
@@ -95,7 +124,6 @@ export async function createProjectAction(data: {
       }
     }
   });
-
 
   revalidatePath("/projects");
   revalidatePath("/");
@@ -108,11 +136,15 @@ export async function updateProjectAction(projectId: string, data: {
   description?: string;
   leadId: string;
   teamId: string;
-  status: any;
-  priority: any;
+  status: string;
+  priority: string;
 }) {
   const employee = await getCurrentEmployee();
   const hasGlobalPerm = await checkPermission("project:update");
+
+  if (!data.name?.trim()) throw new Error("Project name is required.");
+  assertValidProjectStatus(data.status);
+  assertValidPriority(data.priority);
 
   const existing = await db.project.findUnique({ where: { id: projectId } });
   if (!existing) throw new Error("Project not found");
@@ -123,15 +155,14 @@ export async function updateProjectAction(projectId: string, data: {
   const project = await db.project.update({
     where: { id: projectId },
     data: {
-      name: data.name,
+      name: data.name.trim(),
       description: data.description,
       leadId: data.leadId,
       teamId: data.teamId,
-      status: data.status,
-      priority: data.priority,
+      status: data.status as ProjectStatus,
+      priority: data.priority as TaskPriority,
     }
   });
-
 
   revalidatePath("/projects");
   revalidatePath(`/projects/${projectId}`);
@@ -141,6 +172,8 @@ export async function updateProjectAction(projectId: string, data: {
 export async function manageProjectMembersAction(projectId: string, memberIds: string[]) {
   const employee = await getCurrentEmployee();
   const hasGlobalPerm = await checkPermission("project:update");
+
+  if (!Array.isArray(memberIds)) throw new Error("Member IDs must be an array.");
 
   const existing = await db.project.findUnique({ 
     where: { id: projectId },
@@ -190,7 +223,7 @@ export async function deleteProjectAction(projectId: string) {
     where: { id: projectId }
   });
 
-
   revalidatePath("/projects");
+  revalidatePath("/");
   return { success: true };
 }
