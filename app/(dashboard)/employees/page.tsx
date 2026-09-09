@@ -4,7 +4,7 @@ import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { EmployeesClient } from "@/components/employees/employees-client";
 import { getTeams } from "@/lib/queries/team.queries";
 import { db } from "@/lib/db";
-import EmployeesLoading from "./skeleton";
+import { EmployeesBodySkeleton } from "./skeleton";
 
 export default function EmployeesPage() {
   return (
@@ -15,7 +15,7 @@ export default function EmployeesPage() {
           <p className="text-sm text-muted-foreground">Manage members and their platform access.</p>
         </div>
       </div>
-      <Suspense fallback={<EmployeesLoading />}>
+      <Suspense fallback={<EmployeesBodySkeleton />}>
         <EmployeesDataAsync />
       </Suspense>
     </div>

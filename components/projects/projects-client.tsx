@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import { Plus, Filter, Search, ArrowUpRight, Calendar, DollarSign, FolderKanban, X } from "lucide-react";
 import { updateProjectStatusAction } from "@/lib/actions/project.actions";
+import { format, isPast, isToday, isTomorrow, endOfDay } from "date-fns";
 
 
 const statusColors: Record<string, string> = { ACTIVE: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20", PLANNING: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20 hover:bg-purple-500/20", ON_HOLD: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20 hover:bg-orange-500/20", COMPLETED: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20", ARCHIVED: "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20 hover:bg-gray-500/20" };
@@ -157,6 +158,11 @@ export function ProjectsClient({ initialProjects, canCreate }: { initialProjects
               {filteredProjects.map((project) => {
               const lead = project.lead;
               const membersList = project.members.map((m: any) => m.employee);
+              const date = project.endDate ? new Date(project.endDate) : null;
+              const isOverdue = Boolean(date && !["COMPLETED", "ARCHIVED"].includes(project.status) && !isToday(date) && isPast(endOfDay(date)));
+              const isDueToday = Boolean(date && !["COMPLETED", "ARCHIVED"].includes(project.status) && isToday(date));
+              const isDueTomorrow = Boolean(date && !["COMPLETED", "ARCHIVED"].includes(project.status) && isTomorrow(date));
+
               return (
                 <Card 
                   key={project.id} 
@@ -189,11 +195,26 @@ export function ProjectsClient({ initialProjects, canCreate }: { initialProjects
                       </div>
                       <Progress value={project.computedProgress} className="h-1.5" />
                     </div>
-                    <div className="grid grid-cols-2 gap-2 text-[11px]">
-                      <div className="flex items-center gap-1.5 text-muted-foreground">
-                        <Calendar className="h-3 w-3" />
-                        <span>{project.endDate ? new Date(project.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "No deadline"}</span>
+                    <div className="flex items-center justify-between text-[11px] gap-1.5 flex-wrap">
+                      <div className={cn("flex items-center gap-1.5", isOverdue ? "text-red-500/90 font-medium" : "text-muted-foreground")}>
+                        <Calendar className={cn("h-3 w-3", isOverdue ? "text-red-500" : "text-muted-foreground")} />
+                        <span>{date ? `Target: ${format(date, "MMM d, yyyy")}` : "No deadline"}</span>
                       </div>
+                      {isOverdue && (
+                        <Badge variant="outline" className="border-red-500/20 bg-red-500/10 text-[9px] text-red-600 dark:text-red-400 py-0 px-1 font-medium">
+                          Overdue
+                        </Badge>
+                      )}
+                      {isDueToday && (
+                        <Badge variant="outline" className="border-amber-500/20 bg-amber-500/10 text-[9px] text-amber-600 dark:text-amber-400 py-0 px-1">
+                          Due today
+                        </Badge>
+                      )}
+                      {isDueTomorrow && (
+                        <Badge variant="outline" className="border-amber-500/20 bg-amber-500/10 text-[9px] text-amber-600 dark:text-amber-400 py-0 px-1">
+                          Due tomorrow
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex items-center justify-between pt-1 border-t border-border/50">
                       <div className="flex -space-x-1.5">
@@ -243,12 +264,16 @@ export function ProjectsClient({ initialProjects, canCreate }: { initialProjects
                     <TableHead className="min-w-[120px] font-medium text-[11px] uppercase tracking-wider">Status</TableHead>
                     <TableHead className="min-w-[150px] font-medium text-[11px] uppercase tracking-wider">Progress</TableHead>
                     <TableHead className="min-w-[150px] font-medium text-[11px] uppercase tracking-wider">Team</TableHead>
-                    <TableHead className="min-w-[120px] font-medium text-[11px] uppercase tracking-wider">Deadline</TableHead>
+                    <TableHead className="min-w-[150px] font-medium text-[11px] uppercase tracking-wider">Deadline</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredProjects.map((project) => {
                   const lead = project.lead;
+                  const date = project.endDate ? new Date(project.endDate) : null;
+                  const isOverdue = Boolean(date && !["COMPLETED", "ARCHIVED"].includes(project.status) && !isToday(date) && isPast(endOfDay(date)));
+                  const isDueToday = Boolean(date && !["COMPLETED", "ARCHIVED"].includes(project.status) && isToday(date));
+
                   return (
                     <TableRow 
                       key={project.id} 
@@ -273,8 +298,26 @@ export function ProjectsClient({ initialProjects, canCreate }: { initialProjects
                       <TableCell className="text-xs text-muted-foreground">
                         {project.team?.name || "-"}
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {project.endDate ? new Date(project.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "-"}
+                      <TableCell className="text-xs">
+                        {date ? (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={isOverdue ? "text-red-500/90 font-medium" : "text-muted-foreground"}>
+                              Target: {format(date, "MMM d, yyyy")}
+                            </span>
+                            {isOverdue && (
+                              <Badge variant="outline" className="border-red-500/20 bg-red-500/10 text-[9px] text-red-600 dark:text-red-400 py-0 px-1 font-medium">
+                                Overdue
+                              </Badge>
+                            )}
+                            {isDueToday && (
+                              <Badge variant="outline" className="border-amber-500/20 bg-amber-500/10 text-[9px] text-amber-600 dark:text-amber-400 py-0 px-1">
+                                Due today
+                              </Badge>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   );

@@ -7,7 +7,7 @@ import { KanbanBoard } from "@/components/tasks/kanban-board";
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 
 import { Suspense } from "react";
-import TasksLoading from "./skeleton";
+import { TasksBodySkeleton } from "./skeleton";
 
 async function TasksDataAsync({ searchParams }: { searchParams: Promise<{ [key: string]: string | undefined }> }) {
   // Start dropdown options fetch immediately in parallel with auth and searchParams resolution
@@ -58,7 +58,7 @@ export default function TasksPage({ searchParams }: { searchParams: Promise<{ [k
           <p className="text-sm text-muted-foreground">Track and manage all tasks across projects.</p>
         </div>
       </div>
-      <Suspense fallback={<TasksLoading />}>
+      <Suspense fallback={<TasksBodySkeleton />}>
         <TasksDataAsync searchParams={searchParams} />
       </Suspense>
     </div>

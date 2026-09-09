@@ -3,7 +3,7 @@ import { getTeams } from "@/lib/queries/team.queries";
 import { TeamsClient } from "@/components/teams/teams-client";
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { db } from "@/lib/db";
-import TeamsLoading from "./skeleton";
+import { TeamsBodySkeleton } from "./skeleton";
 
 export default function TeamsPage() {
   return (
@@ -14,7 +14,7 @@ export default function TeamsPage() {
           <p className="text-sm text-muted-foreground mt-1">Manage functional groups and track project assignments.</p>
         </div>
       </div>
-      <Suspense fallback={<TeamsLoading />}>
+      <Suspense fallback={<TeamsBodySkeleton />}>
         <TeamsDataAsync />
       </Suspense>
     </div>

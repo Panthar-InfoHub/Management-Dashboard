@@ -1,6 +1,6 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
-export default function ProjectsLoading() {
+export function ProjectsBodySkeleton() {
   return (
     <div className="flex flex-col gap-6 min-w-0 flex-1 overflow-hidden">
       <div className="flex flex-col sm:flex-row sm:items-center justify-end shrink-0 gap-4">
@@ -48,6 +48,20 @@ export default function ProjectsLoading() {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+export default function ProjectsLoading() {
+  return (
+    <div className="flex flex-col gap-6 p-6 h-[calc(100vh-64px)] min-w-0 overflow-hidden">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between shrink-0 gap-4">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Projects</h1>
+          <p className="text-sm text-muted-foreground">Manage and track all active projects across your organization.</p>
+        </div>
+      </div>
+      <ProjectsBodySkeleton />
     </div>
   );
 }

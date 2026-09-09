@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { getProjectsList } from "@/lib/queries/project.queries";
 import { ProjectsClient } from "@/components/projects/projects-client";
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
-import ProjectsLoading from "./skeleton";
+import { ProjectsBodySkeleton } from "./skeleton";
 
 export default function ProjectsPage() {
   // Instantly render the page shell and stream the data
@@ -14,7 +14,7 @@ export default function ProjectsPage() {
           <p className="text-sm text-muted-foreground">Manage and track all active projects across your organization.</p>
         </div>
       </div>
-      <Suspense fallback={<ProjectsLoading />}>
+      <Suspense fallback={<ProjectsBodySkeleton />}>
         <ProjectsDataAsync />
       </Suspense>
     </div>

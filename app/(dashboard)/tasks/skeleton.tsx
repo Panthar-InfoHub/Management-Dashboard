@@ -1,6 +1,6 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
-export default function TasksLoading() {
+export function TasksBodySkeleton() {
   return (
     <div className="flex flex-col gap-6 min-h-0 flex-1">
       <div className="flex items-center justify-end shrink-0">
@@ -24,6 +24,20 @@ export default function TasksLoading() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+export default function TasksLoading() {
+  return (
+    <div className="flex flex-col gap-6 p-6 h-[calc(100vh-64px)] min-h-0">
+      <div className="flex items-center justify-between shrink-0">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Tasks</h1>
+          <p className="text-sm text-muted-foreground">Track and manage all tasks across projects.</p>
+        </div>
+      </div>
+      <TasksBodySkeleton />
     </div>
   );
 }

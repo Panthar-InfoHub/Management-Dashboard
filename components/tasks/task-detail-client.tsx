@@ -377,23 +377,23 @@ export function TaskDetailClient({ initialTask, projectTasks, canEditDetails = t
                                     Unassign
                                   </DropdownMenuItem>
                                   <DropdownMenuSeparator />
-                                  {task.project.members.map((m: any) => (
-                                    <DropdownMenuItem 
-                                      key={m.employee.id} 
-                                      onClick={() => startTransition(() => { 
-                                        assignTaskAction(subtask.id, m.employee.id)
-                                          .then(() => { toast.success("Task assigned"); router.refresh(); })
-                                          .catch((err: any) => toast.error(err.message || "Failed to assign task"));
-                                      })}
-                                      className="text-xs cursor-pointer flex items-center gap-2"
-                                    >
-                                      <Avatar className="h-4 w-4">
-                                        <AvatarImage src={m.employee.avatarUrl} />
-                                        <AvatarFallback className="text-[7px] bg-secondary text-secondary-foreground">{m.employee.firstName.charAt(0)}</AvatarFallback>
-                                      </Avatar>
-                                      <span className="truncate">{m.employee.firstName} {m.employee.lastName}</span>
-                                    </DropdownMenuItem>
-                                  ))}
+                                   {task.project?.members?.filter((m: any) => m.employee)?.map((m: any) => (
+                                     <DropdownMenuItem 
+                                       key={m.employee.id} 
+                                       onClick={() => startTransition(() => { 
+                                         assignTaskAction(subtask.id, m.employee.id)
+                                           .then(() => { toast.success("Task assigned"); router.refresh(); })
+                                           .catch((err: any) => toast.error(err.message || "Failed to assign task"));
+                                       })}
+                                       className="text-xs cursor-pointer flex items-center gap-2"
+                                     >
+                                       <Avatar className="h-4 w-4">
+                                         <AvatarImage src={m.employee.avatarUrl} />
+                                         <AvatarFallback className="text-[7px] bg-secondary text-secondary-foreground">{m.employee.firstName?.charAt(0) || "U"}</AvatarFallback>
+                                       </Avatar>
+                                       <span className="truncate">{m.employee.firstName} {m.employee.lastName}</span>
+                                     </DropdownMenuItem>
+                                   ))}
                                 </DropdownMenuContent>
                                 </DropdownMenu>
                               </div>
@@ -467,11 +467,11 @@ export function TaskDetailClient({ initialTask, projectTasks, canEditDetails = t
                              <SelectTrigger><SelectValue placeholder="Unassigned"/></SelectTrigger>
                              <SelectContent>
                                 <SelectItem value="">Unassigned</SelectItem>
-                                {task.project.members.map((m: any) => (
-                                  <SelectItem key={m.employee.id} value={m.employee.id}>
-                                    {m.employee.firstName} {m.employee.lastName}
-                                  </SelectItem>
-                                ))}
+                                 {task.project?.members?.filter((m: any) => m.employee)?.map((m: any) => (
+                                   <SelectItem key={m.employee.id} value={m.employee.id}>
+                                     {m.employee.firstName} {m.employee.lastName}
+                                   </SelectItem>
+                                 ))}
                              </SelectContent>
                           </Select>
                         </div>

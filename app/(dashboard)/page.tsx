@@ -9,6 +9,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Suspense } from "react";
 import dynamic from "next/dynamic";
+import { DashboardBodySkeleton } from "./dashboard-skeleton";
 
 // recharts is a large client-only dependency used exclusively by this section;
 // splitting it into its own chunk keeps it out of the initial dashboard bundle.
@@ -147,26 +148,8 @@ async function DashboardHeaderAsync() {
 export default function DashboardPage() {
   // Instantly return the static page shell
   return (
-    <div className="h-full space-y-8 overflow-y-auto p-6">
-      <Suspense fallback={
-        <div className="space-y-8">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <Skeleton className="h-7 w-48" />
-              <Skeleton className="h-4 w-72" />
-            </div>
-            <Skeleton className="h-8 w-40" />
-          </div>
-          {/* We can rely on the nested skeletons once the header resolves */}
-          <div className="grid gap-4 md:grid-cols-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="overflow-hidden rounded-xl border border-border/40 bg-card p-5">
-                <Skeleton className="h-12 w-full" />
-              </div>
-            ))}
-          </div>
-        </div>
-      }>
+    <div className="space-y-8 p-6">
+      <Suspense fallback={<DashboardBodySkeleton />}>
         <DashboardHeaderAsync />
       </Suspense>
     </div>

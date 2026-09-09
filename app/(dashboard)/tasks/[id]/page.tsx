@@ -6,12 +6,13 @@ import { db } from "@/lib/db";
 
 export default async function TaskDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [task, employee, canUpdateGlobal, canDelete] = await Promise.all([
-    getTaskById(id),
+  const [employee, canUpdateGlobal, canDelete] = await Promise.all([
     getCurrentEmployee(),
     checkPermission("task:update"),
     checkPermission("task:delete"),
   ]);
+
+  const task = await getTaskById(id, employee, canUpdateGlobal);
 
   if (!task) {
     notFound();

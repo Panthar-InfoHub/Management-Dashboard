@@ -1,16 +1,12 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
-export default function DashboardLoading() {
+export function DashboardBodySkeleton() {
   return (
-    <div className="space-y-8 p-6">
+    <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
-          <h1 className="text-xl font-semibold tracking-tight text-foreground">
-            Dashboard Overview
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Loading your organization metrics...
-          </p>
+          <Skeleton className="h-7 w-56" />
+          <Skeleton className="h-4 w-72" />
         </div>
         <Skeleton className="h-8 w-full sm:w-40" />
       </div>
@@ -73,30 +69,15 @@ export default function DashboardLoading() {
           </div>
           <Skeleton className="h-[240px] w-full rounded-md" />
         </div>
-        <div className="h-[320px] space-y-4 rounded-xl border border-border/40 bg-card p-4 shadow-sm lg:col-span-3">
-          <div className="flex items-center gap-2">
-            <Skeleton className="h-9 w-9 rounded-xl" />
-            <Skeleton className="h-4 w-28" />
-          </div>
-          <Skeleton className="h-[240px] w-full rounded-md" />
-        </div>
       </div>
+    </>
+  );
+}
 
-      {/* Projects Summary */}
-      <div className="space-y-4 rounded-xl border border-border/40 bg-card p-4 shadow-sm">
-        <Skeleton className="h-5 w-40" />
-        <div className="space-y-3">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="space-y-2 rounded-lg border border-border/40 p-3">
-              <div className="flex items-center justify-between">
-                <Skeleton className="h-3.5 w-1/3" />
-                <Skeleton className="h-5 w-5 rounded-full" />
-              </div>
-              <Skeleton className="h-1.5 w-full rounded-full" />
-            </div>
-          ))}
-        </div>
-      </div>
+export default function DashboardLoading() {
+  return (
+    <div className="space-y-8 p-6">
+      <DashboardBodySkeleton />
     </div>
   );
 }

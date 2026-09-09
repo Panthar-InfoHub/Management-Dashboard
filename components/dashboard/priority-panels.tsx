@@ -52,12 +52,12 @@ function DueBadge({ dueDate, isOverdue }: { dueDate: Date | string | null; isOve
   // Only display Overdue if the entire calendar day has passed
   if (isOverdue || isPast(endOfDay(date))) {
     return (
-      <Badge variant="outline" className="shrink-0 border-red-500/20 bg-red-500/10 text-[9px] text-red-600 dark:text-red-400">
+      <Badge variant="outline" className="shrink-0 border-red-500/20 bg-red-500/10 text-[9px] text-red-600 dark:text-red-400 font-medium">
         Overdue
       </Badge>
     );
   }
-  return <span className="shrink-0 text-[10px] text-muted-foreground">Due {format(date, "MMM d")}</span>;
+  return null;
 }
 
 function EmptyRow({ label }: { label: string }) {
@@ -97,21 +97,35 @@ export function PriorityPanels({
         </div>
         <div className="flex-1 p-3 overflow-y-auto max-h-[320px] custom-scrollbar">
           <div className="space-y-1">
-            {taskRadar.map((task) => (
-              <Link
-                key={task.id}
-                href={`/tasks/${task.id}`}
-                className="group flex items-center gap-3 rounded-md p-2 transition-colors hover:bg-accent/40"
-              >
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: TASK_PRIORITY_COLORS[task.priority] }}
-                  title={formatEnumLabel(task.priority)}
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium text-foreground">{task.title}</p>
-                  <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{task.project.name}</p>
-                </div>
+            {taskRadar.map((task) => {
+              const taskDate = task.dueDate ? new Date(task.dueDate) : null;
+              const isTaskOverdue = Boolean(task.isOverdue || (taskDate && !isToday(taskDate) && isPast(endOfDay(taskDate))));
+
+              return (
+                <Link
+                  key={task.id}
+                  href={`/tasks/${task.id}`}
+                  className="group flex items-center gap-3 rounded-md p-2 transition-colors hover:bg-accent/40"
+                >
+                  <span
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: TASK_PRIORITY_COLORS[task.priority] }}
+                    title={formatEnumLabel(task.priority)}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-medium text-foreground">{task.title}</p>
+                    <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                      <span>{task.project.name}</span>
+                      {taskDate && (
+                        <>
+                          <span className="mx-1">•</span>
+                          <span className={isTaskOverdue ? "text-red-500/90 font-medium" : ""}>
+                            Target: {format(taskDate, "MMM d, yyyy")}
+                          </span>
+                        </>
+                      )}
+                    </p>
+                  </div>
                 {isAdmin && task.assignees.length > 0 && (
                   <div className="flex -space-x-1.5 shrink-0">
                     {task.assignees.slice(0, 2).map((a) => (
@@ -124,7 +138,8 @@ export function PriorityPanels({
                 )}
                 <DueBadge dueDate={task.dueDate} isOverdue={task.isOverdue} />
               </Link>
-            ))}
+            );
+          })}
             {taskRadar.length === 0 && (
               <EmptyRow label={isAdmin ? "No upcoming deadlines across the org." : "All caught up — nothing due soon."} />
             )}

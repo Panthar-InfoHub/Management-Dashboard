@@ -63,8 +63,8 @@ export async function getKanbanTasks(filters?: { team?: string, project?: string
   return tasks;
 }
 
-export async function getTaskById(taskId: string) {
-  const employee = await getCurrentEmployee();
+export async function getTaskById(taskId: string, callerEmployee?: any, canUpdate?: boolean) {
+  const employee = callerEmployee ?? (await getCurrentEmployee());
 
   const task = await db.task.findUnique({
     where: { id: taskId },
@@ -72,7 +72,13 @@ export async function getTaskById(taskId: string) {
       project: {
         include: { 
           team: true, 
-          members: { include: { employee: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } } } } 
+          members: {
+            include: {
+              employee: {
+                select: { id: true, firstName: true, lastName: true, avatarUrl: true }
+              }
+            }
+          } 
         }
       },
       assignees: {
@@ -92,13 +98,14 @@ export async function getTaskById(taskId: string) {
 
   if (!task) return null;
 
-  const canViewAll = await checkPermission("task:update");
+  const canViewAll = canUpdate !== undefined ? canUpdate : await checkPermission("task:update");
 
   if (!canViewAll) {
-    const isAssignee = task.assignees.some(a => a.id === employee.id);
-    const isProjectMember = task.project.members.some(m => m.employeeId === employee.id);
+    const isAssignee = task.assignees?.some(a => a.id === employee.id);
+    const isProjectMember = task.project?.members?.some(m => m.employeeId === employee.id);
+    const isCreator = task.creatorId === employee.id;
     
-    if (!isAssignee && !isProjectMember) {
+    if (!isAssignee && !isProjectMember && !isCreator) {
       throw new Error("FORBIDDEN: Requires higher permission level");
     }
   }

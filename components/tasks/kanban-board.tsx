@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { Filter, Search, MessageSquare, ClipboardList, Clock, ChevronDown, ChevronRight as ChevronRightIcon, Loader2, X } from "lucide-react";
 import { updateTaskStatusAction, loadMoreTasksAction } from "@/lib/actions/task.actions";
 import { toast } from "sonner";
+import { format, isPast, isToday, endOfDay } from "date-fns";
 
 const statusColors: Record<string, string> = { BACKLOG: "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20 hover:bg-gray-500/20", TODO: "bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20 hover:bg-slate-500/20", IN_PROGRESS: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20", REVIEW: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20 hover:bg-purple-500/20", TESTING: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/20", DONE: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20" };
 const priorityColors: Record<string, string> = { CRITICAL: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20 hover:bg-red-500/20", HIGH: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20 hover:bg-orange-500/20", MEDIUM: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20", LOW: "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20 hover:bg-gray-500/20" };
@@ -417,12 +418,21 @@ export function KanbanBoard({
                               <div className="flex items-center justify-between mt-1">
                                 <div className="flex items-center gap-1.5">
                                   <div className={cn("h-1.5 w-1.5 rounded-full shrink-0", priorityDots[task.priority] || "bg-muted")} title={`Priority: ${task.priority}`} />
-                                  {task.dueDate && (
-                                    <span className="text-[9px] font-medium text-muted-foreground flex items-center gap-1">
-                                      <Clock className="h-2.5 w-2.5" />
-                                      {new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                                    </span>
-                                  )}
+                                  {task.dueDate && (() => {
+                                    const date = new Date(task.dueDate);
+                                    const isOverdue = task.status !== "DONE" && !isToday(date) && isPast(endOfDay(date));
+                                    return (
+                                       <span className={cn("text-[9px] font-medium flex items-center gap-1", isOverdue ? "text-red-500/90 font-medium" : "text-muted-foreground")}>
+                                         <Clock className={cn("h-2.5 w-2.5", isOverdue && "text-red-500")} />
+                                         <span>Target: {format(date, "MMM d")}</span>
+                                         {isOverdue && (
+                                           <span className="text-[8px] text-red-600 dark:text-red-400 font-semibold uppercase tracking-wider ml-0.5">
+                                             (Overdue)
+                                           </span>
+                                         )}
+                                       </span>
+                                    );
+                                  })()}
                                 </div>
                                 
                                 {task.labels && task.labels.length > 0 && (
@@ -529,12 +539,23 @@ export function KanbanBoard({
                         )}
                       </TableCell>
                       <TableCell>
-                        {task.dueDate ? (
-                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <Clock className="h-3.5 w-3.5" />
-                            <span>{new Date(task.dueDate).toLocaleDateString()}</span>
-                          </div>
-                        ) : <span className="text-xs text-muted-foreground">-</span>}
+                        {task.dueDate ? (() => {
+                          const date = new Date(task.dueDate);
+                          const isOverdue = task.status !== "DONE" && !isToday(date) && isPast(endOfDay(date));
+                          return (
+                            <div className="flex items-center gap-1.5 text-xs flex-wrap">
+                              <Clock className={cn("h-3.5 w-3.5", isOverdue ? "text-red-500" : "text-muted-foreground")} />
+                              <span className={isOverdue ? "text-red-500/90 font-medium" : "text-muted-foreground"}>
+                                Target: {format(date, "MMM d, yyyy")}
+                              </span>
+                              {isOverdue && (
+                                <Badge variant="outline" className="border-red-500/20 bg-red-500/10 text-[9px] text-red-600 dark:text-red-400 py-0 px-1 font-medium">
+                                  Overdue
+                                </Badge>
+                              )}
+                            </div>
+                          );
+                        })() : <span className="text-xs text-muted-foreground">-</span>}
                       </TableCell>
                     </TableRow>
                   );
