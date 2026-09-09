@@ -49,7 +49,11 @@ export function NewTaskForm({
     assigneeIds: initialData?.assignees?.map((a: any) => a.id) || [],
     project: initialData?.projectId || projects[0]?.id || "",
     startDate: initialData?.startDate ? new Date(initialData.startDate) : new Date(),
-    dueDate: initialData?.dueDate ? new Date(initialData.dueDate) : new Date(Date.now() + 7 * 86400000),
+    dueDate: initialData?.dueDate ? new Date(initialData.dueDate) : (() => {
+      const d = new Date(Date.now() + 7 * 86400000);
+      d.setHours(23, 59, 59, 999);
+      return d;
+    })(),
     blockers: initialData?.blockers || "",
   });
 
@@ -324,7 +328,15 @@ export function NewTaskForm({
                     <Calendar
                       mode="single"
                       selected={newTask.dueDate}
-                      onSelect={(d: any) => setNewTask({ ...newTask, dueDate: d })}
+                      onSelect={(d: any) => {
+                        if (d) {
+                          const end = new Date(d);
+                          end.setHours(23, 59, 59, 999);
+                          setNewTask({ ...newTask, dueDate: end });
+                        } else {
+                          setNewTask({ ...newTask, dueDate: undefined });
+                        }
+                      }}
                     />
                   </PopoverContent>
                 </Popover>

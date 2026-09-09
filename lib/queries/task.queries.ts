@@ -105,3 +105,32 @@ export async function getTaskById(taskId: string) {
 
   return { ...task, activity: [] };
 }
+
+export async function getTaskFilterDropdowns() {
+  const employee = await getCurrentEmployee();
+  const canViewAll = await checkPermission("project:update");
+
+  const [projects, teams, employees] = await Promise.all([
+    db.project.findMany({
+      where: canViewAll ? {} : {
+        OR: [
+          { members: { some: { employeeId: employee.id } } },
+          { leadId: employee.id }
+        ]
+      },
+      select: { id: true, name: true, teamId: true },
+      orderBy: { name: "asc" }
+    }),
+    db.team.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: "asc" }
+    }),
+    db.employee.findMany({
+      where: { status: "ACTIVE" },
+      select: { id: true, firstName: true, lastName: true, avatarUrl: true },
+      orderBy: { firstName: "asc" }
+    })
+  ]);
+
+  return { projects, teams, employees };
+}

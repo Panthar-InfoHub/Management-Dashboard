@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Radar, AlertCircle, CheckCircle2 } from "lucide-react";
 import { TASK_PRIORITY_COLORS, PROJECT_STATUS_COLORS, formatEnumLabel } from "@/lib/dashboard-colors";
-import { format, isToday, isTomorrow } from "date-fns";
+import { format, isToday, isTomorrow, isPast, endOfDay } from "date-fns";
 import Link from "next/link";
 
 interface RadarTask {
@@ -21,20 +21,19 @@ interface AttentionProject {
   priority: string;
   status: string;
   isOverdue: boolean;
+  endDate?: Date | string | null;
   team: { name: string } | null;
+  progress?: number;
+  totalTasks?: number;
+  completedTasks?: number;
+  overdueTasksCount?: number;
 }
 
 function DueBadge({ dueDate, isOverdue }: { dueDate: Date | string | null; isOverdue: boolean }) {
   if (!dueDate) return null;
   const date = new Date(dueDate);
 
-  if (isOverdue) {
-    return (
-      <Badge variant="outline" className="shrink-0 border-red-500/20 bg-red-500/10 text-[9px] text-red-600 dark:text-red-400">
-        Overdue
-      </Badge>
-    );
-  }
+  // If the date is today in the user's browser timezone, it is always "Due today"
   if (isToday(date)) {
     return (
       <Badge variant="outline" className="shrink-0 border-amber-500/20 bg-amber-500/10 text-[9px] text-amber-600 dark:text-amber-400">
@@ -42,10 +41,19 @@ function DueBadge({ dueDate, isOverdue }: { dueDate: Date | string | null; isOve
       </Badge>
     );
   }
+  // If the date is tomorrow in the user's browser timezone, it is always "Due tomorrow"
   if (isTomorrow(date)) {
     return (
       <Badge variant="outline" className="shrink-0 border-amber-500/20 bg-amber-500/10 text-[9px] text-amber-600 dark:text-amber-400">
         Due tomorrow
+      </Badge>
+    );
+  }
+  // Only display Overdue if the entire calendar day has passed
+  if (isOverdue || isPast(endOfDay(date))) {
+    return (
+      <Badge variant="outline" className="shrink-0 border-red-500/20 bg-red-500/10 text-[9px] text-red-600 dark:text-red-400">
+        Overdue
       </Badge>
     );
   }
@@ -134,37 +142,117 @@ export function PriorityPanels({
         </div>
         <div className="flex-1 p-3 overflow-y-auto max-h-[320px] custom-scrollbar">
           <div className="space-y-1">
-            {attentionProjects.map((project) => (
-              <Link
-                key={project.id}
-                href={`/projects/${project.id}`}
-                className="group flex items-center gap-3 rounded-md p-2 transition-colors hover:bg-accent/40"
-              >
-                <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: PROJECT_STATUS_COLORS[project.status] }} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium text-foreground">{project.name}</p>
-                  <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{project.team?.name ?? "No team"}</p>
-                </div>
-                {project.isOverdue && (
-                  <Badge variant="outline" className="shrink-0 border-red-500/20 bg-red-500/10 text-[9px] text-red-600 dark:text-red-400">
-                    Overdue
-                  </Badge>
-                )}
-                {!project.isOverdue && project.priority === "CRITICAL" && (
-                  <Badge
-                    variant="outline"
-                    className="shrink-0 text-[9px]"
-                    style={{
-                      borderColor: `${TASK_PRIORITY_COLORS.CRITICAL}33`,
-                      backgroundColor: `${TASK_PRIORITY_COLORS.CRITICAL}1a`,
-                      color: TASK_PRIORITY_COLORS.CRITICAL,
-                    }}
-                  >
-                    Critical
-                  </Badge>
-                )}
-              </Link>
-            ))}
+            {attentionProjects.map((project) => {
+              const date = project.endDate ? new Date(project.endDate) : null;
+              const isProjectOverdue =
+                project.isOverdue &&
+                date &&
+                !isToday(date) &&
+                isPast(endOfDay(date));
+
+              const isProjectDueToday = date && isToday(date);
+              const isProjectDueTomorrow = date && isTomorrow(date);
+
+              const allTasksDone =
+                project.totalTasks !== undefined &&
+                project.totalTasks > 0 &&
+                project.completedTasks === project.totalTasks;
+
+              return (
+                <Link
+                  key={project.id}
+                  href={`/projects/${project.id}`}
+                  className="group flex items-center justify-between gap-3 rounded-md p-2 transition-colors hover:bg-accent/40"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: PROJECT_STATUS_COLORS[project.status] }}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium text-foreground group-hover:text-primary transition-colors">
+                        {project.name}
+                      </p>
+                      <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-muted-foreground truncate">
+                        <span>{project.team?.name ?? "No team"}</span>
+                        {date && (
+                          <>
+                            <span>•</span>
+                            <span className={isProjectOverdue ? "text-red-500/90 font-medium" : ""}>
+                              Target: {format(date, "MMM d, yyyy")}
+                            </span>
+                          </>
+                        )}
+                        {project.totalTasks !== undefined && project.totalTasks > 0 && (
+                          <>
+                            <span>•</span>
+                            <span>
+                              {project.completedTasks}/{project.totalTasks} tasks ({project.progress}%)
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {isProjectOverdue && (
+                      <Badge
+                        variant="outline"
+                        className="shrink-0 border-red-500/20 bg-red-500/10 text-[9px] text-red-600 dark:text-red-400"
+                      >
+                        Overdue
+                      </Badge>
+                    )}
+                    {isProjectDueToday && (
+                      <Badge
+                        variant="outline"
+                        className="shrink-0 border-amber-500/20 bg-amber-500/10 text-[9px] text-amber-600 dark:text-amber-400"
+                      >
+                        Due today
+                      </Badge>
+                    )}
+                    {isProjectDueTomorrow && (
+                      <Badge
+                        variant="outline"
+                        className="shrink-0 border-amber-500/20 bg-amber-500/10 text-[9px] text-amber-600 dark:text-amber-400"
+                      >
+                        Due tomorrow
+                      </Badge>
+                    )}
+                    {project.priority === "CRITICAL" && (
+                      <Badge
+                        variant="outline"
+                        className="shrink-0 text-[9px]"
+                        style={{
+                          borderColor: `${TASK_PRIORITY_COLORS.CRITICAL}33`,
+                          backgroundColor: `${TASK_PRIORITY_COLORS.CRITICAL}1a`,
+                          color: TASK_PRIORITY_COLORS.CRITICAL,
+                        }}
+                      >
+                        Critical
+                      </Badge>
+                    )}
+                    {!isProjectOverdue && project.overdueTasksCount !== undefined && project.overdueTasksCount > 0 && (
+                      <Badge
+                        variant="outline"
+                        className="shrink-0 border-amber-500/20 bg-amber-500/10 text-[9px] text-amber-600 dark:text-amber-400"
+                      >
+                        {project.overdueTasksCount} overdue {project.overdueTasksCount === 1 ? "task" : "tasks"}
+                      </Badge>
+                    )}
+                    {allTasksDone && (
+                      <Badge
+                        variant="outline"
+                        className="shrink-0 border-emerald-500/20 bg-emerald-500/10 text-[9px] text-emerald-600 dark:text-emerald-400"
+                      >
+                        All tasks done
+                      </Badge>
+                    )}
+                  </div>
+                </Link>
+              );
+            })}
             {attentionProjects.length === 0 && <EmptyRow label="No projects need attention right now." />}
           </div>
         </div>

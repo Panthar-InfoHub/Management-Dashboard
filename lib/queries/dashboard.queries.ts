@@ -1,13 +1,25 @@
 import { db } from "@/lib/db";
 import type { AuthEmployee } from "@/lib/auth";
 import type { Prisma, TaskStatus } from "@/lib/generated/prisma";
-import { startOfWeek, startOfMonth, startOfDay, subDays, addDays, eachDayOfInterval, format } from "date-fns";
+import { startOfWeek, startOfMonth, startOfDay, endOfDay, subDays, addDays, eachDayOfInterval, format } from "date-fns";
 import { ROLE_ORDER, sortByOrder } from "@/lib/dashboard-colors";
 
 const OPEN_TASK_STATUSES: TaskStatus[] = ["BACKLOG", "TODO", "IN_PROGRESS", "REVIEW", "TESTING"];
 
 function isAdminOrManager(employee: AuthEmployee) {
   return employee.role === "ADMIN" || employee.role === "MANAGER";
+}
+
+function checkIsOverdue(date: Date | null | undefined, now: Date): boolean {
+  if (!date) return false;
+  // If stored as local midnight (18:30Z in IST or 00:00Z in UTC), the user selected a calendar day,
+  // which does not expire until the end of that day (24 hours after the midnight timestamp)
+  const hours = date.getUTCHours();
+  const minutes = date.getUTCMinutes();
+  if ((hours === 18 && minutes === 30) || (hours === 0 && minutes === 0)) {
+    return new Date(date.getTime() + 24 * 60 * 60 * 1000) < now;
+  }
+  return date < now;
 }
 
 /** Role-aware overview: three compound blocks bundling related stats, so nothing needs a click to be understood. */
@@ -26,7 +38,7 @@ export async function getDashboardOverview(employee: AuthEmployee) {
         (SELECT COUNT(*) FROM "Project" WHERE status = 'PLANNING') as "planningProjects",
         (SELECT COUNT(*) FROM "Project" WHERE status = 'COMPLETED') as "completedProjects",
         (SELECT COUNT(*) FROM "Task" WHERE status IN ('BACKLOG', 'TODO', 'IN_PROGRESS', 'REVIEW', 'TESTING')) as "openTasks",
-        (SELECT COUNT(*) FROM "Task" WHERE status != 'DONE' AND "dueDate" < ${todayStart}) as "overdueTasks",
+        (SELECT COUNT(*) FROM "Task" WHERE status != 'DONE' AND (CASE WHEN "dueDate"::time = '18:30:00'::time OR "dueDate"::time = '00:00:00'::time THEN "dueDate" + INTERVAL '1 day' ELSE "dueDate" END) < ${now}) as "overdueTasks",
         (SELECT COUNT(*) FROM "Task" WHERE status = 'DONE' AND "completedAt" >= ${weekStart}) as "completedThisWeek",
         (SELECT COUNT(*) FROM "Employee" WHERE status = 'ACTIVE') as "teamMembers",
         (SELECT COUNT(*) FROM "Team") as "teams",
@@ -64,11 +76,14 @@ export async function getDashboardOverview(employee: AuthEmployee) {
       
       (SELECT COUNT(*) FROM "Task" t 
        INNER JOIN "_TaskAssignees" ta ON t.id = ta."A" 
-       WHERE ta."B" = ${employee.id} AND t.status != 'DONE' AND t."dueDate" >= ${now} AND t."dueDate" <= ${weekEnd}) as "myDueThisWeek",
+       WHERE ta."B" = ${employee.id} AND t.status != 'DONE' 
+         AND (CASE WHEN t."dueDate"::time = '18:30:00'::time OR t."dueDate"::time = '00:00:00'::time THEN t."dueDate" + INTERVAL '1 day' ELSE t."dueDate" END) >= ${now} 
+         AND t."dueDate" <= ${weekEnd}) as "myDueThisWeek",
       
       (SELECT COUNT(*) FROM "Task" t 
        INNER JOIN "_TaskAssignees" ta ON t.id = ta."A" 
-       WHERE ta."B" = ${employee.id} AND t.status != 'DONE' AND t."dueDate" < ${todayStart}) as "myOverdueTasks",
+       WHERE ta."B" = ${employee.id} AND t.status != 'DONE' 
+         AND (CASE WHEN t."dueDate"::time = '18:30:00'::time OR t."dueDate"::time = '00:00:00'::time THEN t."dueDate" + INTERVAL '1 day' ELSE t."dueDate" END) < ${now}) as "myOverdueTasks",
        
       (SELECT COUNT(*) FROM "Task" t 
        INNER JOIN "_TaskAssignees" ta ON t.id = ta."A" 
@@ -111,7 +126,6 @@ export async function getTaskRadar(employee: AuthEmployee) {
   const admin = isAdminOrManager(employee);
 
   const now = new Date();
-  const todayStart = startOfDay(now);
   const weekEnd = addDays(now, 7);
 
   const tasks = await db.task.findMany({
@@ -134,19 +148,25 @@ export async function getTaskRadar(employee: AuthEmployee) {
     dueDate: t.dueDate,
     project: t.project,
     assignees: t.assignees,
-    isOverdue: t.dueDate ? t.dueDate < todayStart : false,
+    isOverdue: checkIsOverdue(t.dueDate, now),
   }));
 }
 
-/** Projects that need a decision: critical priority or past their end date. */
+/** Projects that need a decision: critical priority, past/imminent end date, or having overdue tasks. */
 export async function getAttentionProjects(employee: AuthEmployee) {
   const admin = isAdminOrManager(employee);
   const now = new Date();
-  const todayStart = startOfDay(now);
+  const attentionEndThreshold = addDays(endOfDay(now), 1);
 
   const conditions: Prisma.ProjectWhereInput[] = [
     { status: { in: ["ACTIVE", "PLANNING"] } },
-    { OR: [{ priority: "CRITICAL" }, { endDate: { lt: todayStart } }] },
+    {
+      OR: [
+        { priority: "CRITICAL" },
+        { endDate: { lte: attentionEndThreshold } },
+        { tasks: { some: { status: { not: "DONE" }, dueDate: { lt: now } } } },
+      ],
+    },
   ];
   if (!admin) {
     conditions.push({ OR: [{ members: { some: { employeeId: employee.id } } }, { leadId: employee.id }] });
@@ -154,12 +174,34 @@ export async function getAttentionProjects(employee: AuthEmployee) {
 
   const projects = await db.project.findMany({
     where: { AND: conditions },
-    include: { team: { select: { name: true } } },
+    include: {
+      team: { select: { name: true } },
+      tasks: { select: { id: true, status: true, dueDate: true } },
+    },
     orderBy: [{ priority: "desc" }, { endDate: "asc" }],
     take: 20,
   });
 
-  return projects.map((p) => ({ ...p, isOverdue: p.endDate ? p.endDate < todayStart : false }));
+  return projects.map((p) => {
+    const totalTasks = p.tasks.length;
+    const completedTasks = p.tasks.filter((t) => t.status === "DONE").length;
+    const computedProgress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : p.progress;
+    const overdueTasksCount = p.tasks.filter((t) => t.status !== "DONE" && checkIsOverdue(t.dueDate, now)).length;
+
+    return {
+      id: p.id,
+      name: p.name,
+      priority: p.priority,
+      status: p.status,
+      endDate: p.endDate,
+      team: p.team,
+      progress: computedProgress,
+      totalTasks,
+      completedTasks,
+      overdueTasksCount,
+      isOverdue: checkIsOverdue(p.endDate, now),
+    };
+  });
 }
 
 /** Active/planning projects, most recently updated first, with computed progress. */
@@ -238,29 +280,25 @@ export async function getCompletionTrend(employee: AuthEmployee) {
 export async function getDashboardChartsData(employee: AuthEmployee) {
   if (!isAdminOrManager(employee)) return null;
 
-  const [roleGroups, openTasksByTeam] = await Promise.all([
+  const [roleGroups, teamWorkloadRows] = await Promise.all([
     db.employee.groupBy({ by: ["role"], _count: true, where: { status: "ACTIVE" } }),
-    db.task.findMany({
-      where: { status: { not: "DONE" } },
-      select: { project: { select: { team: { select: { id: true, name: true } } } } },
-    }),
+    db.$queryRaw<{ name: string; value: number }[]>`
+      SELECT tm.name, COUNT(t.id)::int as value
+      FROM "Task" t
+      JOIN "Project" p ON t."projectId" = p.id
+      JOIN "Team" tm ON p."teamId" = tm.id
+      WHERE t.status != 'DONE'
+      GROUP BY tm.id, tm.name
+      ORDER BY value DESC
+      LIMIT 6
+    `,
   ]);
-
-  const workloadMap = new Map<string, { name: string; value: number }>();
-  for (const t of openTasksByTeam) {
-    const team = t.project.team;
-    if (!team) continue;
-    const entry = workloadMap.get(team.id) ?? { name: team.name, value: 0 };
-    entry.value += 1;
-    workloadMap.set(team.id, entry);
-  }
-  const teamWorkload = [...workloadMap.values()].sort((a, b) => b.value - a.value).slice(0, 6);
 
   return {
     roles: sortByOrder(
       roleGroups.map((g) => ({ name: g.role, value: g._count })),
       ROLE_ORDER
     ),
-    teamWorkload,
+    teamWorkload: teamWorkloadRows.map((r) => ({ name: r.name, value: Number(r.value) })),
   };
 }

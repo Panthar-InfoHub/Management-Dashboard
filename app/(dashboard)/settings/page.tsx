@@ -39,15 +39,13 @@ export default function SettingsPage() {
 }
 
 async function SettingsDataAsync() {
-  const [employee, roles] = await Promise.all([
-    getCurrentEmployee(),
-    getSystemRolesAction(),
-  ]);
+  const employee = await getCurrentEmployee();
 
   if (employee.role !== "ADMIN") {
     redirect("/");
   }
 
-  return <SettingsClient initialRoles={JSON.parse(JSON.stringify(roles))} />;
+  const roles = await getSystemRolesAction();
+  return <SettingsClient initialRoles={roles} />;
 }
 

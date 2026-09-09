@@ -22,7 +22,7 @@ export async function getProjectsList() {
       members: { 
         include: { employee: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } } } 
       },
-      tasks: { select: { id: true, status: true } }
+      tasks: { select: { status: true } }
     },
     orderBy: { updatedAt: "desc" }
   });

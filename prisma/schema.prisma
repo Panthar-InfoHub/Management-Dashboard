@@ -160,6 +160,7 @@ model Project {
   @@index([teamId])
   @@index([leadId])
   @@index([status])
+  @@index([updatedAt])
 }
 
 model ProjectMember {
@@ -214,6 +215,10 @@ model Task {
   @@index([projectId])
   @@index([status, projectId])  // project board filtering
   @@index([parentId])
+  @@index([dueDate])
+  @@index([updatedAt])
+  @@index([status])
+  @@index([status, dueDate])
 }
 
 model Comment {

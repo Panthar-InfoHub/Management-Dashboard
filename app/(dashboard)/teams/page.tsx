@@ -1,8 +1,8 @@
 import { Suspense } from "react";
 import { getTeams } from "@/lib/queries/team.queries";
-import { getEmployees } from "@/lib/queries/employee.queries";
 import { TeamsClient } from "@/components/teams/teams-client";
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
+import { db } from "@/lib/db";
 import TeamsLoading from "./skeleton";
 
 export default function TeamsPage() {
@@ -22,16 +22,24 @@ export default function TeamsPage() {
 }
 
 async function TeamsDataAsync() {
-  const [, canCreate, teams, employees] = await Promise.all([
+  const [, canCreate, teams] = await Promise.all([
     getCurrentEmployee(),
     checkPermission("team:create"),
     getTeams(),
-    getEmployees()
   ]);
+
+  const employees = canCreate
+    ? await db.employee.findMany({
+        where: { status: "ACTIVE" },
+        select: { id: true, firstName: true, lastName: true, avatarUrl: true },
+        orderBy: { firstName: "asc" }
+      })
+    : [];
+
   return (
     <TeamsClient 
-      initialTeams={JSON.parse(JSON.stringify(teams))} 
-      employees={JSON.parse(JSON.stringify(employees))} 
+      initialTeams={teams} 
+      employees={employees} 
       canCreate={canCreate} 
     />
   );

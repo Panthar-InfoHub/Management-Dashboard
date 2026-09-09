@@ -24,8 +24,8 @@ async function main() {
     create: { name: "ADMIN", permissions: ALL_PERMISSIONS, isSystem: true }
   });
 
-  // Manager has most permissions, but not delete or role management
-  const managerPerms = ALL_PERMISSIONS.filter(p => !p.includes("delete") && p !== "role:manage");
+  // Manager has most permissions, including task deletion, but not project/team/employee deletion or role management
+  const managerPerms = [...ALL_PERMISSIONS.filter(p => !p.includes("delete") && p !== "role:manage"), "task:delete"];
   await prisma.systemRole.upsert({
     where: { name: "MANAGER" },
     update: { permissions: managerPerms, isSystem: true },

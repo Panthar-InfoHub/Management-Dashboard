@@ -24,7 +24,7 @@ export async function getTeams() {
         select: { id: true, firstName: true, lastName: true, avatarUrl: true, role: true, designation: true }
       },
       projects: {
-        select: { id: true, name: true, status: true, progress: true }
+        select: { id: true }
       }
     },
     orderBy: {

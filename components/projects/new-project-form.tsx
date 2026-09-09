@@ -47,7 +47,11 @@ export function NewProjectForm({
     lead: employees[0]?.id || "",
     team: teams[0]?.id || "",
     startDate: new Date(),
-    endDate: new Date(Date.now() + 30 * 86400000),
+    endDate: (() => {
+      const d = new Date(Date.now() + 30 * 86400000);
+      d.setHours(23, 59, 59, 999);
+      return d;
+    })(),
     addTeamMembers: false
   });
 
@@ -246,7 +250,15 @@ export function NewProjectForm({
                     <Calendar
                       mode="single"
                       selected={newProject.endDate}
-                      onSelect={(d: any) => setNewProject({ ...newProject, endDate: d })}
+                      onSelect={(d: any) => {
+                        if (d) {
+                          const end = new Date(d);
+                          end.setHours(23, 59, 59, 999);
+                          setNewProject({ ...newProject, endDate: end });
+                        } else {
+                          setNewProject({ ...newProject, endDate: undefined });
+                        }
+                      }}
                     />
                   </PopoverContent>
                 </Popover>

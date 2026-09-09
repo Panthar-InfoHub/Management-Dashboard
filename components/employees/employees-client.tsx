@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useMemo } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -136,11 +136,14 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
     setDeleteDialogOpen(true);
   };
 
-  const filteredEmployees = initialEmployees.filter(e => 
-    ((e.firstName + " " + e.lastName).toLowerCase().includes(searchQuery.toLowerCase()) || 
-    e.email.toLowerCase().includes(searchQuery.toLowerCase())) &&
-    (roleFilter === "ALL" || e.role === roleFilter)
-  );
+  const filteredEmployees = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    return initialEmployees.filter(e => 
+      ((e.firstName + " " + e.lastName).toLowerCase().includes(q) || 
+      e.email.toLowerCase().includes(q)) &&
+      (roleFilter === "ALL" || e.role === roleFilter)
+    );
+  }, [initialEmployees, searchQuery, roleFilter]);
 
   const handleRowClick = (empId: string) => {
     if (isAdmin || isManager) {

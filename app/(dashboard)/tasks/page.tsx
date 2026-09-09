@@ -1,10 +1,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
-import { getKanbanTasks } from "@/lib/queries/task.queries";
-import { getProjectsList } from "@/lib/queries/project.queries";
-import { getTeams } from "@/lib/queries/team.queries";
-import { getEmployees } from "@/lib/queries/employee.queries";
+import { getKanbanTasks, getTaskFilterDropdowns } from "@/lib/queries/task.queries";
 import { KanbanBoard } from "@/components/tasks/kanban-board";
 
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
@@ -12,12 +9,19 @@ import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { Suspense } from "react";
 import TasksLoading from "./skeleton";
 
-async function TasksData({ resolvedParams, employee, canEdit }: { resolvedParams: { [key: string]: string | undefined }, employee: any, canEdit: boolean }) {
-  const [tasks, projects, teams, allEmployees] = await Promise.all([
+async function TasksDataAsync({ searchParams }: { searchParams: Promise<{ [key: string]: string | undefined }> }) {
+  // Start dropdown options fetch immediately in parallel with auth and searchParams resolution
+  const filterOptionsPromise = getTaskFilterDropdowns();
+
+  const [resolvedParams, employee, canEdit] = await Promise.all([
+    searchParams,
+    getCurrentEmployee(),
+    checkPermission("task:create"),
+  ]);
+
+  const [tasks, filterOptions] = await Promise.all([
     getKanbanTasks(resolvedParams),
-    getProjectsList(),
-    getTeams(),
-    getEmployees()
+    filterOptionsPromise,
   ]);
 
   return (
@@ -34,9 +38,9 @@ async function TasksData({ resolvedParams, employee, canEdit }: { resolvedParams
 
       <KanbanBoard 
         initialTasks={tasks} 
-        allowedProjects={projects} 
-        allowedTeams={teams} 
-        allEmployees={allEmployees}
+        allowedProjects={filterOptions.projects} 
+        allowedTeams={filterOptions.teams} 
+        allEmployees={filterOptions.employees}
         currentEmployeeId={employee.id}
         employeeRole={employee.role}
       />
@@ -59,14 +63,4 @@ export default function TasksPage({ searchParams }: { searchParams: Promise<{ [k
       </Suspense>
     </div>
   );
-}
-
-async function TasksDataAsync({ searchParams }: { searchParams: Promise<{ [key: string]: string | undefined }> }) {
-  const [resolvedParams, employee, canEdit] = await Promise.all([
-    searchParams,
-    getCurrentEmployee(),
-    checkPermission("task:create")
-  ]);
-
-  return <TasksData resolvedParams={resolvedParams} employee={employee} canEdit={canEdit} />;
 }

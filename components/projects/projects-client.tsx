@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { Plus, Filter, Search, ArrowUpRight, Calendar, DollarSign, FolderKanban } from "lucide-react";
+import { Plus, Filter, Search, ArrowUpRight, Calendar, DollarSign, FolderKanban, X } from "lucide-react";
 import { updateProjectStatusAction } from "@/lib/actions/project.actions";
 
 
@@ -31,15 +31,19 @@ export function ProjectsClient({ initialProjects, canCreate }: { initialProjects
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
-  const filteredProjects = projectList.filter((p) => {
-    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || 
-                          (p.description || "").toLowerCase().includes(search.toLowerCase()) ||
-                          (p.team?.name || "").toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === "ALL" || p.status === statusFilter;
-    const matchesPriority = priorityFilter === "ALL" || p.priority === priorityFilter;
-    
-    return matchesSearch && matchesStatus && matchesPriority;
-  });
+  const filteredProjects = useMemo(() => {
+    const q = search.toLowerCase();
+    return projectList.filter((p) => {
+      const matchesSearch = !q || 
+                            p.name.toLowerCase().includes(q) || 
+                            (p.description || "").toLowerCase().includes(q) ||
+                            (p.team?.name || "").toLowerCase().includes(q);
+      const matchesStatus = statusFilter === "ALL" || p.status === statusFilter;
+      const matchesPriority = priorityFilter === "ALL" || p.priority === priorityFilter;
+      
+      return matchesSearch && matchesStatus && matchesPriority;
+    });
+  }, [projectList, search, statusFilter, priorityFilter]);
 
   if (projectList.length === 0) {
     return (
@@ -80,10 +84,13 @@ export function ProjectsClient({ initialProjects, canCreate }: { initialProjects
             className="pl-9 h-9 text-sm" 
           />
         </div>
-        <div className="flex items-center gap-3 w-full sm:w-auto">
+        <div className="flex items-center gap-2.5 w-full sm:w-auto flex-wrap">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="h-9 w-[130px] text-xs">
-              <div className="flex items-center gap-2"><Filter className="h-3.5 w-3.5" /> <SelectValue placeholder="Status" /></div>
+            <SelectTrigger className={cn("h-9 min-w-[130px] text-xs transition-colors", statusFilter !== "ALL" && "border-primary/50 bg-primary/5 text-foreground font-medium")}>
+              <div className="flex items-center gap-1.5 truncate">
+                <Filter className={cn("h-3.5 w-3.5 shrink-0", statusFilter !== "ALL" ? "text-primary" : "text-muted-foreground")} />
+                <SelectValue placeholder="All Statuses" />
+              </div>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All Statuses</SelectItem>
@@ -93,8 +100,11 @@ export function ProjectsClient({ initialProjects, canCreate }: { initialProjects
             </SelectContent>
           </Select>
           <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-            <SelectTrigger className="h-9 w-[130px] text-xs">
-              <div className="flex items-center gap-2"><Filter className="h-3.5 w-3.5" /> <SelectValue placeholder="Priority" /></div>
+            <SelectTrigger className={cn("h-9 min-w-[130px] text-xs transition-colors", priorityFilter !== "ALL" && "border-primary/50 bg-primary/5 text-foreground font-medium")}>
+              <div className="flex items-center gap-1.5 truncate">
+                <Filter className={cn("h-3.5 w-3.5 shrink-0", priorityFilter !== "ALL" ? "text-primary" : "text-muted-foreground")} />
+                <SelectValue placeholder="All Priorities" />
+              </div>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All Priorities</SelectItem>
@@ -103,6 +113,22 @@ export function ProjectsClient({ initialProjects, canCreate }: { initialProjects
               ))}
             </SelectContent>
           </Select>
+
+          {(search !== "" || statusFilter !== "ALL" || priorityFilter !== "ALL") && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSearch("");
+                setStatusFilter("ALL");
+                setPriorityFilter("ALL");
+              }}
+              className="h-9 px-2.5 text-xs text-muted-foreground hover:text-foreground gap-1 border border-dashed border-border/60 hover:border-border hover:bg-muted/40"
+            >
+              <X className="h-3 w-3" />
+              <span>Reset</span>
+            </Button>
+          )}
         </div>
       </div>
 
