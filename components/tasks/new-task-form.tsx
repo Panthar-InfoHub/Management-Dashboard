@@ -103,6 +103,7 @@ export function NewTaskForm({
       } else {
         createTaskAction({
           title: newTask.title,
+          description: newTask.description,
           projectId: newTask.project,
           assigneeIds: newTask.assigneeIds,
           priority: newTask.priority,

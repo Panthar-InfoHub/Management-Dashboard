@@ -27,6 +27,7 @@ function assertValidPriority(value: unknown): asserts value is TaskPriority {
 
 export async function createTaskAction(data: {
   title: string;
+  description?: string;
   projectId: string;
   assigneeIds?: string[];
   priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
@@ -40,12 +41,22 @@ export async function createTaskAction(data: {
   if (!data.projectId?.trim()) throw new Error("Project ID is required.");
   assertValidPriority(data.priority);
 
+  // Position new tasks at the top of BACKLOG
+  const firstTask = await db.task.findFirst({
+    where: { projectId: data.projectId, status: "BACKLOG" },
+    orderBy: { order: "asc" },
+    select: { order: true }
+  });
+  const initialOrder = firstTask ? firstTask.order - 1000 : 1000;
+
   const task = await db.task.create({
     data: {
       title: data.title.trim(),
+      description: data.description?.trim() || null,
       projectId: data.projectId,
       creatorId: employee.id,
       priority: data.priority,
+      order: initialOrder,
       startDate: data.startDate ? new Date(data.startDate) : undefined,
       dueDate: data.dueDate ? new Date(data.dueDate) : undefined,
       blockers: data.blockers,
@@ -130,8 +141,11 @@ export async function updateTaskAction(taskId: string, data: {
   return { success: true, taskId: updatedTask.id };
 }
 
-export async function updateTaskStatusAction(taskId: string, newStatus: string) {
+export async function updateTaskStatusAction(taskId: string, newStatus: string, newOrder?: number) {
   assertValidStatus(newStatus);
+  if (newOrder !== undefined && (typeof newOrder !== "number" || isNaN(newOrder))) {
+    throw new Error("Invalid task order value");
+  }
 
   const employee = await getCurrentEmployee();
   const hasGlobalPerm = await checkPermission("task:update");
@@ -153,6 +167,7 @@ export async function updateTaskStatusAction(taskId: string, newStatus: string) 
     where: { id: taskId },
     data: { 
       status: newStatus,
+      ...(newOrder !== undefined ? { order: newOrder } : {}),
       completedAt: newStatus === "DONE" ? new Date() : null,
       completionNote: newStatus === "DONE" ? undefined : null,
       prLink: newStatus === "DONE" ? undefined : null
@@ -334,3 +349,24 @@ export async function deleteTaskAction(taskId: string) {
   revalidatePath("/");
   return { success: true };
 }
+
+export async function rebalanceColumnTasksAction(orderedTaskIds: string[]) {
+  const employee = await getCurrentEmployee();
+  const hasGlobalPerm = await checkPermission("task:update");
+  if (!hasGlobalPerm) throw new Error("You do not have permission for this action.");
+
+  if (!orderedTaskIds || orderedTaskIds.length === 0) return { success: true };
+
+  await db.$transaction(
+    orderedTaskIds.map((id, index) => 
+      db.task.update({
+        where: { id },
+        data: { order: (index + 1) * 1000 }
+      })
+    )
+  );
+
+  revalidatePath("/tasks");
+  return { success: true };
+}
+

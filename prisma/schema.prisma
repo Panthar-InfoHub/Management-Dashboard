@@ -180,6 +180,7 @@ model Task {
   description    String?
   status         TaskStatus   @default(BACKLOG)
   priority       TaskPriority @default(MEDIUM)
+  order          Float        @default(0)
   storyPoints    Int?
   labels         String[]     // e.g. ["backend", "security"]
 
@@ -214,6 +215,7 @@ model Task {
 
   @@index([projectId])
   @@index([status, projectId])  // project board filtering
+  @@index([status, order])
   @@index([parentId])
   @@index([dueDate])
   @@index([updatedAt])
