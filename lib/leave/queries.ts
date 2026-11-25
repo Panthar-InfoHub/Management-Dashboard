@@ -8,6 +8,7 @@ import { getOfficeFor } from "@/lib/attendance/queries";
 import { eachDateKey, fromDateKey, todayKey, toDateKey } from "@/lib/attendance/calendar";
 import { formatTime } from "@/lib/attendance/rules";
 import { availableDays, carryOver, proratedAllowance } from "@/lib/leave/rules";
+import { inAnyTeam, teamIdsOf } from "@/lib/teams/membership";
 import { FIRST_CARRY_OVER_FROM_YEAR, LEAVE_TRACKING_START, leaveYearOf } from "@/lib/leave/policy";
 
 export type Coverage = { kind: "LEAVE" | "WFH"; halfDay: "FIRST_HALF" | "SECOND_HALF" | null; typeName: string | null };
@@ -104,14 +105,14 @@ export async function getBalances(employeeId: string, year: number) {
 
 const requestSelect = {
   id: true, kind: true, startDate: true, endDate: true, halfDay: true, days: true, reason: true, status: true,
-  decidedAt: true, decisionNote: true, fixCheckIn: true, fixCheckOut: true, createdAt: true,
+  decidedAt: true, decisionNote: true, fixCheckIn: true, fixCheckOut: true, workMode: true, createdAt: true,
   leaveType: { select: { name: true } },
   decidedBy: { select: { firstName: true, lastName: true } },
 } as const;
 
 type RequestRow = {
   id: string; kind: string; startDate: Date; endDate: Date; halfDay: string | null; days: number; reason: string; status: string;
-  decidedAt: Date | null; decisionNote: string | null; fixCheckIn: Date | null; fixCheckOut: Date | null; createdAt: Date;
+  decidedAt: Date | null; decisionNote: string | null; fixCheckIn: Date | null; fixCheckOut: Date | null; workMode: string | null; createdAt: Date;
   leaveType: { name: string } | null; decidedBy: { firstName: string; lastName: string } | null;
 };
 
@@ -131,6 +132,7 @@ function presentRequest(r: RequestRow, timeZone: string, today: string) {
     decisionNote: r.decisionNote,
     fixCheckIn: r.fixCheckIn ? formatTime(r.fixCheckIn, timeZone) : null,
     fixCheckOut: r.fixCheckOut ? formatTime(r.fixCheckOut, timeZone) : null,
+    workMode: r.workMode as "OFFICE" | "WFH" | null,
     createdAt: r.createdAt.toISOString(),
     // Cancel: pending any time; approved only before it starts.
     canCancel: r.status === "PENDING" || (r.status === "APPROVED" && toDateKey(r.startDate) > today),
@@ -181,14 +183,14 @@ export async function canDecideFor(viewer: AuthEmployee, employeeId: string) {
   const scope = await getApproverScope(viewer);
   if (!scope) return false;
   if (scope.all) return true;
-  const target = await db.employee.findUnique({ where: { id: employeeId }, select: { teamId: true } });
-  return !!target?.teamId && scope.teamIds.includes(target.teamId);
+  const theirTeams = await teamIdsOf(employeeId);
+  return theirTeams.some((t) => scope.teamIds.includes(t));
 }
 
 export async function getInbox(viewer: AuthEmployee) {
   const scope = await getApproverScope(viewer);
   if (!scope) return null;
-  const who = { id: { not: viewer.id }, ...(scope.all ? {} : { teamId: { in: scope.teamIds } }) };
+  const who = { id: { not: viewer.id }, ...(scope.all ? {} : inAnyTeam(scope.teamIds)) };
   const office = await getOfficeFor(viewer.id).catch(() => null);
   const timeZone = office?.timezone ?? "Asia/Kolkata";
   const today = todayKey(timeZone);

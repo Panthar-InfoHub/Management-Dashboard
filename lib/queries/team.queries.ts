@@ -10,7 +10,7 @@ export async function getTeams() {
   // Admin and Manager see all teams. Others see only teams they belong to or lead.
   const whereClause = canViewAll ? {} : {
     OR: [
-      { members: { some: { id: employee.id } } },
+      { memberships: { some: { employeeId: employee.id } } },
       { leadId: employee.id }
     ]
   };
@@ -21,9 +21,7 @@ export async function getTeams() {
       lead: {
         select: { id: true, firstName: true, lastName: true, avatarUrl: true }
       },
-      members: {
-        select: { id: true, firstName: true, lastName: true, avatarUrl: true, role: true, designation: true }
-      },
+      memberships: { select: { employee: { select: { id: true, firstName: true, lastName: true, avatarUrl: true, role: true, designation: true, email: true, status: true } } }, orderBy: { joinedAt: "asc" } },
       projects: {
         select: { id: true }
       }
@@ -33,7 +31,7 @@ export async function getTeams() {
     }
   });
 
-  return teams;
+  return teams.map(({ memberships, ...team }) => ({ ...team, members: memberships.map((m) => m.employee).filter((e) => e.status !== "INACTIVE") }));
 }
 
 export async function getTeamById(teamId: string) {
@@ -45,9 +43,7 @@ export async function getTeamById(teamId: string) {
       lead: {
         select: { id: true, firstName: true, lastName: true, avatarUrl: true, email: true, designation: true }
       },
-      members: {
-        select: { id: true, firstName: true, lastName: true, avatarUrl: true, email: true, designation: true }
-      },
+      memberships: { select: { employee: { select: { id: true, firstName: true, lastName: true, avatarUrl: true, role: true, designation: true, email: true, status: true } } }, orderBy: { joinedAt: "asc" } },
       projects: {
         include: {
           lead: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
@@ -59,16 +55,19 @@ export async function getTeamById(teamId: string) {
   });
 
   if (!team) return null;
+  const members = team.memberships.map((m) => m.employee).filter((e) => e.status !== "INACTIVE");
 
   if (team.leadId !== employee.id && !(await checkPermission("team:update"))) {
-    const isMember = team.members.some(m => m.id === employee.id);
+    const isMember = members.some(m => m.id === employee.id);
     if (!isMember) {
       throw new Error("FORBIDDEN: Requires higher permission level");
     }
   }
 
+  const { memberships: _memberships, ...rest } = team;
   return {
-    ...team,
+    ...rest,
+    members,
     projects: team.projects.map(({ tasks, ...project }) => ({
       ...project,
       progress: computeProgress(tasks.filter((t) => t.status === "DONE").length, tasks.length),

@@ -14,7 +14,7 @@ import { errorMessage } from "@/lib/utils";
 
 type LeaveOption = { leaveTypeId: string; name: string; unlimited: boolean; available: number | null };
 
-const EMPTY = { leaveTypeId: "", startDate: "", endDate: "", dayPart: "FULL", reason: "", fixCheckIn: "", fixCheckOut: "" };
+const EMPTY = { leaveTypeId: "", startDate: "", endDate: "", dayPart: "FULL", reason: "", fixCheckIn: "", fixCheckOut: "", workMode: "OFFICE" };
 
 const TRIGGERS: Record<RequestKindValue, { label: string; title: string; icon: typeof Plus }> = {
   LEAVE: { label: "Apply for Leave", title: "Apply for Leave", icon: Plus },
@@ -62,6 +62,7 @@ export function RequestDialog({
           reason: form.reason,
           fixCheckIn: kind === "ATTENDANCE_FIX" ? form.fixCheckIn : null,
           fixCheckOut: kind === "ATTENDANCE_FIX" ? form.fixCheckOut : null,
+          workMode: kind === "ATTENDANCE_FIX" ? (form.workMode as "OFFICE" | "WFH") : null,
         });
         toast.success(kind === "ATTENDANCE_FIX" ? "Attendance fix sent for approval" : `${REQUEST_KIND_LABELS[kind]} request sent · ${res.days} day${res.days === 1 ? "" : "s"}`);
         setOpen(false);
@@ -87,7 +88,7 @@ export function RequestDialog({
         <DialogHeader><DialogTitle>{trigger.title}</DialogTitle></DialogHeader>
         <form className="space-y-4 pt-2" onSubmit={(e) => { e.preventDefault(); submit(); }}>
           {kind === "ATTENDANCE_FIX" && (
-            <p className="text-xs text-muted-foreground">For a day you forgot to clock out, or clocked the wrong time. Enter the real times; an approver checks them.</p>
+            <p className="text-xs text-muted-foreground">For a day you forgot to clock in or out, or clocked the wrong time. Enter the real times; an approver checks them. If you didn&apos;t work that day, apply for leave instead.</p>
           )}
           {kind === "WFH" && (
             <p className="text-xs text-muted-foreground">Once approved, those office days are WFH for you and clock-in won&apos;t need your location.</p>
@@ -147,6 +148,20 @@ export function RequestDialog({
               </div>
             )}
           </div>
+
+          {kind === "ATTENDANCE_FIX" && (
+            <fieldset className="space-y-1.5">
+              <legend className="text-xs font-semibold text-muted-foreground">Where Did You Work?</legend>
+              <div className="grid grid-cols-2 gap-2">
+                {([["OFFICE", "At the office"], ["WFH", "From home"]] as const).map(([value, label]) => (
+                  <label key={value} className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm ${form.workMode === value ? "border-foreground" : "border-border/60"}`}>
+                    <input type="radio" name="workMode" value={value} className="accent-foreground" checked={form.workMode === value} onChange={() => set({ workMode: value })} disabled={isPending} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
 
           {kind === "ATTENDANCE_FIX" && (
             <div className="grid gap-4 sm:grid-cols-2">

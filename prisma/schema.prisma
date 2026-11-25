@@ -96,8 +96,11 @@ model Employee {
   kavachXCode String?        @unique
 
   // ── Team relation ──
+  /// Legacy single-team column, no longer used by the app (kept so nothing is dropped).
+  /// Teams come only from teamMemberships; a person can be in none or many.
   teamId      String?
   team        Team?          @relation("TeamMembers", fields: [teamId], references: [id])
+  teamMemberships TeamMembership[]
   leadOfTeams Team[]         @relation("TeamLead")
 
   // ── Task relations ──
@@ -151,7 +154,10 @@ model Team {
 
   leadId  String
   lead    Employee @relation("TeamLead", fields: [leadId], references: [id])
+  /// Legacy relation for Employee.teamId; unused. Use memberships.
   members Employee[] @relation("TeamMembers")
+  /// Everyone in the team (a person can be in several teams).
+  memberships TeamMembership[]
 
   projects Project[]
 
@@ -290,12 +296,26 @@ model Notification {
   @@index([isRead])
 }
 
+/// What an employment-ledger entry records.
+enum EmploymentEvent {
+  JOINED
+  PROMOTION
+  TRANSFER
+  TITLE_CHANGE
+  REHIRED
+  EXITED
+}
+
 model EmploymentRecord {
   id          String    @id @default(cuid())
   employeeId  String
   employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   
   designation String?   // e.g., "Frontend Intern", "Senior Developer"
+  /// Null on entries written before event types existed.
+  type        EmploymentEvent?
+  teamId      String?   // team at the time of the entry
+  changedById String?   // who recorded it
   
   startDate   DateTime  @default(now())
   endDate     DateTime? // Null means currently active role
@@ -578,7 +598,8 @@ model Request {
   decidedBy    Employee?      @relation("RequestDecider", fields: [decidedById], references: [id], onDelete: SetNull)
   decidedAt    DateTime?
   decisionNote String?
-  /// ATTENDANCE_FIX only: the corrected times.
+  /// ATTENDANCE_FIX only: the corrected times, and where they worked (OFFICE or WFH).
+  workMode     DayKind?
   fixCheckIn   DateTime?
   fixCheckOut  DateTime?
   createdAt    DateTime       @default(now())
@@ -586,4 +607,17 @@ model Request {
 
   @@index([status, createdAt])
   @@index([employeeId, startDate])
+}
+
+// ── Team membership ──
+// A person can be in no team or several; all memberships are equal.
+model TeamMembership {
+  teamId     String
+  team       Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  joinedAt   DateTime @default(now())
+
+  @@id([teamId, employeeId])
+  @@index([employeeId])
 }

@@ -8,6 +8,7 @@ import { canActOnEmployee, canAssignRoles, canManageAccess, tracksAttendance } f
 import { getBalances } from "@/lib/leave/queries";
 import { todayKey } from "@/lib/attendance/calendar";
 import { LeaveBalancePanel } from "@/components/employees/leave-balance-panel";
+import { getOffboardingChecklist } from "@/lib/employees/offboarding";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -89,6 +90,11 @@ async function EmployeeProfileDataAsync({ id }: { id: string }) {
       ? await getBalances(employee.id, leaveYear)
       : null;
 
+  const [teams, checklist] = await Promise.all([
+    canUpdate && mayActOn ? db.team.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }) : Promise.resolve([]),
+    canOffboard && mayActOn && employee.status === "ACTIVE" && employee.id !== currentEmployee.id ? getOffboardingChecklist(employee.id, employee.role) : Promise.resolve(null),
+  ]);
+
   return (
     <>
     <EmployeeProfileClient
@@ -97,6 +103,8 @@ async function EmployeeProfileDataAsync({ id }: { id: string }) {
       canAssignRoles={canAssignRoles(currentEmployee.role) && employee.id !== currentEmployee.id}
       canOffboard={canOffboard && mayActOn && employee.id !== currentEmployee.id}
       access={access}
+      teams={teams}
+      checklist={checklist}
     />
     {leaveBalances && (
       <div className="px-2 pb-20">

@@ -19,9 +19,7 @@ export async function createTeamAction(data: {
       description: data.description,
       color: data.color,
       leadId: data.leadId,
-      members: {
-        connect: [{ id: data.leadId }] // Lead is automatically a member
-      }
+      memberships: { create: [{ employeeId: data.leadId }] }, // the lead is always a member
     }
   });
 
@@ -53,6 +51,12 @@ export async function updateTeamAction(teamId: string, data: {
       leadId: data.leadId,
     }
   });
+  // A new lead is a member of the team they lead.
+  await db.teamMembership.upsert({
+    where: { teamId_employeeId: { teamId, employeeId: data.leadId } },
+    create: { teamId, employeeId: data.leadId },
+    update: {},
+  });
 
   audit({ actorId: employee.id, entity: "Team", entityId: teamId, action: "update", changes: JSON.parse(JSON.stringify(data)) });
   revalidatePath("/teams");
@@ -60,49 +64,43 @@ export async function updateTeamAction(teamId: string, data: {
   return team;
 }
 
+/** Set who is in a team. Only this team changes; people keep their other teams. */
 export async function manageTeamMembersAction(teamId: string, memberIds: string[]) {
   const employee = await getCurrentEmployee();
   const hasGlobalPerm = await checkPermission("team:update");
 
-  const existing = await db.team.findUnique({ 
-    where: { id: teamId },
-    include: { members: true }
-  });
+  const existing = await db.team.findUnique({ where: { id: teamId }, include: { memberships: { select: { employeeId: true } } } });
   if (!existing) throw new Error("Team not found");
   if (!hasGlobalPerm && existing.leadId !== employee.id) {
     throw new Error("You do not have permission for this action.");
   }
 
-  // Since prisma `set` replaces all relations, this is a clean sync
-  const team = await db.team.update({
-    where: { id: teamId },
-    data: {
-      members: {
-        set: memberIds.map(id => ({ id }))
-      }
-    }
+  const wanted = [...new Set([...memberIds, existing.leadId])]; // the lead always stays
+  const before = existing.memberships.map((m) => m.employeeId);
+  const added = wanted.filter((id) => !before.includes(id));
+  const removed = before.filter((id) => !wanted.includes(id));
+
+  await db.$transaction(async (tx) => {
+    if (removed.length) await tx.teamMembership.deleteMany({ where: { teamId, employeeId: { in: removed } } });
+    if (added.length) await tx.teamMembership.createMany({ data: added.map((employeeId) => ({ teamId, employeeId })), skipDuplicates: true });
   });
 
-  // Calculate new members and notify them
-  const existingMemberIds = existing.members.map(m => m.id);
-  const newlyAddedIds = memberIds.filter(id => !existingMemberIds.includes(id));
-
-  if (newlyAddedIds.length > 0) {
+  if (added.length > 0) {
     await db.notification.createMany({
-      data: newlyAddedIds.map(id => ({
+      data: added.filter((id) => id !== employee.id).map((id) => ({
         recipientId: id,
         type: "TEAM_ADDED",
         title: "Added to Team",
-        message: `You have been added to the team: ${team.name}`,
-        actionUrl: `/teams/${team.id}`
-      }))
+        message: `You have been added to the team: ${existing.name}`,
+        actionUrl: `/teams/${teamId}`,
+      })),
     });
   }
 
-  audit({ actorId: employee.id, entity: "Team", entityId: teamId, action: "members", changes: { memberIds } });
+  audit({ actorId: employee.id, entity: "Team", entityId: teamId, action: "members", changes: { added, removed } });
   revalidatePath("/teams");
   revalidatePath(`/teams/${teamId}`);
-  return team;
+  return existing;
 }
 
 export async function deleteTeamAction(teamId: string) {

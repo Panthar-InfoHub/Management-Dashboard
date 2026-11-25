@@ -1,5 +1,9 @@
 "use client";
 
+const LEDGER_LABELS: Record<string, string> = {
+  JOINED: "Joined", PROMOTION: "Promotion", TRANSFER: "Transfer", TITLE_CHANGE: "Title change", REHIRED: "Rehired", EXITED: "Left",
+};
+
 import { useState } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -79,7 +83,10 @@ export function RecordsClient({ records }: { records: any[] }) {
                     </Link>
                   </TableCell>
                   <TableCell>
-                    <span className="text-sm font-medium">{record.designation || "Employee"}</span>
+                    <span className="flex items-center gap-2 text-sm font-medium">
+                      {record.designation || "Employee"}
+                      {record.type && <span className="rounded border border-border/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{LEDGER_LABELS[record.type] ?? record.type}</span>}
+                    </span>
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col gap-1 text-xs text-muted-foreground whitespace-nowrap">

@@ -17,7 +17,7 @@ export const getAssignableEmployees = cache(async (projectId: string): Promise<A
       team: {
         select: {
           lead: { select: { ...assignableSelect, status: true } },
-          members: { where: active, select: assignableSelect },
+          memberships: { where: { employee: active }, select: { employee: { select: assignableSelect } } },
         },
       },
     },
@@ -32,7 +32,7 @@ export const getAssignableEmployees = cache(async (projectId: string): Promise<A
   add(project.lead);
   project.members.forEach((m) => add(m.employee));
   add(project.team?.lead);
-  project.team?.members.forEach(add);
+  project.team?.memberships.forEach((m) => add(m.employee));
 
   return [...byId.values()].sort((a, b) => a.firstName.localeCompare(b.firstName));
 });
@@ -65,7 +65,7 @@ export async function getAssignableIdsByProject(projectIds: string[]): Promise<R
       id: true,
       leadId: true,
       members: { where: { employee: active }, select: { employeeId: true } },
-      team: { select: { leadId: true, members: { where: active, select: { id: true } } } },
+      team: { select: { leadId: true, memberships: { where: { employee: active }, select: { employeeId: true } } } },
     },
   });
   return Object.fromEntries(
@@ -74,7 +74,7 @@ export async function getAssignableIdsByProject(projectIds: string[]): Promise<R
       [...new Set([
         p.leadId,
         ...p.members.map((m) => m.employeeId),
-        ...(p.team ? [p.team.leadId, ...p.team.members.map((m) => m.id)] : []),
+        ...(p.team ? [p.team.leadId, ...p.team.memberships.map((m) => m.employeeId)] : []),
       ])],
     ])
   );

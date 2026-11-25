@@ -10,8 +10,8 @@ export function formatRange(start: string, end: string) {
 }
 
 /** "Casual Leave · 2 days", "WFH · 1 day", "Attendance Fix · 09:30–18:45". */
-export function requestSummary(r: { kind: RequestKindValue; leaveType: string | null; days: number; halfDay: string | null; fixCheckIn: string | null; fixCheckOut: string | null }) {
-  if (r.kind === "ATTENDANCE_FIX") return `${REQUEST_KIND_LABELS.ATTENDANCE_FIX} · ${r.fixCheckIn}–${r.fixCheckOut}`;
+export function requestSummary(r: { kind: RequestKindValue; leaveType: string | null; days: number; halfDay: string | null; fixCheckIn: string | null; fixCheckOut: string | null; workMode?: string | null }) {
+  if (r.kind === "ATTENDANCE_FIX") return `${REQUEST_KIND_LABELS.ATTENDANCE_FIX} · ${r.fixCheckIn}–${r.fixCheckOut} · ${r.workMode === "WFH" ? "from home" : "at the office"}`;
   const what = r.kind === "LEAVE" ? r.leaveType ?? "Leave" : "WFH";
   const half = r.halfDay ? ` (${r.halfDay === "FIRST_HALF" ? "first half" : "second half"})` : "";
   return `${what}${half} · ${r.days} day${r.days === 1 ? "" : "s"}`;

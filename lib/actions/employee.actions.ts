@@ -5,6 +5,9 @@ import { requireAuth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { revalidatePath } from "next/cache";
 import { clerkClient } from "@clerk/nextjs/server";
+import { CLERK_WRITES_ENABLED } from "@/lib/clerk-writes";
+import { createNotification } from "@/lib/notifications";
+import { setTeams, teamIdsOf } from "@/lib/teams/membership";
 import { canActOnEmployee, canAssignRoles, type AccessRole, type EmploymentTypeValue } from "@/lib/access";
 
 const ROLE_VALUES: AccessRole[] = ["SUPER_ADMIN", "ADMIN", "MEMBER"];
@@ -23,6 +26,9 @@ export async function createEmployeeAction(data: {
   email: string;
   role?: AccessRole;
   employmentType?: EmploymentTypeValue;
+  /** Teams to add them to (optional; people can start in no team). */
+  teamIds?: string[];
+  codeType?: "PANTHAR" | "KAVACHX" | null;
   password?: string;
   designation?: string;
   joinDate?: string;
@@ -45,6 +51,15 @@ export async function createEmployeeAction(data: {
     throw new Error("An active employee with this email already exists.");
   }
 
+  const teamIds = [...new Set(data.teamIds ?? [])];
+  if (teamIds.length && (await db.team.count({ where: { id: { in: teamIds } } })) !== teamIds.length) {
+    throw new Error("One of those teams no longer exists. Reload and pick again.");
+  }
+
+  if (!CLERK_WRITES_ENABLED) {
+    // Demo/local: no Clerk invite or account; the profile waits as "invited".
+    clerkUserId = existingDbUser?.clerkId ?? `pending_local_${Date.now()}`;
+  } else {
   // 2. Check if user exists in Clerk
   const clerkUsers = await client.users.getUserList({ emailAddress: [data.email] });
   const existingClerkUser = clerkUsers.data[0];
@@ -105,6 +120,8 @@ export async function createEmployeeAction(data: {
     }
   }
 
+  }
+
   // 3. Create or Reactivate the database record
   try {
     let employee;
@@ -133,7 +150,10 @@ export async function createEmployeeAction(data: {
           employeeId: employee.id,
           designation: data.designation,
           startDate: data.joinDate ? new Date(data.joinDate) : new Date(),
-          reason: "Rehired"
+          reason: "Rehired",
+          type: "REHIRED",
+          teamId: teamIds[0] ?? null,
+          changedById: currentEmployee.id,
         }
       });
     } else {
@@ -157,12 +177,22 @@ export async function createEmployeeAction(data: {
           employeeId: employee.id,
           designation: data.designation,
           startDate: data.joinDate ? new Date(data.joinDate) : new Date(),
-          reason: "Initial Hire"
+          reason: "Initial Hire",
+          type: "JOINED",
+          teamId: teamIds[0] ?? null,
+          changedById: currentEmployee.id,
         }
       });
     }
 
-    audit({ actorId: currentEmployee.id, entity: "Employee", entityId: employee.id, action: "create", changes: { email: employee.email, role: employee.role } });
+    if (teamIds.length) await setTeams(db, employee.id, teamIds, []);
+
+    // Optional employee code, from the join date, in the same step.
+    if (data.codeType && !(data.codeType === "PANTHAR" ? employee.pantharCode : employee.kavachXCode)) {
+      employee = await assignEmployeeCode(employee.id, data.codeType, (data.joinDate ?? new Date().toISOString().slice(0, 10)));
+    }
+
+    audit({ actorId: currentEmployee.id, entity: "Employee", entityId: employee.id, action: "create", changes: { email: employee.email, role: employee.role, teamIds, codeType: data.codeType ?? null } });
     revalidatePath("/employees");
     return employee;
   } catch (error: any) {
@@ -235,69 +265,44 @@ export async function updateEmployeeAction(id: string, data: {
   return employee;
 }
 
+/**
+ * Remove someone who never joined (their invite was never accepted). Anyone
+ * who has signed in is offboarded instead, so their history stays.
+ */
 export async function deleteEmployeeAction(id: string) {
   const currentEmployee = await requireAuth("employee:delete");
 
   const target = await db.employee.findUnique({ where: { id } });
   if (!target) throw new Error("Employee not found");
+  if (target.id === currentEmployee.id) throw new Error("You cannot delete your own account.");
   if (!canActOnEmployee(currentEmployee.role, target.role)) {
     throw new Error("Only Super Admins can remove an Admin or Super Admin.");
   }
-  if (target.id === currentEmployee.id) {
-    throw new Error("You cannot delete your own account.");
+  if (!target.clerkId.startsWith("pending_")) {
+    throw new Error(`${target.firstName} has already joined. Use Offboard instead, so their history is kept.`);
   }
 
-  // Check if they are currently leading any projects or teams
-  const ledProjects = await db.project.count({ where: { leadId: id, status: { not: "ARCHIVED" } } });
-  if (ledProjects > 0) {
-    throw new Error("Cannot delete this employee because they are the Lead of one or more active projects. Please reassign those projects first.");
-  }
+  const leads = (await db.project.count({ where: { leadId: id } })) + (await db.team.count({ where: { leadId: id } }));
+  if (leads > 0) throw new Error("They're set as a project or team lead. Reassign that first.");
 
-  const ledTeams = await db.team.count({ where: { leadId: id } });
-  if (ledTeams > 0) {
-    throw new Error("Cannot delete this employee because they are the Lead of a team. Please reassign the team lead first.");
-  }
+  await db.employee.delete({ where: { id } });
 
-  // Soft-delete: mark as INACTIVE and set exit date.
-  // This preserves audit trails (tasks they created, employment records, etc.)
-  // and avoids FK cascade failures.
-  const employee = await db.$transaction(async (tx) => {
-    // Close any active employment records
-    await tx.employmentRecord.updateMany({
-      where: { employeeId: id, endDate: null },
-      data: { endDate: new Date(), reason: "Account removed" },
-    });
-
-    // Remove from project memberships
-    await tx.projectMember.deleteMany({
-      where: { employeeId: id },
-    });
-
-    // Mark as INACTIVE
-    return tx.employee.update({
-      where: { id },
-      data: {
-        status: "INACTIVE",
-        exitDate: new Date(),
-        teamId: null,
-      },
-    });
-  });
-
-  // If they have a real Clerk account, delete them from Clerk to revoke access
-  if (!employee.clerkId.startsWith("pending_") && !employee.clerkId.startsWith("seed_")) {
+  if (CLERK_WRITES_ENABLED) {
     try {
       const client = await clerkClient();
-      await client.users.deleteUser(employee.clerkId);
+      const pending = await client.invitations.getInvitationList({ status: "pending" });
+      for (const inv of pending.data.filter((i) => i.emailAddress === target.email)) {
+        await client.invitations.revokeInvitation(inv.id);
+      }
     } catch (error) {
-      console.error("Failed to delete user in Clerk:", error);
+      console.error("Failed to revoke invitation in Clerk:", error);
     }
   }
 
-  audit({ actorId: currentEmployee.id, entity: "Employee", entityId: id, action: "delete" });
+  audit({ actorId: currentEmployee.id, entity: "Employee", entityId: id, action: "delete", changes: { email: target.email, neverJoined: true } });
   revalidatePath("/employees");
   revalidatePath("/");
-  return employee;
+  return { success: true };
 }
 
 export async function reserveEmployeeSequenceAction(type: "PANTHAR" | "KAVACHX") {
@@ -309,6 +314,31 @@ export async function reserveEmployeeSequenceAction(type: "PANTHAR" | "KAVACHX")
   });
   
   return (seq?.value || 0) + 1;
+}
+
+/**
+ * Next code in a series: PTHUB-/KAVACHX- + join date (DDMMYY) + running number.
+ * The number is taken inside a transaction so two people never get the same one.
+ * Internal helper (not exported to the client).
+ */
+async function assignEmployeeCode(employeeId: string, type: "PANTHAR" | "KAVACHX", joinDateStr: string) {
+  if (!/^\d{4}-\d{2}-\d{2}/.test(joinDateStr)) throw new Error("Invalid join date.");
+  const dateStr = `${joinDateStr.slice(8, 10)}${joinDateStr.slice(5, 7)}${joinDateStr.slice(2, 4)}`;
+  const seqName = type === "PANTHAR" ? "SEQ_PANTHAR" : "SEQ_KAVACHX";
+  const prefix = type === "PANTHAR" ? "PTHUB" : "KAVACHX";
+
+  return db.$transaction(async (tx) => {
+    const seq = await tx.sequence.upsert({
+      where: { name: seqName },
+      update: { value: { increment: 1 } },
+      create: { name: seqName, value: 1 },
+    });
+    const newCode = `${prefix}-${dateStr}${seq.value}`;
+    return tx.employee.update({
+      where: { id: employeeId },
+      data: type === "PANTHAR" ? { pantharCode: newCode } : { kavachXCode: newCode },
+    });
+  });
 }
 
 export async function generateEmployeeCodeAction(employeeId: string, type: "PANTHAR" | "KAVACHX", joinDateStr: string, reservedSeq?: number) {
@@ -324,38 +354,7 @@ export async function generateEmployeeCodeAction(employeeId: string, type: "PANT
     throw new Error("KavachX code already exists.");
   }
 
-  // Parse join date (assuming YYYY-MM-DD input from HTML date picker)
-  const dateObj = new Date(joinDateStr);
-  if (isNaN(dateObj.getTime())) throw new Error("Invalid join date.");
-
-  const dd = String(dateObj.getDate()).padStart(2, "0");
-  const mm = String(dateObj.getMonth() + 1).padStart(2, "0");
-  const yy = String(dateObj.getFullYear()).slice(-2);
-  const dateStr = `${dd}${mm}${yy}`;
-
-  const seqName = type === "PANTHAR" ? "SEQ_PANTHAR" : "SEQ_KAVACHX";
-  const prefix = type === "PANTHAR" ? "PTHUB" : "KAVACHX";
-
-  // Atomic transaction
-  const result = await db.$transaction(async (tx) => {
-    // ALWAYS dynamically generate inside transaction to avoid race conditions!
-    // We ignore reservedSeq entirely because we don't want to burn sequences upfront.
-    const seq = await tx.sequence.upsert({
-      where: { name: seqName },
-      update: { value: { increment: 1 } },
-      create: { name: seqName, value: 1 }
-    });
-    
-    const finalSeqValue = seq.value;
-    const newCode = `${prefix}-${dateStr}${finalSeqValue}`;
-
-    return tx.employee.update({
-      where: { id: employeeId },
-      data: {
-        ...(type === "PANTHAR" ? { pantharCode: newCode } : { kavachXCode: newCode })
-      }
-    });
-  });
+  const result = await assignEmployeeCode(employeeId, type, joinDateStr);
 
   audit({ actorId: currentEmployee.id, entity: "Employee", entityId: employeeId, action: "code", changes: { type } });
   revalidatePath(`/employees/${employeeId}`);
@@ -384,11 +383,27 @@ export async function getInvitationLinkAction(email: string) {
   return invite.url;
 }
 
-export async function transitionRoleAction(employeeId: string, data: { newRole?: AccessRole; newDesignation?: string; startDate: string; reason: string }) {
+type TransitionInput = {
+  type?: "PROMOTION" | "TRANSFER" | "TITLE_CHANGE";
+  newRole?: AccessRole;
+  newDesignation?: string;
+  /** Teams after the change (a transfer adds and/or removes teams). Omit to keep them. */
+  teamIds?: string[];
+  startDate: string;
+  reason: string;
+};
+
+const EVENT_LABELS = { PROMOTION: "Promotion", TRANSFER: "Transfer", TITLE_CHANGE: "Title change" } as const;
+
+/** Promotion, transfer or title change: closes the current ledger entry and opens a new one. */
+export async function transitionRoleAction(employeeId: string, data: TransitionInput) {
   const currentEmployee = await requireAuth("employee:update");
+  const type = data.type ?? "PROMOTION";
+  if (!(type in EVENT_LABELS)) throw new Error("Choose Promotion, Transfer or Title change.");
 
   const target = await db.employee.findUnique({ where: { id: employeeId } });
   if (!target) throw new Error("Employee not found.");
+  if (target.status !== "ACTIVE") throw new Error("Only active employees can be promoted or transferred.");
   if (!canActOnEmployee(currentEmployee.role, target.role)) {
     throw new Error("Only Super Admins can change an Admin or Super Admin.");
   }
@@ -399,132 +414,135 @@ export async function transitionRoleAction(employeeId: string, data: { newRole?:
     if (!canAssignRoles(currentEmployee.role)) throw new Error("Only Super Admins can change roles.");
   }
 
+  // Team changes: compare the wanted teams with the current ones.
+  const current = await teamIdsOf(employeeId);
+  const wanted = data.teamIds ? [...new Set(data.teamIds)] : current;
+  const join = wanted.filter((t) => !current.includes(t));
+  const leave = current.filter((t) => !wanted.includes(t));
+  if (join.length && (await db.team.count({ where: { id: { in: join } } })) !== join.length) throw new Error("One of those teams no longer exists.");
+  if (leave.length) {
+    const led = await db.team.findFirst({ where: { id: { in: leave }, leadId: employeeId }, select: { name: true } });
+    if (led) throw new Error(`${target.firstName} leads ${led.name}. Choose a new lead for that team before they leave it.`);
+  }
+
+  const designation = data.newDesignation?.trim() || target.designation || null;
+  if (type === "TRANSFER" && !join.length && !leave.length) throw new Error("Change at least one team for a transfer.");
+  if (type === "TITLE_CHANGE" && !data.newDesignation?.trim()) throw new Error("Enter the new title.");
+  const reason = data.reason?.trim();
+  if (!reason) throw new Error("Add a short reason.");
+
   const startDateObj = new Date(data.startDate);
-  
-  // Ensure the new role doesn't start before they were even hired
-  if (startDateObj < target.joinDate) {
-    throw new Error("The new role's start date cannot be before the employee's original join date.");
-  }
-
-  // Ensure the new role doesn't start before their current role started
-  const currentRecord = await db.employmentRecord.findFirst({
-    where: { employeeId: employeeId, endDate: null }
-  });
-  
+  if (isNaN(startDateObj.getTime())) throw new Error("Choose the date it takes effect.");
+  if (startDateObj < target.joinDate) throw new Error("It can't take effect before they joined.");
+  const currentRecord = await db.employmentRecord.findFirst({ where: { employeeId, endDate: null } });
   if (currentRecord && startDateObj < currentRecord.startDate) {
-    throw new Error("The new role's start date cannot be before the start date of their current role.");
+    throw new Error("It can't take effect before their current role started.");
   }
 
-  // Transaction
   const updatedEmployee = await db.$transaction(async (tx) => {
-    // 1. Close current active employment record
-    await tx.employmentRecord.updateMany({
-      where: { employeeId: employeeId, endDate: null },
-      data: { endDate: new Date(data.startDate) }
-    });
-
-    // 2. Open new employment record
+    await tx.employmentRecord.updateMany({ where: { employeeId, endDate: null }, data: { endDate: startDateObj } });
     await tx.employmentRecord.create({
-      data: {
-        employeeId,
-        designation: data.newDesignation,
-        startDate: new Date(data.startDate),
-        reason: data.reason
-      }
+      data: { employeeId, designation, startDate: startDateObj, reason, type, teamId: join[0] ?? null, changedById: currentEmployee.id },
     });
-
-    // 3. Update employee
-    return tx.employee.update({
-      where: { id: employeeId },
-      data: {
-        role: newRole,
-        designation: data.newDesignation,
-      }
-    });
+    await setTeams(tx, employeeId, join, leave);
+    return tx.employee.update({ where: { id: employeeId }, data: { role: newRole, designation } });
   });
 
-
-  audit({ actorId: currentEmployee.id, entity: "Employee", entityId: employeeId, action: "role", changes: JSON.parse(JSON.stringify(data)) });
+  const names = async (ids: string[]) => ids.length ? (await db.team.findMany({ where: { id: { in: ids } }, select: { name: true } })).map((t) => t.name).join(", ") : "";
+  const [joinedNames, leftNames] = await Promise.all([names(join), names(leave)]);
+  await createNotification({
+    recipientId: employeeId,
+    type: "EMPLOYMENT",
+    title: EVENT_LABELS[type],
+    message: [
+      data.newDesignation?.trim() && `Your title is now ${designation}`,
+      joinedNames && `you've joined ${joinedNames}`,
+      leftNames && `you've left ${leftNames}`,
+    ].filter(Boolean).join("; ") + ` (from ${data.startDate}).`,
+    actionUrl: "/",
+  });
+  audit({ actorId: currentEmployee.id, entity: "Employee", entityId: employeeId, action: type.toLowerCase(), changes: JSON.parse(JSON.stringify({ ...data, designation, join, leave })) });
   revalidatePath(`/employees/${employeeId}`);
   revalidatePath("/employees");
   revalidatePath("/records");
+  revalidatePath("/teams");
   return updatedEmployee;
 }
 
-export async function offboardEmployeeAction(employeeId: string, data: { endDate: string; reason: string }) {
+export async function offboardEmployeeAction(employeeId: string, data: { endDate: string; reason: string; unassignTasks?: boolean }) {
   const currentEmployee = await requireAuth("employee:offboard");
 
   const target = await db.employee.findUnique({ where: { id: employeeId } });
   if (!target) throw new Error("Employee not found.");
-
-  if (currentEmployee.id === employeeId) {
-    throw new Error("You cannot offboard your own account.");
-  }
-
+  if (currentEmployee.id === employeeId) throw new Error("You cannot offboard your own account.");
   if (!canActOnEmployee(currentEmployee.role, target.role)) {
     throw new Error("Only Super Admins can offboard an Admin or Super Admin.");
   }
+  if (target.status === "INACTIVE") throw new Error(`${target.firstName} has already left.`);
+  const reason = data.reason?.trim();
+  if (!reason) throw new Error("Add the reason they're leaving.");
+  const endDate = new Date(data.endDate);
+  if (isNaN(endDate.getTime())) throw new Error("Choose their last day.");
 
-  // Check if they are currently leading any projects or teams
+  // Leads must be handed over first.
   const ledProjects = await db.project.count({ where: { leadId: employeeId, status: { not: "ARCHIVED" } } });
-  if (ledProjects > 0) {
-    throw new Error("Cannot offboard this employee because they are the Lead of one or more active projects. Please reassign those projects first.");
-  }
-
+  if (ledProjects > 0) throw new Error("They lead active projects. Choose new project leads first.");
   const ledTeams = await db.team.count({ where: { leadId: employeeId } });
-  if (ledTeams > 0) {
-    throw new Error("Cannot offboard this employee because they are the Lead of a team. Please reassign the team lead first.");
-  }
+  if (ledTeams > 0) throw new Error("They lead a team. Choose a new team lead first.");
 
-  await db.$transaction(async (tx) => {
-    // 1. Close active employment record
-    await tx.employmentRecord.updateMany({
-      where: { employeeId: employeeId, endDate: null },
-      data: { endDate: new Date(data.endDate), reason: data.reason }
+  const lastDayKey = data.endDate.slice(0, 10);
+  const result = await db.$transaction(async (tx) => {
+    // 1. Close the current ledger entry and add the exit.
+    await tx.employmentRecord.updateMany({ where: { employeeId, endDate: null }, data: { endDate } });
+    await tx.employmentRecord.create({
+      data: { employeeId, designation: target.designation, startDate: endDate, endDate, reason, type: "EXITED", teamId: null, changedById: currentEmployee.id },
     });
 
-    // 2. Mark Employee as INACTIVE, set exitDate, and remove from team
-    await tx.employee.update({
-      where: { id: employeeId },
-      data: {
-        status: "INACTIVE",
-        exitDate: new Date(data.endDate),
-        teamId: null
+    // 2. Requests: cancel pending ones, and approved ones after the last day.
+    const cancelled = await tx.request.updateMany({
+      where: {
+        employeeId,
+        OR: [{ status: "PENDING" }, { status: "APPROVED", startDate: { gt: new Date(`${lastDayKey}T00:00:00.000Z`) } }],
+      },
+      data: { status: "CANCELLED", decisionNote: "Cancelled at offboarding" },
+    });
+
+    // 3. Open tasks: unassign them so they show up as needing an owner.
+    let unassigned = 0;
+    if (data.unassignTasks) {
+      const open = await tx.task.findMany({ where: { status: { not: "DONE" }, assignees: { some: { id: employeeId } } }, select: { id: true } });
+      for (const t of open) {
+        await tx.task.update({ where: { id: t.id }, data: { assignees: { disconnect: { id: employeeId } } } });
       }
-    });
+      unassigned = open.length;
+    }
 
-    // 4. Remove from active ProjectMember relations
-    await tx.projectMember.deleteMany({
-      where: { employeeId: employeeId }
-    });
+    // 4. Inactive, off their team and projects.
+    await tx.employee.update({ where: { id: employeeId }, data: { status: "INACTIVE", exitDate: endDate, teamId: null } });
+    await tx.teamMembership.deleteMany({ where: { employeeId } });
+    await tx.projectMember.deleteMany({ where: { employeeId } });
+    return { cancelled: cancelled.count, unassigned };
   });
 
-  // Completely delete their active session/identity in Clerk.
-  // This removes their access instantly. If they are rehired later, createEmployeeAction
-  // will just generate a brand new invitation/Clerk ID and link it to their existing DB profile.
-  if (!target.clerkId.startsWith("pending_") && !target.clerkId.startsWith("seed_")) {
+  // 5. Remove sign-in. (Skipped in demo, where Clerk is shared with production.)
+  if (CLERK_WRITES_ENABLED) {
     try {
       const client = await clerkClient();
-      await client.users.deleteUser(target.clerkId);
-    } catch (error) {
-      console.error("Failed to delete user in Clerk:", error);
-    }
-  } else if (target.clerkId.startsWith("pending_")) {
-    try {
-      const client = await clerkClient();
-      const pendingInvites = await client.invitations.getInvitationList({ status: "pending" });
-      const existingInvites = pendingInvites.data.filter(inv => inv.emailAddress === target.email);
-      for (const inv of existingInvites) {
-        await client.invitations.revokeInvitation(inv.id);
+      if (!target.clerkId.startsWith("pending_") && !target.clerkId.startsWith("seed_")) {
+        await client.users.deleteUser(target.clerkId);
+      } else if (target.clerkId.startsWith("pending_")) {
+        const pending = await client.invitations.getInvitationList({ status: "pending" });
+        for (const inv of pending.data.filter((i) => i.emailAddress === target.email)) await client.invitations.revokeInvitation(inv.id);
       }
     } catch (error) {
-      console.error("Failed to revoke pending invitation in Clerk:", error);
+      console.error("Failed to remove sign-in in Clerk:", error);
     }
   }
 
-  audit({ actorId: currentEmployee.id, entity: "Employee", entityId: employeeId, action: "offboard", changes: JSON.parse(JSON.stringify(data)) });
+  audit({ actorId: currentEmployee.id, entity: "Employee", entityId: employeeId, action: "offboard", changes: { ...JSON.parse(JSON.stringify(data)), ...result } });
   revalidatePath(`/employees/${employeeId}`);
   revalidatePath("/employees");
   revalidatePath("/records");
-  return { success: true };
+  revalidatePath("/tasks");
+  return { success: true, ...result };
 }

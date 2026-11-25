@@ -3,6 +3,7 @@ import { getEmployees } from "@/lib/queries/employee.queries";
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { EmployeesClient } from "@/components/employees/employees-client";
 import { canAssignRoles } from "@/lib/access";
+import { db } from "@/lib/db";
 import { EmployeesBodySkeleton } from "./skeleton";
 
 export default function EmployeesPage() {
@@ -30,10 +31,12 @@ async function EmployeesDataAsync() {
     checkPermission("employee:delete"),
     getEmployees(),
   ]);
+  const teams = canCreate ? await db.team.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }) : [];
 
   return (
     <EmployeesClient 
       initialEmployees={employees} 
+      teams={teams}
       canViewProfiles={canViewProfiles}
       canAssignRoles={canAssignRoles(currentEmployee.role)}
       canCreate={canCreate}

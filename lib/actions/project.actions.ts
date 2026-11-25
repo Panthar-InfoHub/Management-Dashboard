@@ -93,7 +93,7 @@ export async function createProjectAction(data: {
   assertValidProjectStatus(data.status);
   assertValidPriority(data.priority);
 
-  let membersToAdd = [
+  const membersToAdd = [
     { employeeId: data.leadId },
     ...(data.leadId !== employee.id ? [{ employeeId: employee.id }] : [])
   ];
@@ -101,12 +101,12 @@ export async function createProjectAction(data: {
   if (data.addTeamMembers && data.teamId) {
     const team = await db.team.findUnique({
       where: { id: data.teamId },
-      include: { members: { select: { id: true } } }
+      include: { memberships: { where: { employee: { status: { not: "INACTIVE" } } }, select: { employeeId: true } } }
     });
     if (team) {
-      team.members.forEach((m: { id: string }) => {
-        if (!membersToAdd.find((x) => x.employeeId === m.id)) {
-          membersToAdd.push({ employeeId: m.id });
+      team.memberships.forEach((m) => {
+        if (!membersToAdd.find((x) => x.employeeId === m.employeeId)) {
+          membersToAdd.push({ employeeId: m.employeeId });
         }
       });
     }

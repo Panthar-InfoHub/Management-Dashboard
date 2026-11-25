@@ -19,6 +19,7 @@ import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { TeamPicker } from "@/components/teams/team-picker";
 import { ACCESS_ROLES, EMPLOYMENT_TYPE_LABELS, ROLE_LABELS, type AccessRole, type EmploymentTypeValue } from "@/lib/access";
 
 const EMPLOYMENT_TYPES = Object.keys(EMPLOYMENT_TYPE_LABELS) as EmploymentTypeValue[];
@@ -29,7 +30,7 @@ const roleColors: Record<string, string> = {
   MEMBER: "bg-gray-500/10 text-gray-600 border-gray-500/20",
 };
 
-export function EmployeesClient({ initialEmployees, canViewProfiles = false, canAssignRoles = false, canCreate = false, canUpdate = false, canDelete = false }: { initialEmployees: any[], canViewProfiles?: boolean, canAssignRoles?: boolean, canCreate?: boolean, canUpdate?: boolean, canDelete?: boolean }) {
+export function EmployeesClient({ initialEmployees, teams = [], canViewProfiles = false, canAssignRoles = false, canCreate = false, canUpdate = false, canDelete = false }: { initialEmployees: any[], teams?: { id: string; name: string }[], canViewProfiles?: boolean, canAssignRoles?: boolean, canCreate?: boolean, canUpdate?: boolean, canDelete?: boolean }) {
   // Only Super Admins pick a role; everyone else adds Members.
   const availableRoles: AccessRole[] = canAssignRoles ? ACCESS_ROLES : ["MEMBER"];
   const [newEmpOpen, setNewEmpOpen] = useState(false);
@@ -39,7 +40,7 @@ export function EmployeesClient({ initialEmployees, canViewProfiles = false, can
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
-  const emptyNewEmp = { firstName: "", lastName: "", email: "", role: "MEMBER" as AccessRole, employmentType: "FULL_TIME" as EmploymentTypeValue, designation: "", password: "", joinDate: new Date().toISOString().split("T")[0] };
+  const emptyNewEmp = { firstName: "", lastName: "", email: "", role: "MEMBER" as AccessRole, employmentType: "FULL_TIME" as EmploymentTypeValue, teamIds: [] as string[], codeType: "none", designation: "", password: "", joinDate: new Date().toISOString().split("T")[0] };
   const [newEmp, setNewEmp] = useState(emptyNewEmp);
   const [setCustomPassword, setSetCustomPassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -104,7 +105,10 @@ export function EmployeesClient({ initialEmployees, canViewProfiles = false, can
     if (!newEmp.firstName || !newEmp.lastName || !newEmp.email) return;
     
     startTransition(() => {
-      createEmployeeAction(newEmp).then(() => {
+      createEmployeeAction({
+        ...newEmp,
+        codeType: newEmp.codeType === "none" ? null : (newEmp.codeType as "PANTHAR" | "KAVACHX"),
+      }).then(() => {
         setNewEmpOpen(false);
         setNewEmp(emptyNewEmp);
         setSetCustomPassword(false);
@@ -227,6 +231,23 @@ export function EmployeesClient({ initialEmployees, canViewProfiles = false, can
                   <div className="space-y-1.5 flex flex-col">
                     <label className="text-xs font-semibold text-muted-foreground">Date of Joining</label>
                     <Input type="date" value={newEmp.joinDate} onChange={e => setNewEmp({ ...newEmp, joinDate: e.target.value })} />
+                  </div>
+                </div>
+                <div className="space-y-1.5 flex flex-col">
+                  <label className="text-xs font-semibold text-muted-foreground">Teams (optional, any number)</label>
+                  <TeamPicker teams={teams} value={newEmp.teamIds} onChange={(ids) => setNewEmp({ ...newEmp, teamIds: ids })} />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5 flex flex-col">
+                    <label className="text-xs font-semibold text-muted-foreground">Employee Code</label>
+                    <Select value={newEmp.codeType} onValueChange={(val) => setNewEmp({ ...newEmp, codeType: val })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Not now</SelectItem>
+                        <SelectItem value="PANTHAR">Panthar (PTHUB-…)</SelectItem>
+                        <SelectItem value="KAVACHX">KavachX (KAVACHX-…)</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -567,6 +588,12 @@ export function EmployeesClient({ initialEmployees, canViewProfiles = false, can
                               Copy Invite Link
                             </DropdownMenuItem>
                           )}
+                          {canDelete && emp.clerkId.startsWith("pending_") && (
+                            <DropdownMenuItem className="text-xs text-red-600" onClick={(e) => { e.stopPropagation(); handleDeleteClick(emp.id); }}>
+                              <Trash2 className="h-3.5 w-3.5 mr-2" />
+                              Remove Invite
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -581,15 +608,15 @@ export function EmployeesClient({ initialEmployees, canViewProfiles = false, can
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogTitle>Remove this invite?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently remove the member from the organization and instantly revoke their platform access.
+              They never signed in, so their profile is removed and the invite is cancelled. People who have joined are offboarded instead, so their history is kept.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDeleteEmployee} disabled={isPending} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              {isPending ? "Removing..." : "Remove Member"}
+              {isPending ? "Removing…" : "Remove Invite"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

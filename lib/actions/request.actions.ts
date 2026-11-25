@@ -14,6 +14,7 @@ import { checkoutFlags, statusForDay, workedMinutes } from "@/lib/attendance/rul
 import { availableDays, requestDays, MAX_REQUEST_SPAN_DAYS, REQUEST_KIND_LABELS, type RequestKindValue } from "@/lib/leave/rules";
 import { canDecideFor, ensureBalances, getCoverage } from "@/lib/leave/queries";
 import { leaveYearOf } from "@/lib/leave/policy";
+import { leadsOf } from "@/lib/teams/membership";
 
 type SubmitInput = {
   kind: RequestKindValue;
@@ -24,6 +25,7 @@ type SubmitInput = {
   reason: string;
   fixCheckIn?: string | null; // "HH:mm", attendance fix only
   fixCheckOut?: string | null;
+  workMode?: "OFFICE" | "WFH" | null; // attendance fix only: where they worked
 };
 
 const FIX_LOOKBACK_DAYS = 31;
@@ -41,10 +43,9 @@ function rangeLabel(start: string, end: string) {
   return start === end ? f(start) : `${f(start)}–${f(end)}`;
 }
 
-/** Team lead (if any), else HR-style approvers (leave:approve), else admins. Never the requester. */
+/** Leads of every team they're in, plus HR-style approvers (leave:approve); admins if nobody else. Never the requester. */
 async function findApprovers(requesterId: string): Promise<string[]> {
-  const requester = await db.employee.findUnique({ where: { id: requesterId }, select: { team: { select: { leadId: true } } } });
-  const lead = requester?.team?.leadId && requester.team.leadId !== requesterId ? [requester.team.leadId] : [];
+  const lead = await leadsOf(requesterId);
 
   const granted = await db.employee.findMany({
     where: {
@@ -103,6 +104,7 @@ export async function submitRequestAction(input: SubmitInput) {
 
   let leaveTypeId: string | null = null;
   let fixCheckIn: Date | null = null, fixCheckOut: Date | null = null;
+  let workMode: "OFFICE" | "WFH" | null = null;
   const count = requestDays(input.kind, days, !!halfDay);
 
   if (input.kind === "LEAVE") {
@@ -134,6 +136,7 @@ export async function submitRequestAction(input: SubmitInput) {
     if (oldest > FIX_LOOKBACK_DAYS) throw new Error(`Attendance can be fixed for the last ${FIX_LOOKBACK_DAYS} days only.`);
     if (!input.fixCheckIn || !input.fixCheckOut) throw new Error("Enter both the clock-in and clock-out times.");
     if (parseHHmm(input.fixCheckOut) <= parseHHmm(input.fixCheckIn)) throw new Error("Clock-out must be after clock-in.");
+    workMode = input.workMode === "WFH" ? "WFH" : "OFFICE";
     fixCheckIn = zonedDateTime(start, input.fixCheckIn, office.timezone);
     fixCheckOut = zonedDateTime(start, input.fixCheckOut, office.timezone);
   } else {
@@ -158,7 +161,7 @@ export async function submitRequestAction(input: SubmitInput) {
   const request = await db.request.create({
     data: {
       employeeId: employee.id, kind: input.kind, leaveTypeId, startDate: fromDateKey(start), endDate: fromDateKey(end),
-      halfDay, days: count, reason, fixCheckIn, fixCheckOut,
+      halfDay, days: count, reason, fixCheckIn, fixCheckOut, workMode,
     },
   });
 
@@ -202,13 +205,15 @@ export async function cancelRequestAction(requestId: string) {
 // ─── Decide (approver) ───
 
 /** Write an approved attendance fix onto the day. */
-async function applyAttendanceFix(request: { employeeId: string; startDate: Date; fixCheckIn: Date | null; fixCheckOut: Date | null; reason: string }, actorId: string) {
+async function applyAttendanceFix(request: { employeeId: string; startDate: Date; fixCheckIn: Date | null; fixCheckOut: Date | null; reason: string; workMode: string | null }, actorId: string) {
   if (!request.fixCheckIn || !request.fixCheckOut) throw new Error("This fix has no times.");
   const office = await getOfficeFor(request.employeeId);
   const dateKey = request.startDate.toISOString().slice(0, 10);
   const coverage = (await getCoverage([request.employeeId], dateKey, dateKey)).get(request.employeeId)?.get(dateKey);
   const baseKind = (await dayKindsBetween(office, dateKey, dateKey))[0].dayKind;
-  const dayKind = coverage?.kind === "WFH" && baseKind === "OFFICE" ? "WFH" : baseKind;
+  // Worked from home on an office day (said in the fix, or an approved WFH) → a WFH day.
+  const fromHome = request.workMode === "WFH" || coverage?.kind === "WFH";
+  const dayKind = fromHome && baseKind === "OFFICE" ? "WFH" : baseKind;
 
   const minutes = workedMinutes(request.fixCheckIn, request.fixCheckOut);
   const inMin = minutesOfDay(office.timezone, request.fixCheckIn), outMin = minutesOfDay(office.timezone, request.fixCheckOut);

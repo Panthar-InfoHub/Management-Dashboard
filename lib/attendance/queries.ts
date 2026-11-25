@@ -10,6 +10,7 @@ import { dayKindFor, eachDateKey, fromDateKey, todayKey, toDateKey, type DayKind
 import { formatTime, isSessionExpired, statusForEmptyDay, type AttendanceStatusValue } from "@/lib/attendance/rules";
 import { getCoverage, type Coverage } from "@/lib/leave/queries";
 import { trackedFrom } from "@/lib/attendance/policy";
+import { inAnyTeam } from "@/lib/teams/membership";
 
 /** The office an employee clocks in at: their own, else the default. */
 export const getOfficeFor = cache(async (employeeId: string): Promise<OfficeSettings> => {
@@ -190,12 +191,12 @@ type Scope = NonNullable<Awaited<ReturnType<typeof getAttendanceScope>>>;
 
 async function scopedPeople(scope: Scope, teamId?: string | null) {
   const teamFilter = teamId && (scope.all || scope.teams.some((t) => t.id === teamId))
-    ? { teamId }
-    : scope.all ? {} : { teamId: { in: scope.teams.map((t) => t.id) } };
+    ? inAnyTeam([teamId])
+    : scope.all ? {} : inAnyTeam(scope.teams.map((t) => t.id));
   return db.employee.findMany({
     where: { status: "ACTIVE", role: { not: "SUPER_ADMIN" }, ...teamFilter },
     orderBy: { firstName: "asc" },
-    select: { id: true, firstName: true, lastName: true, avatarUrl: true, designation: true, officeId: true, joinDate: true, team: { select: { id: true, name: true } } },
+    select: { id: true, firstName: true, lastName: true, avatarUrl: true, designation: true, officeId: true, joinDate: true, teamMemberships: { select: { team: { select: { name: true } } }, orderBy: { joinedAt: "asc" } } },
   });
 }
 
@@ -244,7 +245,7 @@ async function groupDays(people: Awaited<ReturnType<typeof scopedPeople>>, fromK
         };
       });
       return {
-        employee: { id: p.id, name: `${p.firstName} ${p.lastName}`, avatarUrl: p.avatarUrl, designation: p.designation, team: p.team?.name ?? null },
+        employee: { id: p.id, name: `${p.firstName} ${p.lastName}`, avatarUrl: p.avatarUrl, designation: p.designation, team: p.teamMemberships.map((m) => m.team.name).join(", ") || null },
         days,
       };
     }),

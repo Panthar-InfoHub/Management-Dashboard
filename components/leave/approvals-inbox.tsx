@@ -152,7 +152,7 @@ function FixComparison({ r }: { r: PendingRequest }) {
       </div>
       <ArrowRight className="h-4 w-4 text-muted-foreground" aria-hidden />
       <div className="rounded-md border border-foreground/20 px-2.5 py-1.5">
-        <p className="text-[11px] text-muted-foreground">Asked for</p>
+        <p className="text-[11px] text-muted-foreground">Asked for · {r.workMode === "WFH" ? "worked from home" : "at the office"}</p>
         <p className="font-mono font-medium tabular-nums">
           {r.fixCheckIn} → {r.fixCheckOut}
           {r.fixMinutes != null && <span className="ml-2 font-sans text-xs font-normal text-muted-foreground">{formatDuration(r.fixMinutes)}</span>}
@@ -211,9 +211,9 @@ export function ApprovalsInbox({ inbox }: { inbox: Inbox }) {
         )}
 
         <Section id="fixes" icon={CalendarCheck} title="Attendance Fixes" count={fixes.length}
-          hint="Someone forgot to clock out or clocked the wrong time. Approving writes the asked-for times to that day.">
+          hint="Someone forgot to clock in or out, or clocked the wrong time. Approving writes the asked-for times, and from-home days become WFH.">
           {fixes.map((r) => (
-            <Row key={r.id} person={r.employee} actions={<DecisionButtons id={r.id} who={r.employee.name} what={`${formatDay(r.startDate)}: set to ${r.fixCheckIn} → ${r.fixCheckOut}.`} />}>
+            <Row key={r.id} person={r.employee} actions={<DecisionButtons id={r.id} who={r.employee.name} what={`${formatDay(r.startDate)}: set to ${r.fixCheckIn} → ${r.fixCheckOut}, ${r.workMode === "WFH" ? "worked from home" : "at the office"}.`} />}>
               <p className="text-sm font-medium">{formatDay(r.startDate)}</p>
               <FixComparison r={r} />
               <Reason text={r.reason} />

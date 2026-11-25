@@ -38,7 +38,8 @@ export async function getEmployeeById(id: string) {
     include: {
       employmentRecords: {
         orderBy: { startDate: 'desc' }
-      }
+      },
+      teamMemberships: { select: { team: { select: { id: true, name: true, leadId: true } } }, orderBy: { joinedAt: "asc" } },
     }
   });
 }

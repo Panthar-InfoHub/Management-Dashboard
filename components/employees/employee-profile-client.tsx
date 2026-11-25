@@ -1,5 +1,13 @@
 "use client";
 
+import { PromoteDialog } from "@/components/employees/promote-dialog";
+import { OffboardDialog } from "@/components/employees/offboard-dialog";
+import type { OffboardingChecklist } from "@/lib/employees/offboarding";
+
+const LEDGER_LABELS: Record<string, string> = {
+  JOINED: "Joined", PROMOTION: "Promotion", TRANSFER: "Transfer", TITLE_CHANGE: "Title change", REHIRED: "Rehired", EXITED: "Left",
+};
+
 import { ACCESS_ROLES, EMPLOYMENT_TYPE_LABELS, ROLE_LABELS, type AccessRole, type EmploymentTypeValue } from "@/lib/access";
 import { EmployeeAccessPanel, type PresetOption } from "@/components/employees/employee-access-panel";
 
@@ -7,19 +15,15 @@ import { useState, useTransition } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar, Mail, Building2, Shield, Pencil, UserMinus, ArrowUpRight, Copy } from "lucide-react";
+import { Calendar, Mail, Building2, Shield, Pencil, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { 
   updateEmployeeAction, 
   generateEmployeeCodeAction, 
   reserveEmployeeSequenceAction,
-  transitionRoleAction,
-  offboardEmployeeAction
 } from "@/lib/actions/employee.actions";
 
 const formatDate = (dateString: string | Date) => {
@@ -37,12 +41,16 @@ export function EmployeeProfileClient({
   canAssignRoles = false,
   canOffboard = false,
   access = null,
+  teams = [],
+  checklist = null,
 }: {
   employee: any;
   canEdit?: boolean;
   canAssignRoles?: boolean;
   canOffboard?: boolean;
   access?: { presets: PresetOption[]; assignedPresetIds: string[]; personalPermissions: string[] } | null;
+  teams?: { id: string; name: string }[];
+  checklist?: OffboardingChecklist | null;
 }) {
   const [isPending, startTransition] = useTransition();
 
@@ -55,11 +63,7 @@ export function EmployeeProfileClient({
     joinDate: employee.joinDate ? new Date(employee.joinDate).toISOString().split("T")[0] : "",
   });
 
-  const [promoteOpen, setPromoteOpen] = useState(false);
-  const [promoteData, setPromoteData] = useState({ newRole: employee.role as AccessRole, newDesignation: "", startDate: new Date().toISOString().split("T")[0], reason: "Promotion" });
 
-  const [offboardOpen, setOffboardOpen] = useState(false);
-  const [offboardData, setOffboardData] = useState({ endDate: new Date().toISOString().split("T")[0], reason: "Offboarding" });
 
   const [codeType, setCodeType] = useState<"PANTHAR" | "KAVACHX" | null>(null);
   const [reservedSeq, setReservedSeq] = useState<number | null>(null);
@@ -70,25 +74,6 @@ export function EmployeeProfileClient({
       updateEmployeeAction(employee.id, canAssignRoles ? editingEmp : rest).then(() => {
         setEditOpen(false);
         toast.success("Profile updated");
-      }).catch((e: any) => toast.error(e.message));
-    });
-  };
-
-  const handlePromote = () => {
-    startTransition(() => {
-      const { newRole, ...rest } = promoteData;
-      transitionRoleAction(employee.id, canAssignRoles ? promoteData : rest).then(() => {
-        setPromoteOpen(false);
-        toast.success("Promotion recorded");
-      }).catch((e: any) => toast.error(e.message));
-    });
-  };
-
-  const handleOffboard = () => {
-    startTransition(() => {
-      offboardEmployeeAction(employee.id, offboardData).then(() => {
-        setOffboardOpen(false);
-        toast.success("Employee offboarded");
       }).catch((e: any) => toast.error(e.message));
     });
   };
@@ -151,6 +136,14 @@ export function EmployeeProfileClient({
               <div className="flex items-center gap-1.5"><Mail className="h-4 w-4" /> {employee.email}</div>
               {employee.phone && <div className="flex items-center gap-1.5"><Building2 className="h-4 w-4" /> {employee.phone}</div>}
               <div className="flex items-center gap-1.5"><Calendar className="h-4 w-4" /> Joined {formatDate(employee.joinDate)}</div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs">Teams:</span>
+                {(employee.teamMemberships ?? []).length === 0
+                  ? <span className="text-xs italic">none yet</span>
+                  : (employee.teamMemberships as { team: { id: string; name: string } }[]).map((m) => (
+                      <span key={m.team.id} className="rounded border border-border/60 px-1.5 py-0.5 text-[11px]">{m.team.name}</span>
+                    ))}
+              </div>
             </div>
           </div>
           
@@ -175,14 +168,18 @@ export function EmployeeProfileClient({
             </Button>
           )}
           {employee.status === "ACTIVE" && canEdit && (
-            <Button variant="outline" onClick={() => setPromoteOpen(true)} className="gap-2 border-primary/30 text-primary hover:bg-primary/5 bg-background">
-              <ArrowUpRight className="h-4 w-4" /> Promote / Transfer
-            </Button>
+            <PromoteDialog
+              employee={{
+                ...employee,
+                teamIds: (employee.teamMemberships ?? []).map((m: { team: { id: string } }) => m.team.id),
+                ledTeamIds: (employee.teamMemberships ?? []).filter((m: { team: { leadId: string } }) => m.team.leadId === employee.id).map((m: { team: { id: string } }) => m.team.id),
+              }}
+              teams={teams}
+              canAssignRoles={canAssignRoles}
+            />
           )}
-          {employee.status === "ACTIVE" && canOffboard && (
-            <Button variant="outline" onClick={() => setOffboardOpen(true)} className="gap-2 border-amber-500/30 text-amber-600 hover:bg-amber-500/5 bg-background">
-              <UserMinus className="h-4 w-4" /> Offboard
-            </Button>
+          {employee.status === "ACTIVE" && canOffboard && checklist && (
+            <OffboardDialog employeeId={employee.id} name={employee.firstName} checklist={checklist} />
           )}
         </div>
       </div>
@@ -246,7 +243,10 @@ export function EmployeeProfileClient({
                   <div className="absolute -left-6 top-1.5 flex items-center justify-center w-3 h-3 rounded-full bg-primary/20 border border-primary shadow z-10" />
                   <div className="bg-muted/10 p-4 rounded-xl border border-border/40 hover:border-primary/30 hover:bg-primary/5 transition-all">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="font-semibold text-sm">{record.designation || "Employee"}</span>
+                      <span className="flex items-center gap-2 text-sm font-semibold">
+                        {record.designation || "Employee"}
+                        {record.type && <span className="rounded border border-border/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{LEDGER_LABELS[record.type] ?? record.type}</span>}
+                      </span>
                       <span className="text-[10px] text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded whitespace-nowrap">
                         {formatDate(record.startDate)} - {record.endDate ? formatDate(record.endDate) : 'Present'}
                       </span>
@@ -313,66 +313,6 @@ export function EmployeeProfileClient({
         </DialogContent>
       </Dialog>
 
-      {/* Promote Modal */}
-      <Dialog open={promoteOpen} onOpenChange={setPromoteOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Promote / Transfer</DialogTitle></DialogHeader>
-          <div className="space-y-4 pt-4">
-            {canAssignRoles && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground">Access Role</label>
-                <Select value={promoteData.newRole} onValueChange={(v) => setPromoteData({...promoteData, newRole: v as AccessRole})}>
-                  <SelectTrigger><SelectValue/></SelectTrigger>
-                  <SelectContent>
-                    {ACCESS_ROLES.map(r => <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">New Designation</label>
-              <Input value={promoteData.newDesignation} onChange={e => setPromoteData({...promoteData, newDesignation: e.target.value})} placeholder="e.g. Senior Employee" />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">Effective Start Date</label>
-              <Input type="date" value={promoteData.startDate} onChange={e => setPromoteData({...promoteData, startDate: e.target.value})} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">Reason / Notes</label>
-              <Input value={promoteData.reason} onChange={e => setPromoteData({...promoteData, reason: e.target.value})} />
-            </div>
-            <Button className="w-full" onClick={handlePromote} disabled={isPending || !promoteData.newDesignation.trim()}>{isPending ? "Saving…" : "Record Promotion"}</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Offboard Dialog */}
-      <AlertDialog open={offboardOpen} onOpenChange={setOffboardOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Offboard Employee</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will suspend their login access, remove them from active teams, and mark them INACTIVE. Their historical data and tasks will be preserved.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">Effective End Date</label>
-              <Input type="date" value={offboardData.endDate} onChange={e => setOffboardData({...offboardData, endDate: e.target.value})} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">Reason</label>
-              <Input value={offboardData.reason} onChange={e => setOffboardData({...offboardData, reason: e.target.value})} placeholder="e.g. Resigned, End of Internship" />
-            </div>
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleOffboard} disabled={isPending} className="bg-amber-600 text-white hover:bg-amber-700">
-              {isPending ? "Offboarding..." : "Confirm Offboard"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Generate Code Dialog */}
       <Dialog open={codeType !== null} onOpenChange={(v) => !v && setCodeType(null)}>
