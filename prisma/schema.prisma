@@ -438,8 +438,12 @@ model Office {
   longitude    Float
   radiusMeters Int         @default(100)
   timezone     String      @default("Asia/Kolkata")
-  lateAfter    String      @default("11:00") // HH:mm, office time
+  workStart    String      @default("10:00") // HH:mm office hours, office time
+  workEnd      String      @default("19:00")
+  lateAfter    String      @default("11:00") // clock-in after this is late
   lateOutcome  LateOutcome @default(HALF_DAY)
+  /// Fewer worked minutes than this on an office day = Half Day. Null = off.
+  minFullDayMinutes Int?
   /// Kind of each weekday, Sunday first (7 values).
   weekPattern  DayKind[]
   isDefault    Boolean     @default(false)
@@ -484,8 +488,14 @@ model Attendance {
   checkInLocation  Json?          // { lat, lng, accuracy, distanceMeters, inside }
   checkOutLocation Json?
 
-  isLate         Boolean          @default(false)
-  missedCheckout Boolean          @default(false)
+  isLate          Boolean         @default(false)
+  /// No clock-out by midnight: the day closed without hours.
+  missedCheckout  Boolean         @default(false)
+  /// Clocked out before office end; how many minutes early.
+  leftEarly       Boolean         @default(false)
+  earlyMinutes    Int?
+  /// Minutes after office end (every worked minute on an off day or holiday).
+  overtimeMinutes Int?
   /// Late half day waiting for an approver to confirm or excuse it.
   reviewStatus   RequestStatus?
   reviewedById   String?

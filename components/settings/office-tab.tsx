@@ -10,6 +10,14 @@ import { updateOfficeAction } from "@/lib/actions/attendance-settings.actions";
 import { WEEKDAYS, type DayKindValue } from "@/lib/attendance/calendar";
 import type { OfficeSettings } from "@/lib/attendance/settings";
 import { errorMessage } from "@/lib/utils";
+import dynamic from "next/dynamic";
+import { Skeleton } from "@/components/ui/skeleton";
+
+// Leaflet touches `window`, so the map renders in the browser only.
+const OfficeMap = dynamic(() => import("@/components/settings/office-map"), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[320px] w-full rounded-lg" />,
+});
 
 const WEEK_OPTIONS: { value: DayKindValue; label: string }[] = [
   { value: "OFFICE", label: "Office" },
@@ -25,8 +33,11 @@ export function OfficeTab({ office }: { office: OfficeSettings }) {
     latitude: String(office.latitude),
     longitude: String(office.longitude),
     radiusMeters: String(office.radiusMeters),
+    workStart: office.workStart,
+    workEnd: office.workEnd,
     lateAfter: office.lateAfter,
     lateOutcome: office.lateOutcome as "HALF_DAY" | "LATE",
+    minFullDayHours: office.minFullDayMinutes == null ? "" : String(office.minFullDayMinutes / 60),
     weekPattern: office.weekPattern as DayKindValue[],
   });
 
@@ -48,8 +59,11 @@ export function OfficeTab({ office }: { office: OfficeSettings }) {
           latitude: Number(form.latitude),
           longitude: Number(form.longitude),
           radiusMeters: Number(form.radiusMeters),
+          workStart: form.workStart,
+          workEnd: form.workEnd,
           lateAfter: form.lateAfter,
           lateOutcome: form.lateOutcome,
+          minFullDayMinutes: form.minFullDayHours.trim() === "" ? null : Math.round(Number(form.minFullDayHours) * 60),
           weekPattern: form.weekPattern,
         });
         toast.success("Office settings saved");
@@ -70,8 +84,14 @@ export function OfficeTab({ office }: { office: OfficeSettings }) {
       <section className="space-y-4">
         <div>
           <h3 className="text-sm font-medium">Location</h3>
-          <p className="text-xs text-muted-foreground">Clock-in on an office day must be within this radius.</p>
+          <p className="text-xs text-muted-foreground">Click the map or drag the pin to set the office. Clock-in on an office day must be inside the circle.</p>
         </div>
+        <OfficeMap
+          lat={Number(form.latitude)}
+          lng={Number(form.longitude)}
+          radiusMeters={Number(form.radiusMeters)}
+          onChange={(p) => setForm((f) => ({ ...f, latitude: String(p.lat), longitude: String(p.lng) }))}
+        />
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <label htmlFor="office-name" className="text-xs font-semibold text-muted-foreground">Office Name</label>
@@ -103,10 +123,20 @@ export function OfficeTab({ office }: { office: OfficeSettings }) {
 
       <section className="space-y-4">
         <div>
-          <h3 className="text-sm font-medium">Late Rule</h3>
-          <p className="text-xs text-muted-foreground">A clock-in after the cut-off is marked as chosen here. An approver can review late half days.</p>
+          <h3 className="text-sm font-medium">Office Hours and Rules</h3>
+          <p className="text-xs text-muted-foreground">
+            Time before office start and after office end counts as overtime; clocking out before office end is flagged as left early. A clock-in with no clock-out by midnight closes as a missed checkout.
+          </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <label htmlFor="office-start" className="text-xs font-semibold text-muted-foreground">Office Start</label>
+            <Input id="office-start" type="time" {...field("workStart")} />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="office-end" className="text-xs font-semibold text-muted-foreground">Office End</label>
+            <Input id="office-end" type="time" {...field("workEnd")} />
+          </div>
           <div className="space-y-1.5">
             <label htmlFor="office-late" className="text-xs font-semibold text-muted-foreground">Late After</label>
             <Input id="office-late" type="time" {...field("lateAfter")} />
@@ -120,6 +150,11 @@ export function OfficeTab({ office }: { office: OfficeSettings }) {
                 <SelectItem value="LATE">Late (full day)</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="office-minhours" className="text-xs font-semibold text-muted-foreground">Half Day If Worked Under (hours)</label>
+            <Input id="office-minhours" inputMode="decimal" placeholder="Off" {...field("minFullDayHours")} />
+            <p className="text-[11px] text-muted-foreground">Office days only. Leave empty to turn off.</p>
           </div>
         </div>
       </section>

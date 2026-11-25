@@ -14,7 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   LayoutDashboard, FolderKanban, Users, UserCircle,
-  FileText, Bell, Settings, ClipboardCheck, Search,
+  FileText, Bell, Settings, ClipboardCheck, Search, CalendarClock,
   PanelLeftClose, PanelLeft,
 } from "lucide-react";
 
@@ -26,6 +26,7 @@ const navItems: NavItem[] = [
   { label: "Projects", href: "/projects", icon: FolderKanban },
   { label: "Teams", href: "/teams", icon: Users },
   { label: "Members", href: "/employees", icon: UserCircle },
+  { label: "Attendance", href: "/attendance", icon: CalendarClock },
   { label: "Records", href: "/records", icon: FileText },
 ];
 

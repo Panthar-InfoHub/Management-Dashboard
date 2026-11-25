@@ -2,7 +2,10 @@ import { OverviewBlocks } from "@/components/dashboard/overview-blocks";
 import { PriorityPanels } from "@/components/dashboard/priority-panels";
 import { ProjectsSummary } from "@/components/dashboard/projects-summary";
 import { DashboardHeaderActions } from "@/components/dashboard/dashboard-header-actions";
-import { getCurrentEmployee } from "@/lib/auth";
+import { getCurrentEmployee, type AuthEmployee } from "@/lib/auth";
+import { getMyToday } from "@/lib/attendance/queries";
+import { minutesOfDay } from "@/lib/attendance/calendar";
+import { ClockCard } from "@/components/attendance/clock-card";
 import {
   getDashboardOverview, getTaskRadar, getAttentionProjects, getDashboardProjectsSummary, getDashboardChartsData, getCompletionTrend,
 } from "@/lib/queries/dashboard.queries";
@@ -105,12 +108,18 @@ async function DashboardProjectsSummary({ employee }: { employee: any }) {
   return <ProjectsSummary projects={projectsSummary} />;
 }
 
+async function DashboardClockCard({ employee }: { employee: AuthEmployee }) {
+  const today = await getMyToday(employee);
+  return today ? <ClockCard today={today} /> : null;
+}
+
 async function DashboardHeaderAsync() {
   const employee = await getCurrentEmployee();
   const overview = await getDashboardOverview(employee);
 
-  const now = new Date();
-  const greeting = now.getHours() < 12 ? "Good morning" : now.getHours() < 17 ? "Good afternoon" : "Good evening";
+  // The server runs in UTC; greet by the time in India.
+  const hour = Math.floor(minutesOfDay("Asia/Kolkata", new Date()) / 60);
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
   return (
     <>
@@ -127,6 +136,10 @@ async function DashboardHeaderAsync() {
         </div>
         <DashboardHeaderActions isAdmin={overview.isAdmin} />
       </div>
+
+      <Suspense fallback={<Skeleton className="h-[84px] w-full rounded-xl" />}>
+        <DashboardClockCard employee={employee} />
+      </Suspense>
 
       <OverviewBlocks overview={overview} />
       

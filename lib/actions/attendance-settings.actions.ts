@@ -23,8 +23,11 @@ export async function updateOfficeAction(officeId: string, data: {
   latitude: number;
   longitude: number;
   radiusMeters: number;
+  workStart: string;
+  workEnd: string;
   lateAfter: string;
   lateOutcome: "HALF_DAY" | "LATE";
+  minFullDayMinutes: number | null;
   weekPattern: WeekPattern;
 }) {
   const actor = await getCurrentEmployee();
@@ -37,8 +40,13 @@ export async function updateOfficeAction(officeId: string, data: {
   if (!Number.isInteger(data.radiusMeters) || data.radiusMeters < 20 || data.radiusMeters > 5000) {
     throw new Error("Radius must be a whole number between 20 and 5000 metres.");
   }
-  parseHHmm(data.lateAfter);
+  const start = parseHHmm(data.workStart), end = parseHHmm(data.workEnd), late = parseHHmm(data.lateAfter);
+  if (end <= start) throw new Error("Office end must be after office start.");
+  if (late < start || late >= end) throw new Error("The late cut-off must be within office hours.");
   if (data.lateOutcome !== "HALF_DAY" && data.lateOutcome !== "LATE") throw new Error("Late outcome must be Half Day or Late.");
+  if (data.minFullDayMinutes !== null && (!Number.isInteger(data.minFullDayMinutes) || data.minFullDayMinutes < 30 || data.minFullDayMinutes > 16 * 60)) {
+    throw new Error("Minimum hours for a full day must be between 0.5 and 16, or empty to turn the rule off.");
+  }
   if (data.weekPattern.length !== 7 || data.weekPattern.some((d) => !["OFFICE", "WFH", "OFF"].includes(d))) {
     throw new Error("Each weekday must be Office, WFH or Off.");
   }
@@ -54,8 +62,11 @@ export async function updateOfficeAction(officeId: string, data: {
       latitude: data.latitude,
       longitude: data.longitude,
       radiusMeters: data.radiusMeters,
+      workStart: data.workStart,
+      workEnd: data.workEnd,
       lateAfter: data.lateAfter,
       lateOutcome: data.lateOutcome,
+      minFullDayMinutes: data.minFullDayMinutes,
       weekPattern: data.weekPattern,
     },
   });
