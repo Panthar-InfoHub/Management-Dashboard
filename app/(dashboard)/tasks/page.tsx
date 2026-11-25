@@ -42,7 +42,6 @@ async function TasksDataAsync({ searchParams }: { searchParams: Promise<{ [key: 
         allowedTeams={filterOptions.teams} 
         allEmployees={filterOptions.employees}
         currentEmployeeId={employee.id}
-        employeeRole={employee.role}
       />
     </div>
   );

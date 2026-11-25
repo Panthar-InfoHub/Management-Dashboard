@@ -34,13 +34,13 @@ export const PROJECT_STATUS_COLORS: Record<string, string> = {
   ARCHIVED: "#6b7280", // gray-500
 };
 
-export const ROLE_ORDER = ["ADMIN", "MANAGER", "EMPLOYEE", "INTERN"] as const;
+// Team composition is shown by employment type (role is only an access level).
+export const ROLE_ORDER = ["FULL_TIME", "INTERN", "CONTRACT"] as const;
 
 export const ROLE_COLORS: Record<string, string> = {
-  ADMIN: "#a855f7", // purple-500
-  MANAGER: "#3b82f6", // blue-500
-  EMPLOYEE: "#6b7280", // gray-500
+  FULL_TIME: "#3b82f6", // blue-500
   INTERN: "#f59e0b", // amber-500
+  CONTRACT: "#6b7280", // gray-500
 };
 
 /** Sort a {name,value}[] group-by result into a fixed display order. */

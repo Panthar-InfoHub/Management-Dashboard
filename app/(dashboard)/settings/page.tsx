@@ -2,7 +2,8 @@ import { Suspense } from "react";
 import { getCurrentEmployee } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { SettingsClient } from "@/components/settings/settings-client";
-import { getSystemRolesAction } from "@/lib/actions/role.actions";
+import { listAccessPresetsAction } from "@/lib/actions/access.actions";
+import { isAdminRole } from "@/lib/access";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function SettingsPage() {
@@ -41,11 +42,11 @@ export default function SettingsPage() {
 async function SettingsDataAsync() {
   const employee = await getCurrentEmployee();
 
-  if (employee.role !== "ADMIN") {
+  if (!isAdminRole(employee.role)) {
     redirect("/");
   }
 
-  const roles = await getSystemRolesAction();
-  return <SettingsClient initialRoles={roles} />;
+  const presets = await listAccessPresetsAction();
+  return <SettingsClient presets={presets} />;
 }
 

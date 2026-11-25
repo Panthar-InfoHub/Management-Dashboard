@@ -19,14 +19,19 @@ import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { ACCESS_ROLES, EMPLOYMENT_TYPE_LABELS, ROLE_LABELS, type AccessRole, type EmploymentTypeValue } from "@/lib/access";
 
-const roleColors: Record<string, string> = { 
-  ADMIN: "bg-purple-500/10 text-purple-600 border-purple-500/20", 
-  MANAGER: "bg-blue-500/10 text-blue-600 border-blue-500/20", 
-  EMPLOYEE: "bg-gray-500/10 text-gray-600 border-gray-500/20" 
+const EMPLOYMENT_TYPES = Object.keys(EMPLOYMENT_TYPE_LABELS) as EmploymentTypeValue[];
+
+const roleColors: Record<string, string> = {
+  SUPER_ADMIN: "bg-purple-500/10 text-purple-600 border-purple-500/20",
+  ADMIN: "bg-blue-500/10 text-blue-600 border-blue-500/20",
+  MEMBER: "bg-gray-500/10 text-gray-600 border-gray-500/20",
 };
 
-export function EmployeesClient({ initialEmployees, teams, availableRoles = [], isAdmin, isManager = false, canCreate = false, canUpdate = false, canDelete = false }: { initialEmployees: any[], teams: any[], availableRoles?: string[], isAdmin: boolean, isManager?: boolean, canCreate?: boolean, canUpdate?: boolean, canDelete?: boolean }) {
+export function EmployeesClient({ initialEmployees, canViewProfiles = false, canAssignRoles = false, canCreate = false, canUpdate = false, canDelete = false }: { initialEmployees: any[], canViewProfiles?: boolean, canAssignRoles?: boolean, canCreate?: boolean, canUpdate?: boolean, canDelete?: boolean }) {
+  // Only Super Admins pick a role; everyone else adds Members.
+  const availableRoles: AccessRole[] = canAssignRoles ? ACCESS_ROLES : ["MEMBER"];
   const [newEmpOpen, setNewEmpOpen] = useState(false);
   const [editEmpOpen, setEditEmpOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -34,10 +39,11 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
-  const [newEmp, setNewEmp] = useState({ firstName: "", lastName: "", email: "", role: availableRoles[0] || "EMPLOYEE", designation: "", password: "", joinDate: new Date().toISOString().split("T")[0] });
+  const emptyNewEmp = { firstName: "", lastName: "", email: "", role: "MEMBER" as AccessRole, employmentType: "FULL_TIME" as EmploymentTypeValue, designation: "", password: "", joinDate: new Date().toISOString().split("T")[0] };
+  const [newEmp, setNewEmp] = useState(emptyNewEmp);
   const [setCustomPassword, setSetCustomPassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [editingEmp, setEditingEmp] = useState<{ id: string; role: string; designation: string } | null>(null);
+  const [editingEmp, setEditingEmp] = useState<{ id: string; role: AccessRole; designation: string } | null>(null);
 
   const [codeEmpOpen, setCodeEmpOpen] = useState(false);
   const [codeEmpTarget, setCodeEmpTarget] = useState<any>(null);
@@ -100,7 +106,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
     startTransition(() => {
       createEmployeeAction(newEmp).then(() => {
         setNewEmpOpen(false);
-        setNewEmp({ firstName: "", lastName: "", email: "", role: "EMPLOYEE", designation: "", password: "", joinDate: new Date().toISOString().split("T")[0] });
+        setNewEmp(emptyNewEmp);
         setSetCustomPassword(false);
         setShowPassword(false);
       }).catch((err: any) => toast.error(err.message || "Failed to add employee"));
@@ -110,7 +116,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
   const handleUpdateEmployee = () => {
     if (!editingEmp) return;
     startTransition(() => {
-      updateEmployeeAction(editingEmp.id, { role: editingEmp.role, designation: editingEmp.designation }).then(() => {
+      updateEmployeeAction(editingEmp.id, { ...(canAssignRoles && { role: editingEmp.role }), designation: editingEmp.designation }).then(() => {
         setEditEmpOpen(false);
         setEditingEmp(null);
       }).catch((err: any) => toast.error(err.message || "Failed to update employee"));
@@ -142,7 +148,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
   }, [initialEmployees, searchQuery, roleFilter]);
 
   const handleRowClick = (empId: string) => {
-    if (isAdmin || isManager) {
+    if (canViewProfiles) {
       router.push(`/employees/${empId}`);
     }
   };
@@ -223,18 +229,27 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
                     <Input type="date" value={newEmp.joinDate} onChange={e => setNewEmp({ ...newEmp, joinDate: e.target.value })} />
                   </div>
                 </div>
-                <div className="space-y-1.5 flex flex-col">
-                  <label className="text-xs font-semibold text-muted-foreground">System Role</label>
-                  <Select value={newEmp.role} onValueChange={(val: string) => setNewEmp({ ...newEmp, role: val })}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableRoles.filter(roleName => isAdmin || roleName !== "ADMIN").map(roleName => (
-                        <SelectItem key={roleName} value={roleName}>{roleName}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5 flex flex-col">
+                    <label className="text-xs font-semibold text-muted-foreground">Employment Type</label>
+                    <Select value={newEmp.employmentType} onValueChange={(val) => setNewEmp({ ...newEmp, employmentType: val as EmploymentTypeValue })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {EMPLOYMENT_TYPES.map(t => <SelectItem key={t} value={t}>{EMPLOYMENT_TYPE_LABELS[t]}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {canAssignRoles && (
+                    <div className="space-y-1.5 flex flex-col">
+                      <label className="text-xs font-semibold text-muted-foreground">Access Role</label>
+                      <Select value={newEmp.role} onValueChange={(val) => setNewEmp({ ...newEmp, role: val as AccessRole })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {availableRoles.map(r => <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
                 <div className="text-[11px] text-muted-foreground bg-muted/30 p-3 rounded-lg border border-border/40 mt-4">
                   If you leave the password blank, an email invitation will be sent instead. If you set a password, the account is created instantly.
@@ -259,19 +274,17 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
                 <label className="text-xs font-semibold text-muted-foreground">Designation / Title</label>
                 <Input value={editingEmp.designation} onChange={e => setEditingEmp({ ...editingEmp, designation: e.target.value })} placeholder="E.g. Senior Frontend Engineer" />
               </div>
-              <div className="space-y-1.5 flex flex-col">
-                <label className="text-xs font-semibold text-muted-foreground">System Role</label>
-                <Select value={editingEmp.role} onValueChange={(val: string) => setEditingEmp({ ...editingEmp, role: val })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableRoles.filter(roleName => isAdmin || roleName !== "ADMIN").map(roleName => (
-                      <SelectItem key={roleName} value={roleName}>{roleName}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {canAssignRoles && (
+                <div className="space-y-1.5 flex flex-col">
+                  <label className="text-xs font-semibold text-muted-foreground">Access Role</label>
+                  <Select value={editingEmp.role} onValueChange={(val) => setEditingEmp({ ...editingEmp, role: val as AccessRole })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {availableRoles.map(r => <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="text-[11px] text-muted-foreground bg-muted/30 p-3 rounded-lg border border-border/40 mt-4">
                 Updating their role will immediately sync with their Clerk permissions.
               </div>
@@ -436,8 +449,8 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All Roles</SelectItem>
-              {availableRoles.map(r => (
-                <SelectItem key={r} value={r}>{r}</SelectItem>
+              {ACCESS_ROLES.map(r => (
+                <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -450,7 +463,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
             <TableRow>
               <TableHead className="min-w-[250px] font-medium text-[11px] uppercase tracking-wider">Name & Title</TableHead>
               <TableHead className="min-w-[180px] font-medium text-[11px] uppercase tracking-wider">Contact Info</TableHead>
-              {(isAdmin || isManager) && <TableHead className="min-w-[180px] font-medium text-[11px] uppercase tracking-wider">Status & System Role</TableHead>}
+              {canViewProfiles && <TableHead className="min-w-[180px] font-medium text-[11px] uppercase tracking-wider">Status & System Role</TableHead>}
               <TableHead className="min-w-[120px] font-medium text-[11px] uppercase tracking-wider">Joined</TableHead>
               {(canUpdate || canDelete) && <TableHead className="w-[50px]"></TableHead>}
             </TableRow>
@@ -458,7 +471,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
           <TableBody>
             {filteredEmployees.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={(isAdmin || isManager) ? 5 : 4} className="h-24 text-center">
+                <TableCell colSpan={canViewProfiles ? 5 : 4} className="h-24 text-center">
                   <div className="p-8 text-center text-sm text-muted-foreground">No members found matching your search.</div>
                 </TableCell>
               </TableRow>
@@ -466,8 +479,8 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
               filteredEmployees.map(emp => (
                 <TableRow 
                   key={emp.id} 
-                  className={cn("hover:bg-muted/30", (isAdmin || isManager) && "cursor-pointer")}
-                  onMouseEnter={(isAdmin || isManager) ? () => router.prefetch(`/employees/${emp.id}`) : undefined}
+                  className={cn("hover:bg-muted/30", canViewProfiles && "cursor-pointer")}
+                  onMouseEnter={canViewProfiles ? () => router.prefetch(`/employees/${emp.id}`) : undefined}
                   onClick={(e) => {
                     // Prevent row click if clicking on the dropdown or its children
                     if ((e.target as HTMLElement).closest('.action-menu')) return;
@@ -505,12 +518,17 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
                       )}
                     </div>
                   </TableCell>
-                  {(isAdmin || isManager) && (
+                  {canViewProfiles && (
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Badge variant="outline" className={cn("text-[9px] px-2 py-0.5 shadow-none rounded-full border-border/40", roleColors[emp.role] || "bg-gray-500/10 text-gray-600 border-gray-500/20")}>
-                          {emp.role}
+                          {ROLE_LABELS[emp.role as AccessRole] ?? emp.role}
                         </Badge>
+                        {emp.employmentType && emp.employmentType !== "FULL_TIME" && (
+                          <Badge variant="outline" className="text-[9px] px-2 py-0.5 shadow-none rounded-full border-border/40">
+                            {EMPLOYMENT_TYPE_LABELS[emp.employmentType as EmploymentTypeValue]}
+                          </Badge>
+                        )}
                         {emp.clerkId.startsWith("pending_") && (
                           <Badge variant="outline" className="text-[9px] px-2 py-0.5 shadow-none rounded-full bg-amber-500/10 text-amber-600 border-amber-500/20">
                             INVITED
@@ -534,13 +552,13 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-[180px]">
-                          {(isAdmin || isManager) && (
+                          {canViewProfiles && (
                             <DropdownMenuItem className="text-xs" onClick={() => router.push(`/employees/${emp.id}`)}>
                               <UserPlus className="h-3.5 w-3.5 mr-2" />
                               View Profile
                             </DropdownMenuItem>
                           )}
-                          {(isAdmin || isManager) && emp.clerkId.startsWith("pending_") && (
+                          {canViewProfiles && emp.clerkId.startsWith("pending_") && (
                             <DropdownMenuItem className="text-xs" onClick={(e) => {
                               e.stopPropagation();
                               handleCopyInviteLink(emp.email);

@@ -14,13 +14,14 @@ export type AuthEmployee = Pick<
 >;
 
 import { cache } from "react";
+import { VIEW_AS_ENABLED, getViewAsEmployee } from "@/lib/dev/view-as";
 
 /**
  * Resolve the current Clerk session → our Employee record.
  * Call this at the top of every Server Action / API route.
  * Includes Just-In-Time (JIT) syncing if the webhook hasn't fired yet.
  */
-export const getCurrentEmployee = cache(async (): Promise<AuthEmployee> => {
+async function resolveSignedInEmployee(): Promise<AuthEmployee> {
   const { userId } = await auth();
 
   if (!userId) {
@@ -88,6 +89,21 @@ export const getCurrentEmployee = cache(async (): Promise<AuthEmployee> => {
   }
 
   return employee as AuthEmployee;
+}
+
+/**
+ * Resolve the current Clerk session → our Employee record.
+ * Call this at the top of every Server Action / API route.
+ * In local development only, "View as" (lib/dev/view-as.ts) swaps in another
+ * employee so every role can be tested with one login.
+ */
+export const getCurrentEmployee = cache(async (): Promise<AuthEmployee> => {
+  const me = await resolveSignedInEmployee();
+  if (VIEW_AS_ENABLED) {
+    const viewAs = await getViewAsEmployee(me.id);
+    if (viewAs) return viewAs;
+  }
+  return me;
 });
 
 /**
@@ -97,7 +113,7 @@ export const getCurrentEmployee = cache(async (): Promise<AuthEmployee> => {
  */
 export async function requireAuth(permission: Permission, projectId?: string): Promise<AuthEmployee> {
   const employee = await getCurrentEmployee();
-  const hasPerm = await hasPermission(employee.role, permission, employee.id, projectId);
+  const hasPerm = await hasPermission(employee, permission, projectId);
   if (!hasPerm) {
     const scopeStr = projectId ? ` for project ${projectId}` : "";
     console.error(`[Auth] Forbidden: ${employee.email} (Role: ${employee.role}) attempted action requiring ${permission}${scopeStr}`);
@@ -114,7 +130,7 @@ export async function requireAuth(permission: Permission, projectId?: string): P
 export async function checkPermission(permission: Permission, projectId?: string): Promise<boolean> {
   try {
     const employee = await getCurrentEmployee();
-    return await hasPermission(employee.role, permission, employee.id, projectId);
+    return await hasPermission(employee, permission, projectId);
   } catch {
     return false;
   }

@@ -1,5 +1,8 @@
 "use client";
 
+import { ACCESS_ROLES, EMPLOYMENT_TYPE_LABELS, ROLE_LABELS, type AccessRole, type EmploymentTypeValue } from "@/lib/access";
+import { EmployeeAccessPanel, type PresetOption } from "@/components/employees/employee-access-panel";
+
 import { useState, useTransition } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -28,15 +31,32 @@ const formatDate = (dateString: string | Date) => {
   return `${day} ${month} ${year}`;
 };
 
-export function EmployeeProfileClient({ employee, availableRoles, isAdmin, isManager }: { employee: any, availableRoles: string[], isAdmin: boolean, isManager: boolean }) {
+export function EmployeeProfileClient({
+  employee,
+  canEdit = false,
+  canAssignRoles = false,
+  canOffboard = false,
+  access = null,
+}: {
+  employee: any;
+  canEdit?: boolean;
+  canAssignRoles?: boolean;
+  canOffboard?: boolean;
+  access?: { presets: PresetOption[]; assignedPresetIds: string[]; personalPermissions: string[] } | null;
+}) {
   const [isPending, startTransition] = useTransition();
 
   // Modals state
   const [editOpen, setEditOpen] = useState(false);
-  const [editingEmp, setEditingEmp] = useState({ role: employee.role, designation: employee.designation || "", joinDate: employee.joinDate ? new Date(employee.joinDate).toISOString().split("T")[0] : "" });
+  const [editingEmp, setEditingEmp] = useState({
+    role: employee.role as AccessRole,
+    employmentType: (employee.employmentType ?? "FULL_TIME") as EmploymentTypeValue,
+    designation: employee.designation || "",
+    joinDate: employee.joinDate ? new Date(employee.joinDate).toISOString().split("T")[0] : "",
+  });
 
   const [promoteOpen, setPromoteOpen] = useState(false);
-  const [promoteData, setPromoteData] = useState({ newRole: availableRoles[0] || "EMPLOYEE", newDesignation: "", startDate: new Date().toISOString().split("T")[0], reason: "Promotion/Transition" });
+  const [promoteData, setPromoteData] = useState({ newRole: employee.role as AccessRole, newDesignation: "", startDate: new Date().toISOString().split("T")[0], reason: "Promotion" });
 
   const [offboardOpen, setOffboardOpen] = useState(false);
   const [offboardData, setOffboardData] = useState({ endDate: new Date().toISOString().split("T")[0], reason: "Offboarding" });
@@ -46,7 +66,8 @@ export function EmployeeProfileClient({ employee, availableRoles, isAdmin, isMan
 
   const handleUpdate = () => {
     startTransition(() => {
-      updateEmployeeAction(employee.id, editingEmp).then(() => {
+      const { role, ...rest } = editingEmp;
+      updateEmployeeAction(employee.id, canAssignRoles ? editingEmp : rest).then(() => {
         setEditOpen(false);
         toast.success("Profile updated");
       }).catch((e: any) => toast.error(e.message));
@@ -55,9 +76,10 @@ export function EmployeeProfileClient({ employee, availableRoles, isAdmin, isMan
 
   const handlePromote = () => {
     startTransition(() => {
-      transitionRoleAction(employee.id, promoteData).then(() => {
+      const { newRole, ...rest } = promoteData;
+      transitionRoleAction(employee.id, canAssignRoles ? promoteData : rest).then(() => {
         setPromoteOpen(false);
-        toast.success("Role transitioned successfully");
+        toast.success("Promotion recorded");
       }).catch((e: any) => toast.error(e.message));
     });
   };
@@ -66,7 +88,7 @@ export function EmployeeProfileClient({ employee, availableRoles, isAdmin, isMan
     startTransition(() => {
       offboardEmployeeAction(employee.id, offboardData).then(() => {
         setOffboardOpen(false);
-        toast.success("Employee offboarded successfully");
+        toast.success("Employee offboarded");
       }).catch((e: any) => toast.error(e.message));
     });
   };
@@ -134,7 +156,10 @@ export function EmployeeProfileClient({ employee, availableRoles, isAdmin, isMan
           
           <div className="flex flex-col gap-2 min-w-[140px]">
             <Badge variant="outline" className="w-fit self-start sm:self-end text-xs px-2.5 py-0.5">
-              {employee.role}
+              {ROLE_LABELS[employee.role as AccessRole] ?? employee.role}
+            </Badge>
+            <Badge variant="outline" className="w-fit self-start sm:self-end text-xs px-2.5 py-0.5">
+              {EMPLOYMENT_TYPE_LABELS[(employee.employmentType ?? "FULL_TIME") as EmploymentTypeValue]}
             </Badge>
             <Badge variant="secondary" className="w-fit self-start sm:self-end text-xs px-2.5 py-0.5 mt-1">
               {employee.status}
@@ -144,18 +169,20 @@ export function EmployeeProfileClient({ employee, availableRoles, isAdmin, isMan
         
         {/* Actions Bar - Flat style */}
         <div className="px-8 flex flex-wrap gap-3">
-          <Button variant="outline" onClick={() => setEditOpen(true)} className="gap-2 bg-background">
-            <Pencil className="h-4 w-4" /> Edit Profile
-          </Button>
-          {employee.status === "ACTIVE" && (
-            <>
-              <Button variant="outline" onClick={() => setPromoteOpen(true)} className="gap-2 border-primary/30 text-primary hover:bg-primary/5 bg-background">
-                <ArrowUpRight className="h-4 w-4" /> Promote / Transition
-              </Button>
-              <Button variant="outline" onClick={() => setOffboardOpen(true)} className="gap-2 border-amber-500/30 text-amber-600 hover:bg-amber-500/5 bg-background">
-                <UserMinus className="h-4 w-4" /> Offboard
-              </Button>
-            </>
+          {canEdit && (
+            <Button variant="outline" onClick={() => setEditOpen(true)} className="gap-2 bg-background">
+              <Pencil className="h-4 w-4" /> Edit Profile
+            </Button>
+          )}
+          {employee.status === "ACTIVE" && canEdit && (
+            <Button variant="outline" onClick={() => setPromoteOpen(true)} className="gap-2 border-primary/30 text-primary hover:bg-primary/5 bg-background">
+              <ArrowUpRight className="h-4 w-4" /> Promote / Transfer
+            </Button>
+          )}
+          {employee.status === "ACTIVE" && canOffboard && (
+            <Button variant="outline" onClick={() => setOffboardOpen(true)} className="gap-2 border-amber-500/30 text-amber-600 hover:bg-amber-500/5 bg-background">
+              <UserMinus className="h-4 w-4" /> Offboard
+            </Button>
           )}
         </div>
       </div>
@@ -179,7 +206,7 @@ export function EmployeeProfileClient({ employee, availableRoles, isAdmin, isMan
                   <p className="text-sm text-muted-foreground italic">Not generated</p>
                 )}
               </div>
-              {!employee.pantharCode && (
+              {!employee.pantharCode && canEdit && (
                 <Button variant="secondary" size="sm" onClick={() => handleStartGenerating("PANTHAR")} disabled={isPending}>
                   Generate
                 </Button>
@@ -198,7 +225,7 @@ export function EmployeeProfileClient({ employee, availableRoles, isAdmin, isMan
                   <p className="text-sm text-muted-foreground italic">Not generated</p>
                 )}
               </div>
-              {!employee.kavachXCode && (
+              {!employee.kavachXCode && canEdit && (
                 <Button variant="secondary" size="sm" onClick={() => handleStartGenerating("KAVACHX")} disabled={isPending}>
                   Generate
                 </Button>
@@ -237,6 +264,17 @@ export function EmployeeProfileClient({ employee, availableRoles, isAdmin, isMan
         </div>
       </div>
 
+      {access && (
+        <div className="px-2">
+          <EmployeeAccessPanel
+            employeeId={employee.id}
+            presets={access.presets}
+            assignedPresetIds={access.assignedPresetIds}
+            personalPermissions={access.personalPermissions}
+          />
+        </div>
+      )}
+
       {/* Edit Profile Modal */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="sm:max-w-md">
@@ -251,14 +289,25 @@ export function EmployeeProfileClient({ employee, availableRoles, isAdmin, isMan
               <Input type="date" value={editingEmp.joinDate} onChange={e => setEditingEmp({...editingEmp, joinDate: e.target.value})} />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">Role (Note: Use Promote to track history)</label>
-              <Select value={editingEmp.role} onValueChange={(v) => setEditingEmp({...editingEmp, role: v})}>
+              <label className="text-xs font-semibold text-muted-foreground">Employment Type</label>
+              <Select value={editingEmp.employmentType} onValueChange={(v) => setEditingEmp({...editingEmp, employmentType: v as EmploymentTypeValue})}>
                 <SelectTrigger><SelectValue/></SelectTrigger>
                 <SelectContent>
-                  {availableRoles.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                  {(Object.keys(EMPLOYMENT_TYPE_LABELS) as EmploymentTypeValue[]).map(t => <SelectItem key={t} value={t}>{EMPLOYMENT_TYPE_LABELS[t]}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
+            {canAssignRoles && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Access Role</label>
+                <Select value={editingEmp.role} onValueChange={(v) => setEditingEmp({...editingEmp, role: v as AccessRole})}>
+                  <SelectTrigger><SelectValue/></SelectTrigger>
+                  <SelectContent>
+                    {ACCESS_ROLES.map(r => <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <Button className="w-full" onClick={handleUpdate} disabled={isPending}>{isPending ? "Saving..." : "Save Changes"}</Button>
           </div>
         </DialogContent>
@@ -267,17 +316,19 @@ export function EmployeeProfileClient({ employee, availableRoles, isAdmin, isMan
       {/* Promote Modal */}
       <Dialog open={promoteOpen} onOpenChange={setPromoteOpen}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Promote / Transition Role</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Promote / Transfer</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">New Role</label>
-              <Select value={promoteData.newRole} onValueChange={(v) => setPromoteData({...promoteData, newRole: v})}>
-                <SelectTrigger><SelectValue/></SelectTrigger>
-                <SelectContent>
-                  {availableRoles.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+            {canAssignRoles && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Access Role</label>
+                <Select value={promoteData.newRole} onValueChange={(v) => setPromoteData({...promoteData, newRole: v as AccessRole})}>
+                  <SelectTrigger><SelectValue/></SelectTrigger>
+                  <SelectContent>
+                    {ACCESS_ROLES.map(r => <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-muted-foreground">New Designation</label>
               <Input value={promoteData.newDesignation} onChange={e => setPromoteData({...promoteData, newDesignation: e.target.value})} placeholder="e.g. Senior Employee" />
@@ -290,7 +341,7 @@ export function EmployeeProfileClient({ employee, availableRoles, isAdmin, isMan
               <label className="text-xs font-semibold text-muted-foreground">Reason / Notes</label>
               <Input value={promoteData.reason} onChange={e => setPromoteData({...promoteData, reason: e.target.value})} />
             </div>
-            <Button className="w-full" onClick={handlePromote} disabled={isPending}>{isPending ? "Transitioning..." : "Confirm Transition"}</Button>
+            <Button className="w-full" onClick={handlePromote} disabled={isPending || !promoteData.newDesignation.trim()}>{isPending ? "Saving…" : "Record Promotion"}</Button>
           </div>
         </DialogContent>
       </Dialog>

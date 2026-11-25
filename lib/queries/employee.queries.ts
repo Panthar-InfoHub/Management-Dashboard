@@ -1,9 +1,8 @@
 import { db } from "@/lib/db";
-import { getCurrentEmployee } from "@/lib/auth";
+import { checkPermission } from "@/lib/auth";
 
 export async function getEmployees() {
-  const employee = await getCurrentEmployee();
-  const isPrivileged = employee.role === "ADMIN" || employee.role === "MANAGER";
+  const isPrivileged = await checkPermission("employee:view-all");
 
   const employees = await db.employee.findMany({
     where: {
@@ -14,7 +13,7 @@ export async function getEmployees() {
     }
   });
 
-  // Non-admin/manager viewers get the directory without personal/internal fields
+  // Viewers without employee:view-all get the directory without personal/internal fields
   // (phone, Clerk identity linkage, HR codes) the UI never renders for them anyway —
   // strip them here so they never leave the server in the page payload.
   if (!isPrivileged) {
@@ -31,9 +30,7 @@ export async function getEmployees() {
 }
 
 export async function getEmployeeById(id: string) {
-  const currentEmployee = await getCurrentEmployee();
-  const isPrivileged = currentEmployee.role === "ADMIN" || currentEmployee.role === "MANAGER";
-  
+  const isPrivileged = await checkPermission("employee:view-all");
   if (!isPrivileged) throw new Error("Unauthorized to view detailed employee profile");
 
   return db.employee.findUnique({

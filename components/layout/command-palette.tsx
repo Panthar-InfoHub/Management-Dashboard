@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAccess } from "@/hooks/use-access";
 import {
   CommandDialog,
   CommandEmpty,
@@ -14,7 +15,8 @@ import {
   Plus, Search, Zap, ArrowRight,
 } from "lucide-react";
 
-export function CommandPalette({ isAdmin }: { isAdmin: boolean }) {
+export function CommandPalette() {
+  const { isAdmin } = useAccess();
   const [open, setOpen] = useState(false);
   const router = useRouter();
 

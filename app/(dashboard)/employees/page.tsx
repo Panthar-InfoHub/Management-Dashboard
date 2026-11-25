@@ -2,8 +2,7 @@ import { Suspense } from "react";
 import { getEmployees } from "@/lib/queries/employee.queries";
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { EmployeesClient } from "@/components/employees/employees-client";
-import { getTeams } from "@/lib/queries/team.queries";
-import { getRoleNames } from "@/lib/queries/reference.queries";
+import { canAssignRoles } from "@/lib/access";
 import { EmployeesBodySkeleton } from "./skeleton";
 
 export default function EmployeesPage() {
@@ -23,23 +22,20 @@ export default function EmployeesPage() {
 }
 
 async function EmployeesDataAsync() {
-  const [currentEmployee, canCreate, canUpdate, canDelete, employees, teams, roles] = await Promise.all([
+  const [currentEmployee, canViewProfiles, canCreate, canUpdate, canDelete, employees] = await Promise.all([
     getCurrentEmployee(),
+    checkPermission("employee:view-all"),
     checkPermission("employee:create"),
     checkPermission("employee:update"),
     checkPermission("employee:delete"),
     getEmployees(),
-    getTeams(),
-    getRoleNames()
   ]);
 
   return (
     <EmployeesClient 
       initialEmployees={employees} 
-      teams={teams}
-      availableRoles={roles}
-      isAdmin={currentEmployee.role === "ADMIN"}
-      isManager={currentEmployee.role === "MANAGER"}
+      canViewProfiles={canViewProfiles}
+      canAssignRoles={canAssignRoles(currentEmployee.role)}
       canCreate={canCreate}
       canUpdate={canUpdate}
       canDelete={canDelete}

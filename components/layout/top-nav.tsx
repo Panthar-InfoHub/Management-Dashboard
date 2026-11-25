@@ -23,7 +23,7 @@ import { getRecentNotificationsAction, markAllNotificationsAsReadAction } from "
 import { formatDistanceToNow } from "date-fns";
 import { Sidebar } from "./sidebar";
 
-export function TopNav({ isAdmin = false }: { isAdmin?: boolean }) {
+export function TopNav() {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -58,7 +58,7 @@ export function TopNav({ isAdmin = false }: { isAdmin?: boolean }) {
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="p-0 w-64 border-r border-border">
-            <Sidebar collapsed={false} setCollapsed={() => setMobileMenuOpen(false)} isMobile={true} isAdmin={isAdmin} onNavigate={() => setMobileMenuOpen(false)} />
+            <Sidebar collapsed={false} setCollapsed={() => setMobileMenuOpen(false)} isMobile={true} onNavigate={() => setMobileMenuOpen(false)} />
           </SheetContent>
         </Sheet>
         

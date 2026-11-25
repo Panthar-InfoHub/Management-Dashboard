@@ -67,7 +67,7 @@ export async function getProjectById(projectId: string) {
   if (!project) return null;
 
   // Verify access
-  if (employee.role !== "ADMIN" && employee.role !== "MANAGER" && project.leadId !== employee.id) {
+  if (project.leadId !== employee.id && !(await checkPermission("project:update", project.id))) {
     const isMember = project.members.some(m => m.employeeId === employee.id);
     if (!isMember) {
       throw new Error("FORBIDDEN: Requires higher permission level");

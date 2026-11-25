@@ -7,16 +7,18 @@ import { ProjectDetailClient } from "@/components/projects/project-detail-client
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [project, allEmployees, allTeams, employee, canUpdateGlobal, canDelete, canDelegate] = await Promise.all([
+  const [project, allEmployees, allTeams, employee, canUpdateGlobal, canDelete] = await Promise.all([
     getProjectById(id),
     getEmployees(),
     getTeams(),
     getCurrentEmployee(),
-    checkPermission("project:update"),
+    checkPermission("project:update", id),
     checkPermission("project:delete"),
-    checkPermission("permission:delegate")
   ]);
+  // project:update for this project covers admins, the project lead, the
+  // owning team's lead and anyone granted it; they also hand out project powers.
   const canEdit = canUpdateGlobal || project?.leadId === employee.id;
+  const canDelegate = canEdit;
 
   if (!project) {
     notFound();

@@ -5,25 +5,35 @@ import { requireAuth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { revalidatePath } from "next/cache";
 import { clerkClient } from "@clerk/nextjs/server";
+import { canActOnEmployee, canAssignRoles, type AccessRole, type EmploymentTypeValue } from "@/lib/access";
+
+const ROLE_VALUES: AccessRole[] = ["SUPER_ADMIN", "ADMIN", "MEMBER"];
+const EMPLOYMENT_VALUES: EmploymentTypeValue[] = ["FULL_TIME", "INTERN", "CONTRACT"];
+
+function assertRole(value: unknown): asserts value is AccessRole {
+  if (!ROLE_VALUES.includes(value as AccessRole)) throw new Error(`Invalid role: ${String(value)}`);
+}
+function assertEmploymentType(value: unknown): asserts value is EmploymentTypeValue {
+  if (!EMPLOYMENT_VALUES.includes(value as EmploymentTypeValue)) throw new Error(`Invalid employment type: ${String(value)}`);
+}
 
 export async function createEmployeeAction(data: {
   firstName: string;
   lastName: string;
   email: string;
-  role: string;
+  role?: AccessRole;
+  employmentType?: EmploymentTypeValue;
   password?: string;
   designation?: string;
   joinDate?: string;
 }) {
   const currentEmployee = await requireAuth("employee:create");
-  if (data.role === "ADMIN" && currentEmployee.role !== "ADMIN") {
-    throw new Error("Only admins can create an ADMIN role.");
-  }
-  if (currentEmployee.role !== "ADMIN") {
-    const targetRole = await db.systemRole.findUnique({ where: { name: data.role } });
-    if (targetRole?.permissions.includes("role:manage")) {
-      throw new Error("Only admins can create an employee with role-management permissions.");
-    }
+  const role: AccessRole = data.role ?? "MEMBER";
+  const employmentType: EmploymentTypeValue = data.employmentType ?? "FULL_TIME";
+  assertRole(role);
+  assertEmploymentType(employmentType);
+  if (role !== "MEMBER" && !canAssignRoles(currentEmployee.role)) {
+    throw new Error("Only Super Admins can add an Admin or Super Admin.");
   }
 
   const client = await clerkClient();
@@ -49,7 +59,7 @@ export async function createEmployeeAction(data: {
         await client.users.updateUser(clerkUserId, { password: data.password });
       }
       await client.users.updateUserMetadata(clerkUserId, {
-        publicMetadata: { role: data.role, designation: data.designation }
+        publicMetadata: { role, designation: data.designation }
       });
     } catch (error: any) {
       throw new Error("Failed to restore existing user account in authentication provider.");
@@ -63,7 +73,7 @@ export async function createEmployeeAction(data: {
           password: data.password,
           firstName: data.firstName,
           lastName: data.lastName,
-          publicMetadata: { role: data.role, designation: data.designation }
+          publicMetadata: { role, designation: data.designation }
         });
         clerkUserId = newUser.id;
       } catch (error: any) {
@@ -84,7 +94,7 @@ export async function createEmployeeAction(data: {
         clerkUserId = `pending_${Date.now()}_${Math.random().toString(36).substring(7)}`;
         await client.invitations.createInvitation({
           emailAddress: data.email,
-          publicMetadata: { role: data.role, designation: data.designation }
+          publicMetadata: { role, designation: data.designation }
         });
       } catch (error: any) {
         if (error.errors && error.errors.length > 0) {
@@ -107,7 +117,8 @@ export async function createEmployeeAction(data: {
           clerkId: clerkUserId,
           firstName: data.firstName,
           lastName: data.lastName,
-          role: data.role,
+          role,
+          employmentType,
           designation: data.designation,
           status: "ACTIVE",
           exitDate: null,
@@ -133,7 +144,8 @@ export async function createEmployeeAction(data: {
           email: data.email,
           firstName: data.firstName,
           lastName: data.lastName,
-          role: data.role,
+          role,
+          employmentType,
           designation: data.designation,
           joinDate: data.joinDate ? new Date(data.joinDate) : new Date(),
           avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${data.firstName} ${data.lastName}`,
@@ -163,7 +175,8 @@ export async function createEmployeeAction(data: {
 }
 
 export async function updateEmployeeAction(id: string, data: {
-  role: string;
+  role?: AccessRole;
+  employmentType?: EmploymentTypeValue;
   designation?: string;
   joinDate?: string;
 }) {
@@ -172,27 +185,23 @@ export async function updateEmployeeAction(id: string, data: {
   const target = await db.employee.findUnique({ where: { id } });
   if (!target) throw new Error("Employee not found");
 
-  if (id === currentEmployee.id && data.role !== target.role) {
-    throw new Error("You cannot change your own role.");
+  if (!canActOnEmployee(currentEmployee.role, target.role)) {
+    throw new Error("Only Super Admins can change an Admin or Super Admin.");
   }
-  if (target.role === "ADMIN" && currentEmployee.role !== "ADMIN") {
-    throw new Error("Only admins can modify an ADMIN user.");
+  const roleChanged = data.role !== undefined && data.role !== target.role;
+  if (roleChanged) {
+    assertRole(data.role);
+    if (id === currentEmployee.id) throw new Error("You can't change your own role.");
+    if (!canAssignRoles(currentEmployee.role)) throw new Error("Only Super Admins can change roles.");
   }
-  if (data.role === "ADMIN" && currentEmployee.role !== "ADMIN") {
-    throw new Error("Only admins can assign an ADMIN role.");
-  }
-  if (data.role !== target.role && currentEmployee.role !== "ADMIN") {
-    const targetRole = await db.systemRole.findUnique({ where: { name: data.role } });
-    if (targetRole?.permissions.includes("role:manage")) {
-      throw new Error("Only admins can assign a role with role-management permissions.");
-    }
-  }
+  if (data.employmentType !== undefined) assertEmploymentType(data.employmentType);
 
   const employee = await db.$transaction(async (tx) => {
     const updated = await tx.employee.update({
       where: { id },
       data: {
-        role: data.role,
+        ...(roleChanged && { role: data.role }),
+        ...(data.employmentType && { employmentType: data.employmentType }),
         designation: data.designation,
         ...(data.joinDate && { joinDate: new Date(data.joinDate) })
       }
@@ -219,16 +228,6 @@ export async function updateEmployeeAction(id: string, data: {
     return updated;
   });
 
-  // Sync role to Clerk public metadata if the user has signed up
-  if (!employee.clerkId.startsWith("pending_") && !employee.clerkId.startsWith("seed_")) {
-    const client = await clerkClient();
-    await client.users.updateUserMetadata(employee.clerkId, {
-      publicMetadata: {
-        role: employee.role,
-        designation: employee.designation
-      }
-    });
-  }
 
   audit({ actorId: currentEmployee.id, entity: "Employee", entityId: id, action: "update", changes: JSON.parse(JSON.stringify(data)) });
   revalidatePath(`/employees/${id}`);
@@ -241,8 +240,8 @@ export async function deleteEmployeeAction(id: string) {
 
   const target = await db.employee.findUnique({ where: { id } });
   if (!target) throw new Error("Employee not found");
-  if (target?.role === "ADMIN" && currentEmployee.role !== "ADMIN") {
-    throw new Error("Only admins can delete an ADMIN user.");
+  if (!canActOnEmployee(currentEmployee.role, target.role)) {
+    throw new Error("Only Super Admins can remove an Admin or Super Admin.");
   }
   if (target.id === currentEmployee.id) {
     throw new Error("You cannot delete your own account.");
@@ -302,11 +301,8 @@ export async function deleteEmployeeAction(id: string) {
 }
 
 export async function reserveEmployeeSequenceAction(type: "PANTHAR" | "KAVACHX") {
-  const currentEmployee = await requireAuth("employee:update");
-  if (currentEmployee.role !== "ADMIN" && currentEmployee.role !== "MANAGER") {
-    throw new Error("Only ADMIN or MANAGER can generate employee codes.");
-  }
-  
+  await requireAuth("employee:update");
+
   const seqName = type === "PANTHAR" ? "SEQ_PANTHAR" : "SEQ_KAVACHX";
   const seq = await db.sequence.findUnique({
     where: { name: seqName }
@@ -317,10 +313,6 @@ export async function reserveEmployeeSequenceAction(type: "PANTHAR" | "KAVACHX")
 
 export async function generateEmployeeCodeAction(employeeId: string, type: "PANTHAR" | "KAVACHX", joinDateStr: string, reservedSeq?: number) {
   const currentEmployee = await requireAuth("employee:update");
-  
-  if (currentEmployee.role !== "ADMIN" && currentEmployee.role !== "MANAGER") {
-    throw new Error("Only ADMIN or MANAGER can generate employee codes.");
-  }
 
   const employee = await db.employee.findUnique({ where: { id: employeeId } });
   if (!employee) throw new Error("Employee not found.");
@@ -372,19 +364,13 @@ export async function generateEmployeeCodeAction(employeeId: string, type: "PANT
 }
 
 export async function getInvitationLinkAction(email: string) {
-  const currentEmployee = await requireAuth("employee:update");
-  if (currentEmployee.role !== "ADMIN" && currentEmployee.role !== "MANAGER") {
-    throw new Error("Not authorized to view invitations.");
-  }
+  const currentEmployee = await requireAuth("employee:create");
 
-  // A Manager may only fetch invite links for non-ADMIN invitees — otherwise a
-  // Manager could hijack a pre-provisioned ADMIN's pending invitation and
-  // complete the sign-up themselves.
-  if (currentEmployee.role !== "ADMIN") {
-    const invitedEmployee = await db.employee.findUnique({ where: { email } });
-    if (invitedEmployee?.role === "ADMIN") {
-      throw new Error("Only admins can view invitations for an ADMIN account.");
-    }
+  // Only a Super Admin may fetch an Admin's invite link — otherwise someone
+  // could take over a pre-provisioned admin invitation by signing up themselves.
+  const invitedEmployee = await db.employee.findUnique({ where: { email }, select: { role: true } });
+  if (invitedEmployee && !canActOnEmployee(currentEmployee.role, invitedEmployee.role)) {
+    throw new Error("Only Super Admins can view invitations for an Admin account.");
   }
 
   const client = await clerkClient();
@@ -398,14 +384,20 @@ export async function getInvitationLinkAction(email: string) {
   return invite.url;
 }
 
-export async function transitionRoleAction(employeeId: string, data: { newRole: string; newDesignation?: string; startDate: string; reason: string }) {
+export async function transitionRoleAction(employeeId: string, data: { newRole?: AccessRole; newDesignation?: string; startDate: string; reason: string }) {
   const currentEmployee = await requireAuth("employee:update");
-  if (currentEmployee.role !== "ADMIN" && currentEmployee.role !== "MANAGER") {
-    throw new Error("Only Admin/Manager can transition roles.");
-  }
 
   const target = await db.employee.findUnique({ where: { id: employeeId } });
   if (!target) throw new Error("Employee not found.");
+  if (!canActOnEmployee(currentEmployee.role, target.role)) {
+    throw new Error("Only Super Admins can change an Admin or Super Admin.");
+  }
+  const newRole = data.newRole ?? target.role;
+  assertRole(newRole);
+  if (newRole !== target.role) {
+    if (employeeId === currentEmployee.id) throw new Error("You can't change your own role.");
+    if (!canAssignRoles(currentEmployee.role)) throw new Error("Only Super Admins can change roles.");
+  }
 
   const startDateObj = new Date(data.startDate);
   
@@ -445,22 +437,12 @@ export async function transitionRoleAction(employeeId: string, data: { newRole: 
     return tx.employee.update({
       where: { id: employeeId },
       data: {
-        role: data.newRole,
+        role: newRole,
         designation: data.newDesignation,
       }
     });
   });
 
-  // Sync with Clerk if not pending
-  if (!updatedEmployee.clerkId.startsWith("pending_") && !updatedEmployee.clerkId.startsWith("seed_")) {
-    const client = await clerkClient();
-    await client.users.updateUserMetadata(updatedEmployee.clerkId, {
-      publicMetadata: {
-        role: updatedEmployee.role,
-        designation: updatedEmployee.designation
-      }
-    });
-  }
 
   audit({ actorId: currentEmployee.id, entity: "Employee", entityId: employeeId, action: "role", changes: JSON.parse(JSON.stringify(data)) });
   revalidatePath(`/employees/${employeeId}`);
@@ -470,10 +452,7 @@ export async function transitionRoleAction(employeeId: string, data: { newRole: 
 }
 
 export async function offboardEmployeeAction(employeeId: string, data: { endDate: string; reason: string }) {
-  const currentEmployee = await requireAuth("employee:delete"); // Treat offboard like delete permission
-  if (currentEmployee.role !== "ADMIN" && currentEmployee.role !== "MANAGER") {
-    throw new Error("Only Admin/Manager can offboard employees.");
-  }
+  const currentEmployee = await requireAuth("employee:offboard");
 
   const target = await db.employee.findUnique({ where: { id: employeeId } });
   if (!target) throw new Error("Employee not found.");
@@ -482,8 +461,8 @@ export async function offboardEmployeeAction(employeeId: string, data: { endDate
     throw new Error("You cannot offboard your own account.");
   }
 
-  if (target.role === "ADMIN" && currentEmployee.role !== "ADMIN") {
-    throw new Error("Only admins can offboard an ADMIN.");
+  if (!canActOnEmployee(currentEmployee.role, target.role)) {
+    throw new Error("Only Super Admins can offboard an Admin or Super Admin.");
   }
 
   // Check if they are currently leading any projects or teams

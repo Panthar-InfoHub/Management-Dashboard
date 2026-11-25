@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Shield, ShieldAlert, ShieldCheck, Check } from "lucide-react";
-import { grantPermissionAction, revokePermissionAction } from "@/lib/actions/permission.actions";
+import { grantProjectPermissionAction as grantPermissionAction, revokeProjectPermissionAction as revokePermissionAction } from "@/lib/actions/access.actions";
 
 // The subset of permissions that make sense to scope to a project
 const PROJECT_SCOPED_PERMS = [

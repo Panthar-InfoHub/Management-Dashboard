@@ -1,9 +1,10 @@
 import { Suspense } from "react";
 import { getEmployeeById } from "@/lib/queries/employee.queries";
-import { getCurrentEmployee } from "@/lib/auth";
+import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { notFound, redirect } from "next/navigation";
 import { EmployeeProfileClient } from "@/components/employees/employee-profile-client";
-import { getRoleNames } from "@/lib/queries/reference.queries";
+import { db } from "@/lib/db";
+import { canActOnEmployee, canAssignRoles, canManageAccess } from "@/lib/access";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -48,25 +49,42 @@ function ProfileLoading() {
 }
 
 async function EmployeeProfileDataAsync({ id }: { id: string }) {
-  const currentEmployee = await getCurrentEmployee();
-  
-  if (currentEmployee.role !== "ADMIN" && currentEmployee.role !== "MANAGER") {
+  const [currentEmployee, canView, canUpdate, canOffboard] = await Promise.all([
+    getCurrentEmployee(),
+    checkPermission("employee:view-all"),
+    checkPermission("employee:update"),
+    checkPermission("employee:offboard"),
+  ]);
+
+  if (!canView) {
     redirect("/employees");
   }
 
-  const [employee, roles] = await Promise.all([
-    getEmployeeById(id),
-    getRoleNames()
-  ]);
-
+  const employee = await getEmployeeById(id);
   if (!employee) notFound();
 
+  const mayActOn = canActOnEmployee(currentEmployee.role, employee.role);
+  const showAccess = canManageAccess(currentEmployee.role) && employee.role === "MEMBER" && employee.id !== currentEmployee.id;
+
+  const access = showAccess
+    ? await Promise.all([
+        db.accessPreset.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, description: true, permissions: true } }),
+        db.employeeAccessPreset.findMany({ where: { employeeId: id }, select: { presetId: true } }),
+        db.employeePermission.findMany({ where: { employeeId: id, projectId: null }, select: { permission: true } }),
+      ]).then(([presets, assigned, grants]) => ({
+        presets,
+        assignedPresetIds: assigned.map((a) => a.presetId),
+        personalPermissions: grants.map((g) => g.permission),
+      }))
+    : null;
+
   return (
-    <EmployeeProfileClient 
-      employee={JSON.parse(JSON.stringify(employee))} 
-      availableRoles={roles}
-      isAdmin={currentEmployee.role === "ADMIN"}
-      isManager={currentEmployee.role === "MANAGER"}
+    <EmployeeProfileClient
+      employee={JSON.parse(JSON.stringify(employee))}
+      canEdit={canUpdate && mayActOn}
+      canAssignRoles={canAssignRoles(currentEmployee.role) && employee.id !== currentEmployee.id}
+      canOffboard={canOffboard && mayActOn && employee.id !== currentEmployee.id}
+      access={access}
     />
   );
 }

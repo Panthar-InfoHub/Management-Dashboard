@@ -60,7 +60,7 @@ export async function getTeamById(teamId: string) {
 
   if (!team) return null;
 
-  if (employee.role !== "ADMIN" && employee.role !== "MANAGER" && team.leadId !== employee.id) {
+  if (team.leadId !== employee.id && !(await checkPermission("team:update"))) {
     const isMember = team.members.some(m => m.id === employee.id);
     if (!isMember) {
       throw new Error("FORBIDDEN: Requires higher permission level");

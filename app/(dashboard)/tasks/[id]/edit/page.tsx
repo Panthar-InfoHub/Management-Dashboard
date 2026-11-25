@@ -37,7 +37,7 @@ export default async function EditTaskPage({ params }: { params: Promise<{ id: s
     notFound();
   }
 
-  const projectWhereClause = employee.role === "ADMIN" || employee.role === "MANAGER" ? {
+  const projectWhereClause = (await checkPermission("project:update")) ? {
     status: { not: "COMPLETED" as const }
   } : {
     status: { not: "COMPLETED" as const },

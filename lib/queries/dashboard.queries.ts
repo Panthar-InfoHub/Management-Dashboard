@@ -4,11 +4,13 @@ import type { AuthEmployee } from "@/lib/auth";
 import type { Prisma, TaskStatus } from "@/lib/generated/prisma";
 import { startOfWeek, startOfMonth, startOfDay, endOfDay, subDays, addDays, eachDayOfInterval, format } from "date-fns";
 import { ROLE_ORDER, sortByOrder } from "@/lib/dashboard-colors";
+import { hasPermission } from "@/lib/permissions";
 
 const OPEN_TASK_STATUSES: TaskStatus[] = ["BACKLOG", "TODO", "IN_PROGRESS", "REVIEW", "TESTING"];
 
+/** Org-wide dashboard for admins and anyone who can manage all projects. */
 function isAdminOrManager(employee: AuthEmployee) {
-  return employee.role === "ADMIN" || employee.role === "MANAGER";
+  return hasPermission(employee, "project:update");
 }
 
 function checkIsOverdue(date: Date | null | undefined, now: Date): boolean {
@@ -31,7 +33,7 @@ export async function getDashboardOverview(employee: AuthEmployee) {
   const monthStart = startOfMonth(now);
   const weekEnd = addDays(now, 7);
 
-  if (isAdminOrManager(employee)) {
+  if (await isAdminOrManager(employee)) {
     // Phase 2.1 Optimization: Consolidate 9 DB roundtrips into 1 raw SQL query
     const results = await db.$queryRaw<any[]>`
       SELECT 
@@ -124,7 +126,7 @@ export async function getDashboardOverview(employee: AuthEmployee) {
 
 /** The tasks that most need eyes on them right now: org-wide for admins/managers, personal otherwise. */
 export async function getTaskRadar(employee: AuthEmployee) {
-  const admin = isAdminOrManager(employee);
+  const admin = await isAdminOrManager(employee);
 
   const now = new Date();
   const weekEnd = addDays(now, 7);
@@ -155,7 +157,7 @@ export async function getTaskRadar(employee: AuthEmployee) {
 
 /** Projects that need a decision: critical priority, past/imminent end date, or having overdue tasks. */
 export async function getAttentionProjects(employee: AuthEmployee) {
-  const admin = isAdminOrManager(employee);
+  const admin = await isAdminOrManager(employee);
   const now = new Date();
   const attentionEndThreshold = addDays(endOfDay(now), 1);
 
@@ -207,7 +209,7 @@ export async function getAttentionProjects(employee: AuthEmployee) {
 
 /** Active/planning projects, most recently updated first, with computed progress. */
 export async function getDashboardProjectsSummary(employee: AuthEmployee) {
-  const admin = isAdminOrManager(employee);
+  const admin = await isAdminOrManager(employee);
 
   const whereClause: Prisma.ProjectWhereInput = admin
     ? { status: { in: ["ACTIVE", "PLANNING"] } }
@@ -234,7 +236,7 @@ export async function getDashboardProjectsSummary(employee: AuthEmployee) {
 
 /** Daily completion vs creation velocity over the last 14 days — admins/managers only. */
 export async function getCompletionTrend(employee: AuthEmployee) {
-  if (!isAdminOrManager(employee)) return null;
+  if (!(await isAdminOrManager(employee))) return null;
 
   const now = new Date();
   const rangeStart = startOfDay(subDays(now, 13));
@@ -279,10 +281,10 @@ export async function getCompletionTrend(employee: AuthEmployee) {
 
 /** Team workload + org composition — admins/managers only. */
 export async function getDashboardChartsData(employee: AuthEmployee) {
-  if (!isAdminOrManager(employee)) return null;
+  if (!(await isAdminOrManager(employee))) return null;
 
   const [roleGroups, teamWorkloadRows] = await Promise.all([
-    db.employee.groupBy({ by: ["role"], _count: true, where: { status: "ACTIVE" } }),
+    db.employee.groupBy({ by: ["employmentType"], _count: true, where: { status: "ACTIVE", role: { not: "SUPER_ADMIN" } } }),
     db.$queryRaw<{ name: string; value: number }[]>`
       SELECT tm.name, COUNT(t.id)::int as value
       FROM "Task" t
@@ -297,7 +299,7 @@ export async function getDashboardChartsData(employee: AuthEmployee) {
 
   return {
     roles: sortByOrder(
-      roleGroups.map((g) => ({ name: g.role, value: g._count })),
+      roleGroups.map((g) => ({ name: g.employmentType, value: g._count })),
       ROLE_ORDER
     ),
     teamWorkload: teamWorkloadRows.map((r) => ({ name: r.name, value: Number(r.value) })),

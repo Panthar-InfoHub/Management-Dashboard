@@ -8,6 +8,7 @@ export type AuditEntity =
   | "Team"
   | "Employee"
   | "SystemRole"
+  | "AccessPreset"
   | "EmployeePermission"
   | "Comment";
 

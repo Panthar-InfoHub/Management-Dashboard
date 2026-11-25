@@ -102,7 +102,7 @@ export function DashboardCharts({
       </Panel>
 
       {/* 2. Team Composition */}
-      <Panel icon={Users} iconClassName="text-emerald-500" title="Team Composition" description="Active members by role" className="lg:col-span-1">
+      <Panel icon={Users} iconClassName="text-emerald-500" title="Team Composition" description="Active members by employment type" className="lg:col-span-1">
         <div className="flex h-full flex-col">
           <div className="relative min-h-0 flex-1">
             <ChartContainer config={buildRoleConfig(roles)} className="aspect-auto h-full w-full">

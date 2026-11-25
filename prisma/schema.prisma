@@ -14,6 +14,20 @@ datasource db {
 // ENUMS
 // ─────────────────────────────────────────────
 
+/// Access level only. Job titles live in `designation`; what someone leads
+/// (team, project) and their presets/personal grants add scoped powers.
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  MEMBER
+}
+
+enum EmploymentType {
+  FULL_TIME
+  INTERN
+  CONTRACT
+}
+
 enum EmployeeStatus {
   ACTIVE
   ON_LEAVE
@@ -51,6 +65,8 @@ enum ProjectStatus {
 // CORE MODELS
 // ─────────────────────────────────────────────
 
+/// Legacy: role permission lists from before roles became the `Role` enum.
+/// No longer read by the app; kept until a later release drops it.
 model SystemRole {
   name        String   @id // e.g. "ADMIN", "MANAGER", "EMPLOYEE", "INTERN"
   permissions String[]
@@ -68,7 +84,8 @@ model Employee {
   firstName   String
   lastName    String
   avatarUrl   String?
-  role        String         @default("EMPLOYEE")
+  role           Role           @default(MEMBER)
+  employmentType EmploymentType @default(FULL_TIME)
   status      EmployeeStatus @default(ACTIVE)
   designation String?        // e.g. "Senior Frontend Engineer"
   phone       String?
@@ -103,6 +120,7 @@ model Employee {
 
   // ── Per-user permission overrides ──
   employeePermissions EmployeePermission[]
+  accessPresets       EmployeeAccessPreset[]
   
   exitDate DateTime? // Null means currently active
 
@@ -319,4 +337,30 @@ model AuditLog {
   @@index([entity, entityId, createdAt])
   @@index([actorId, createdAt])
   @@index([createdAt])
+}
+
+// ── Access presets ──
+// A named, editable list of permissions (e.g. "HR"). Admins assign presets to
+// people; editing a preset changes access for everyone who has it.
+model AccessPreset {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  permissions String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members EmployeeAccessPreset[]
+}
+
+model EmployeeAccessPreset {
+  employeeId String
+  employee   Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  presetId   String
+  preset     AccessPreset @relation(fields: [presetId], references: [id], onDelete: Cascade)
+  grantedBy  String
+  grantedAt  DateTime     @default(now())
+
+  @@id([employeeId, presetId])
+  @@index([presetId])
 }

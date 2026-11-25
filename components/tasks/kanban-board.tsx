@@ -57,14 +57,12 @@ export function KanbanBoard({
   allowedTeams = [], 
   allEmployees = [],
   currentEmployeeId,
-  employeeRole
 }: { 
   initialTasks: any[], 
   allowedProjects?: any[], 
   allowedTeams?: any[], 
   allEmployees?: any[],
   currentEmployeeId: string,
-  employeeRole: string
 }) {
   const [taskList, setTaskList] = useState(initialTasks);
   const searchParams = useSearchParams();

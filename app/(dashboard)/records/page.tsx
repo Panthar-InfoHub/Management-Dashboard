@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { getCurrentEmployee } from "@/lib/auth";
+import { checkPermission } from "@/lib/auth";
 import { notFound, redirect } from "next/navigation";
 import { RecordsClient } from "@/components/records/records-client";
 import { db } from "@/lib/db";
@@ -32,9 +32,7 @@ function RecordsLoading() {
 }
 
 async function RecordsDataAsync() {
-  const currentEmployee = await getCurrentEmployee();
-  
-  if (currentEmployee.role !== "ADMIN" && currentEmployee.role !== "MANAGER") {
+  if (!(await checkPermission("employee:view-all"))) {
     redirect("/employees");
   }
 
