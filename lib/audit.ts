@@ -9,6 +9,9 @@ export type AuditEntity =
   | "Employee"
   | "SystemRole"
   | "AccessPreset"
+  | "Office"
+  | "CalendarDay"
+  | "LeaveType"
   | "EmployeePermission"
   | "Comment";
 

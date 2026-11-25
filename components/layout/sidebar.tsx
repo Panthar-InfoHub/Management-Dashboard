@@ -39,7 +39,7 @@ function Divider() {
   return <div className="my-2 h-px bg-border w-[calc(100%-16px)] mx-auto" />;
 }
 
-type NavListsProps = { collapsed: boolean; canViewRecords: boolean; isAdmin: boolean; onNavigate?: () => void };
+type NavListsProps = { collapsed: boolean; canViewRecords: boolean; canOpenSettings: boolean; onNavigate?: () => void };
 
 // usePathname() is request data on dynamic routes, so it lives in its own
 // component behind <Suspense>. The fallback renders the same links without the
@@ -91,7 +91,7 @@ function NavItemLink({ item, active, collapsed, onNavigate }: { item: NavItem; a
   );
 }
 
-function NavLists({ pathname, collapsed, canViewRecords, isAdmin, onNavigate }: NavListsProps & { pathname: string | null }) {
+function NavLists({ pathname, collapsed, canViewRecords, canOpenSettings, onNavigate }: NavListsProps & { pathname: string | null }) {
   return (
     <>
       <ScrollArea className="flex-1 px-2 py-1">
@@ -105,7 +105,7 @@ function NavLists({ pathname, collapsed, canViewRecords, isAdmin, onNavigate }: 
       <Divider />
 
       <div className="px-2 py-1">
-        {bottomItems.filter((item) => isAdmin || item.label !== "Settings").map((item) => (
+        {bottomItems.filter((item) => canOpenSettings || item.label !== "Settings").map((item) => (
           <NavItemLink key={item.href} item={item} active={isActivePath(pathname, item.href)} collapsed={collapsed} onNavigate={onNavigate} />
         ))}
       </div>
@@ -116,8 +116,8 @@ function NavLists({ pathname, collapsed, canViewRecords, isAdmin, onNavigate }: 
 export function Sidebar({ collapsed, setCollapsed, isMobile, onNavigate }: { collapsed: boolean; setCollapsed: (val: boolean) => void, isMobile?: boolean, onNavigate?: () => void }) {
   const { user, isLoaded } = useUser();
   const access = useAccess();
-  const isAdmin = access.isAdmin;
   const canViewRecords = access.can("employee:view-all");
+  const canOpenSettings = access.isAdmin || access.can("leave:manage");
 
   return (
     <aside
@@ -176,8 +176,8 @@ export function Sidebar({ collapsed, setCollapsed, isMobile, onNavigate }: { col
         </div>
       )}
 
-      <Suspense fallback={<NavLists pathname={null} collapsed={collapsed} canViewRecords={canViewRecords} isAdmin={isAdmin} onNavigate={onNavigate} />}>
-        <ActiveNavLists collapsed={collapsed} canViewRecords={canViewRecords} isAdmin={isAdmin} onNavigate={onNavigate} />
+      <Suspense fallback={<NavLists pathname={null} collapsed={collapsed} canViewRecords={canViewRecords} canOpenSettings={canOpenSettings} onNavigate={onNavigate} />}>
+        <ActiveNavLists collapsed={collapsed} canViewRecords={canViewRecords} canOpenSettings={canOpenSettings} onNavigate={onNavigate} />
       </Suspense>
 
       <Divider />

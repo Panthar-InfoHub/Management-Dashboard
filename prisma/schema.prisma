@@ -121,6 +121,15 @@ model Employee {
   // ── Per-user permission overrides ──
   employeePermissions EmployeePermission[]
   accessPresets       EmployeeAccessPreset[]
+
+  // ── Attendance & leave ──
+  officeId          String?            // null = the default office
+  office            Office?            @relation(fields: [officeId], references: [id])
+  attendance        Attendance[]
+  attendanceEvents  AttendanceEvent[]
+  leaveBalances     LeaveBalance[]
+  requests          Request[]          @relation("RequestEmployee")
+  decidedRequests   Request[]          @relation("RequestDecider")
   
   exitDate DateTime? // Null means currently active
 
@@ -363,4 +372,208 @@ model EmployeeAccessPreset {
 
   @@id([employeeId, presetId])
   @@index([presetId])
+}
+
+// ─────────────────────────────────────────────
+// ATTENDANCE & LEAVE
+// Dates are calendar days in the office timezone (`@db.Date`); clock times are
+// UTC timestamps. Super Admins are not tracked.
+// ─────────────────────────────────────────────
+
+/// What a weekday or a calendar day is by default.
+enum DayKind {
+  OFFICE
+  WFH
+  OFF
+  HOLIDAY
+}
+
+/// What happens to a clock-in after the office's late cut-off.
+enum LateOutcome {
+  HALF_DAY
+  LATE
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  HALF_DAY
+  ABSENT
+  ON_LEAVE
+  WFH
+  HOLIDAY
+  WEEKLY_OFF
+}
+
+enum AttendanceEventType {
+  CHECK_IN
+  CHECK_OUT
+  ADMIN_FIX
+  REVIEW
+}
+
+enum RequestKind {
+  LEAVE
+  WFH
+  ATTENDANCE_FIX
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum HalfDayPart {
+  FIRST_HALF
+  SECOND_HALF
+}
+
+model Office {
+  id           String      @id @default(cuid())
+  name         String
+  address      String?
+  latitude     Float
+  longitude    Float
+  radiusMeters Int         @default(100)
+  timezone     String      @default("Asia/Kolkata")
+  lateAfter    String      @default("11:00") // HH:mm, office time
+  lateOutcome  LateOutcome @default(HALF_DAY)
+  /// Kind of each weekday, Sunday first (7 values).
+  weekPattern  DayKind[]
+  isDefault    Boolean     @default(false)
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  employees    Employee[]
+  calendarDays CalendarDay[]
+  attendance   Attendance[]
+}
+
+/// A dated exception to the week pattern: a holiday, or e.g. a Saturday that
+/// is an office day. officeId null = every office.
+model CalendarDay {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  kind        DayKind
+  name        String?
+  officeId    String?
+  office      Office?  @relation(fields: [officeId], references: [id], onDelete: Cascade)
+  createdById String
+  createdAt   DateTime @default(now())
+
+  @@unique([date, officeId])
+  @@index([date])
+}
+
+model Attendance {
+  id             String           @id @default(cuid())
+  employeeId     String
+  employee       Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  officeId       String?
+  office         Office?          @relation(fields: [officeId], references: [id])
+  date           DateTime         @db.Date
+  status         AttendanceStatus
+  dayKind        DayKind          @default(OFFICE) // what the day was when recorded
+
+  checkInAt      DateTime?
+  checkOutAt     DateTime?
+  workMinutes    Int?
+  checkInLocation  Json?          // { lat, lng, accuracy, distanceMeters, inside }
+  checkOutLocation Json?
+
+  isLate         Boolean          @default(false)
+  missedCheckout Boolean          @default(false)
+  /// Late half day waiting for an approver to confirm or excuse it.
+  reviewStatus   RequestStatus?
+  reviewedById   String?
+  reviewedAt     DateTime?
+  note           String?
+
+  events         AttendanceEvent[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([employeeId, date])
+  @@index([date, status])
+}
+
+model AttendanceEvent {
+  id           String              @id @default(cuid())
+  attendanceId String
+  attendance   Attendance          @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  employeeId   String
+  employee     Employee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type         AttendanceEventType
+  at           DateTime
+  location     Json?
+  actorId      String?             // who did it, when not the employee
+  note         String?
+  createdAt    DateTime            @default(now())
+
+  @@index([attendanceId])
+  @@index([employeeId, at])
+}
+
+model LeaveType {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  /// Days per year; null = no limit (e.g. Unpaid).
+  yearlyDays   Float?
+  /// Unused days that move to next year; 0 = none.
+  carryOverMax Float    @default(0)
+  isPaid       Boolean  @default(true)
+  isActive     Boolean  @default(true)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  balances     LeaveBalance[]
+  requests     Request[]
+}
+
+model LeaveBalance {
+  id          String    @id @default(cuid())
+  employeeId  String
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveTypeId String
+  leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+  year        Int
+  allowed     Float     @default(0)
+  carriedOver Float     @default(0)
+  adjusted    Float     @default(0) // manual +/- by HR
+  used        Float     @default(0)
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([employeeId, leaveTypeId, year])
+  @@index([leaveTypeId, year])
+}
+
+model Request {
+  id           String         @id @default(cuid())
+  employeeId   String
+  employee     Employee       @relation("RequestEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  kind         RequestKind
+  leaveTypeId  String?
+  leaveType    LeaveType?     @relation(fields: [leaveTypeId], references: [id])
+  startDate    DateTime       @db.Date
+  endDate      DateTime       @db.Date
+  halfDay      HalfDayPart?
+  days         Float          @default(0) // working days counted against the balance
+  reason       String
+  status       RequestStatus  @default(PENDING)
+  decidedById  String?
+  decidedBy    Employee?      @relation("RequestDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt    DateTime?
+  decisionNote String?
+  /// ATTENDANCE_FIX only: the corrected times.
+  fixCheckIn   DateTime?
+  fixCheckOut  DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([status, createdAt])
+  @@index([employeeId, startDate])
 }

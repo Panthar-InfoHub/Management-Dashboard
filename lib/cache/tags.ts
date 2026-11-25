@@ -4,6 +4,9 @@ export const CACHE_TAGS = {
   /** Every person's presets and grants (a preset edit touches many people). */
   access: "access",
   presets: "access-presets",
+  offices: "offices",
+  calendar: "calendar-days",
+  leaveTypes: "leave-types",
 } as const;
 
 /** One person's presets and grants. */

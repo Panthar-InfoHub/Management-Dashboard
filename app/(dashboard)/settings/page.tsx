@@ -1,5 +1,7 @@
 import { Suspense } from "react";
-import { getCurrentEmployee } from "@/lib/auth";
+import { getCurrentEmployee, checkPermission } from "@/lib/auth";
+import { getCalendarDays, getDefaultOffice, getLeaveTypes } from "@/lib/attendance/settings";
+import { todayKey } from "@/lib/attendance/calendar";
 import { redirect } from "next/navigation";
 import { SettingsClient } from "@/components/settings/settings-client";
 import { listAccessPresetsAction } from "@/lib/actions/access.actions";
@@ -40,13 +42,21 @@ export default function SettingsPage() {
 }
 
 async function SettingsDataAsync() {
-  const employee = await getCurrentEmployee();
+  const [employee, canManageLeave] = await Promise.all([getCurrentEmployee(), checkPermission("leave:manage")]);
+  const isAdmin = isAdminRole(employee.role);
 
-  if (!isAdminRole(employee.role)) {
+  if (!isAdmin && !canManageLeave) {
     redirect("/");
   }
 
-  const presets = await listAccessPresetsAction();
-  return <SettingsClient presets={presets} />;
-}
+  // Calendar overrides from the start of this year to the end of next year.
+  const year = Number(todayKey("Asia/Kolkata").slice(0, 4));
+  const [presets, office, calendarDays, leaveTypes] = await Promise.all([
+    isAdmin ? listAccessPresetsAction() : null,
+    isAdmin ? getDefaultOffice() : null,
+    canManageLeave ? getCalendarDays(`${year}-01-01`, `${year + 1}-12-31`) : null,
+    canManageLeave ? getLeaveTypes({ includeInactive: true }) : null,
+  ]);
 
+  return <SettingsClient presets={presets} office={office} calendarDays={calendarDays} leaveTypes={leaveTypes} />;
+}

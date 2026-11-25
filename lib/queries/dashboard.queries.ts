@@ -45,7 +45,7 @@ export async function getDashboardOverview(employee: AuthEmployee) {
         (SELECT COUNT(*) FROM "Task" WHERE status = 'DONE' AND "completedAt" >= ${weekStart}) as "completedThisWeek",
         (SELECT COUNT(*) FROM "Employee" WHERE status = 'ACTIVE') as "teamMembers",
         (SELECT COUNT(*) FROM "Team") as "teams",
-        (SELECT COUNT(*) FROM "Employee" WHERE status = 'ACTIVE' AND role = 'INTERN') as "interns"
+        (SELECT COUNT(*) FROM "Employee" WHERE status = 'ACTIVE' AND "employmentType" = 'INTERN') as "interns"
     `;
 
     const stats = results[0];
