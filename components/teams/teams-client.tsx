@@ -27,7 +27,6 @@ export function TeamsClient({ initialTeams, employees, canCreate = false }: { in
       createTeamAction(newTeam).then((team) => {
         setNewTeamOpen(false);
         setNewTeam({ name: "", description: "", leadId: "" });
-        router.refresh();
       }).catch((err: any) => toast.error(err.message || "Failed to create team"));
     });
   };
@@ -94,6 +93,7 @@ export function TeamsClient({ initialTeams, employees, canCreate = false }: { in
               <div 
                 key={team.id} 
                 onClick={() => router.push(`/teams/${team.id}`)}
+                onMouseEnter={() => router.prefetch(`/teams/${team.id}`)}
                 className="group flex flex-col bg-background rounded-xl border border-border/40 hover:border-border transition-all cursor-pointer overflow-hidden"
               >
                 <div className="p-5 border-b border-border/40 bg-muted/10 flex items-start gap-4">

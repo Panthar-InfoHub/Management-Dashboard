@@ -5,8 +5,14 @@ import { useUser } from "@clerk/nextjs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopNav } from "@/components/layout/top-nav";
-import { CommandPalette } from "@/components/layout/command-palette";
-import { SubmitUpdateModal } from "@/components/modals/submit-update-modal";
+import dynamic from "next/dynamic";
+
+// cmdk + dialog code only loads in the browser after first paint; the palette
+// registers its ⌘K listener when the chunk arrives.
+const CommandPalette = dynamic(
+  () => import("@/components/layout/command-palette").then((m) => m.CommandPalette),
+  { ssr: false }
+);
 import { cn } from "@/lib/utils";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -31,7 +37,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <CommandPalette isAdmin={isAdmin} />
-        {/* <SubmitUpdateModal /> Hidden for now as requested */}
       </TooltipProvider>
   );
 }

@@ -1,3 +1,4 @@
+import { computeProgress } from "@/lib/projects/progress";
 import { db } from "@/lib/db";
 import type { AuthEmployee } from "@/lib/auth";
 import type { Prisma, TaskStatus } from "@/lib/generated/prisma";
@@ -185,7 +186,7 @@ export async function getAttentionProjects(employee: AuthEmployee) {
   return projects.map((p) => {
     const totalTasks = p.tasks.length;
     const completedTasks = p.tasks.filter((t) => t.status === "DONE").length;
-    const computedProgress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : p.progress;
+    const computedProgress = computeProgress(completedTasks, totalTasks);
     const overdueTasksCount = p.tasks.filter((t) => t.status !== "DONE" && checkIsOverdue(t.dueDate, now)).length;
 
     return {
@@ -226,7 +227,7 @@ export async function getDashboardProjectsSummary(employee: AuthEmployee) {
   return projects.map((p) => {
     const totalTasks = p.tasks.length;
     const completedTasks = p.tasks.filter((t) => t.status === "DONE").length;
-    const computedProgress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : p.progress;
+    const computedProgress = computeProgress(completedTasks, totalTasks);
     return { ...p, computedProgress };
   });
 }

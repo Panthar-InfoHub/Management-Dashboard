@@ -1,126 +1,197 @@
 "use client";
 
-import { useState, useTransition, useEffect } from "react";
+import { useMemo, useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { Progress } from "@/components/ui/progress";
+import { TaskComments } from "@/components/tasks/task-comments";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Clock, Calendar, AlertCircle, ChevronRight, CheckCircle2, Circle, MoreHorizontal, Plus, Link as LinkIcon, ShieldAlert, UserPlus, ChevronDown, ChevronRight as ChevronRightIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { updateTaskStatusAction, updateTaskPriorityAction, createSubtaskAction, setTaskBlockerAction, assignTaskAction, deleteTaskAction } from "@/lib/actions/task.actions";
+import { Clock, Calendar, ChevronRight, Plus, Link as LinkIcon, ShieldAlert, UserPlus, ChevronDown, ChevronRight as ChevronRightIcon } from "lucide-react";
+import { cn, errorMessage } from "@/lib/utils";
+import { updateTaskStatusAction, updateTaskPriorityAction, createSubtaskAction, setTaskBlockerAction, setTaskAssigneesAction, deleteTaskAction } from "@/lib/actions/task.actions";
 import { toast } from "sonner";
 
 const statusColors: Record<string, string> = { BACKLOG: "bg-gray-500/10 text-gray-600 border-gray-500/20", TODO: "bg-slate-500/10 text-slate-600 border-slate-500/20", IN_PROGRESS: "bg-blue-500/10 text-blue-600 border-blue-500/20", REVIEW: "bg-purple-500/10 text-purple-600 border-purple-500/20", TESTING: "bg-amber-500/10 text-amber-600 border-amber-500/20", DONE: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" };
 const priorityColors: Record<string, string> = { CRITICAL: "bg-red-500/10 text-red-600 border-red-500/20", HIGH: "bg-orange-500/10 text-orange-600 border-orange-500/20", MEDIUM: "bg-blue-500/10 text-blue-600 border-blue-500/20", LOW: "bg-gray-500/10 text-gray-600 border-gray-500/20" };
 
-export function TaskDetailClient({ initialTask, projectTasks, canEditDetails = true, canEditStatus = true, canDelete = false, currentEmployeeId }: { initialTask: any, projectTasks?: any[], canEditDetails?: boolean, canEditStatus?: boolean, canDelete?: boolean, currentEmployeeId?: string }) {
-  const router = useRouter();
-  const [task, setTask] = useState(initialTask);
-  const [projectTasksList, setProjectTasksList] = useState(projectTasks || []);
-  
-  // Sync state with server props on revalidation
-  useEffect(() => {
-    setTask(initialTask);
-  }, [initialTask]);
+type Person = { id: string; firstName: string; lastName: string; avatarUrl: string | null };
+type SubtaskNode = { id: string; title: string; status: string; priority: string; dueDate: string | Date | null; parentId: string | null; assignees: Person[] };
 
-  useEffect(() => {
-    setProjectTasksList(projectTasks || []);
-  }, [projectTasks]);
+type TaskPatch = Partial<{ status: string; priority: string }>;
+type SubtaskPatch = { id: string } & Partial<Pick<SubtaskNode, "status" | "assignees">>;
+
+function formatDate(value: string | Date | null | undefined) {
+  return value ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
+}
+
+function AvatarStack({ people, size = "h-5 w-5" }: { people: Person[]; size?: string }) {
+  return (
+    <div className="flex -space-x-1.5">
+      {people.slice(0, 3).map((p) => (
+        <Avatar key={p.id} className={cn(size, "ring-2 ring-background")}>
+          {p.avatarUrl && <AvatarImage src={p.avatarUrl} alt="" />}
+          <AvatarFallback className="text-[8px] bg-secondary text-secondary-foreground">{p.firstName.charAt(0)}</AvatarFallback>
+        </Avatar>
+      ))}
+      {people.length > 3 && (
+        <span className={cn(size, "rounded-full bg-muted ring-2 ring-background text-[8px] flex items-center justify-center text-muted-foreground")}>+{people.length - 3}</span>
+      )}
+    </div>
+  );
+}
+
+export function TaskDetailClient({
+  initialTask,
+  projectTasks,
+  subtaskTree = [],
+  assignableEmployees = [],
+  canEditDetails = true,
+  canEditStatus = true,
+  canDelete = false,
+  currentEmployeeId,
+}: {
+  initialTask: any;
+  projectTasks?: any[];
+  subtaskTree?: SubtaskNode[];
+  assignableEmployees?: Person[];
+  canEditDetails?: boolean;
+  canEditStatus?: boolean;
+  canDelete?: boolean;
+  currentEmployeeId?: string;
+}) {
+  const router = useRouter();
+  // Optimistic layers over server data: they show the change at once and fall
+  // back to the server props when the action's revalidation arrives.
+  const [task, patchTask] = useOptimistic(initialTask, (current: any, patch: TaskPatch) => ({ ...current, ...patch }));
+  const [subtasks, patchSubtask] = useOptimistic(subtaskTree, (list: SubtaskNode[], patch: SubtaskPatch) =>
+    list.map((t) => (t.id === patch.id ? { ...t, ...patch } : t))
+  );
 
   const [isPending, startTransition] = useTransition();
   const [expandedSubtasks, setExpandedSubtasks] = useState<Record<string, boolean>>({});
   const [isSubtaskDialogOpen, setIsSubtaskDialogOpen] = useState(false);
-  const [subtaskForm, setSubtaskForm] = useState({
+  const [subtaskForm, setSubtaskForm] = useState<{ title: string; priority: string; dueDate: string; assigneeIds: string[] }>({
     title: "",
     priority: initialTask.priority,
-    assigneeId: currentEmployeeId || "",
+    dueDate: "",
+    assigneeIds: currentEmployeeId && assignableEmployees.some((e) => e.id === currentEmployeeId) ? [currentEmployeeId] : [],
   });
 
-  // Build a fast lookup for subtasks
-  const tasksByParent = projectTasksList.reduce((acc: any, t: any) => {
-    if (t.parentId) {
-      if (!acc[t.parentId]) acc[t.parentId] = [];
-      acc[t.parentId].push(t);
+  const tasksByParent = useMemo(() => {
+    const map: Record<string, SubtaskNode[]> = {};
+    for (const t of subtasks) {
+      if (!t.parentId) continue;
+      (map[t.parentId] ??= []).push(t);
     }
-    return acc;
-  }, {});
+    return map;
+  }, [subtasks]);
+
+  const directSubtasks = tasksByParent[task.id] ?? [];
+  const doneSubtasks = directSubtasks.filter((t) => t.status === "DONE").length;
+  const openSubtasks = directSubtasks.length - doneSubtasks;
+  const parentDueDate = task.dueDate ? new Date(task.dueDate).toISOString().slice(0, 10) : undefined;
+  const currentEmployee = assignableEmployees.find((e) => e.id === currentEmployeeId)
+    ?? task.assignees.find((a: Person) => a.id === currentEmployeeId)
+    ?? (task.creator?.id === currentEmployeeId ? task.creator : null);
 
   const toggleSubtask = (id: string) => {
     setExpandedSubtasks(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
   const handleStatusChange = (newStatus: string) => {
-    const oldStatus = task.status;
-    setTask((prev: any) => ({ ...prev, status: newStatus }));
-    startTransition(() => {
-      updateTaskStatusAction(task.id, newStatus).then((res) => {
-        if(res.success) toast.success(`Status updated to ${newStatus}`);
-      }).catch(err => {
-        setTask((prev: any) => ({ ...prev, status: oldStatus }));
-        toast.error("Failed to update status");
-      });
+    startTransition(async () => {
+      patchTask({ status: newStatus });
+      try {
+        await updateTaskStatusAction(task.id, newStatus);
+        toast.success(`Status changed to ${newStatus.replace("_", " ")}`);
+      } catch (err) {
+        toast.error(errorMessage(err, "Status not changed. Try again."));
+      }
     });
   };
 
   const handlePriorityChange = (newPriority: string) => {
-    const oldPriority = task.priority;
-    setTask((prev: any) => ({ ...prev, priority: newPriority }));
-    startTransition(() => {
-      updateTaskPriorityAction(task.id, newPriority).then((res) => {
-        if(res.success) toast.success(`Priority updated to ${newPriority}`);
-      }).catch(err => {
-        setTask((prev: any) => ({ ...prev, priority: oldPriority }));
-        toast.error("Failed to update priority");
-      });
+    startTransition(async () => {
+      patchTask({ priority: newPriority });
+      try {
+        await updateTaskPriorityAction(task.id, newPriority);
+        toast.success(`Priority changed to ${newPriority}`);
+      } catch (err) {
+        toast.error(errorMessage(err, "Priority not changed. Try again."));
+      }
     });
   };
 
   const handleBlockerChange = (blockerId: string | null) => {
-    startTransition(() => {
-      setTaskBlockerAction(task.id, blockerId).then((res) => {
-        if(res.success) {
-          toast.success(blockerId ? "Blocker added" : "Blocker removed");
-          router.refresh();
-        }
-      }).catch((err: any) => {
-        toast.error(err.message || "Failed to set blocker");
-      });
+    startTransition(async () => {
+      try {
+        await setTaskBlockerAction(task.id, blockerId);
+        toast.success(blockerId ? "Blocker added" : "Blocker removed");
+      } catch (err) {
+        toast.error(errorMessage(err, "Blocker not changed. Try again."));
+      }
+    });
+  };
+
+  const handleSubtaskStatus = (subtask: SubtaskNode, status: string) => {
+    startTransition(async () => {
+      patchSubtask({ id: subtask.id, status });
+      try {
+        await updateTaskStatusAction(subtask.id, status);
+      } catch (err) {
+        toast.error(errorMessage(err, "Subtask status not changed. Try again."));
+      }
+    });
+  };
+
+  const handleSubtaskAssignee = (subtask: SubtaskNode, person: Person, checked: boolean) => {
+    const next = checked
+      ? [...subtask.assignees, person]
+      : subtask.assignees.filter((a) => a.id !== person.id);
+    startTransition(async () => {
+      patchSubtask({ id: subtask.id, assignees: next });
+      try {
+        await setTaskAssigneesAction(subtask.id, next.map((a) => a.id));
+      } catch (err) {
+        toast.error(errorMessage(err, "Assignees not changed. Try again."));
+      }
     });
   };
 
   const handleCreateSubtask = (e: React.FormEvent) => {
     e.preventDefault();
-    if(!subtaskForm.title.trim()) return;
-    startTransition(() => {
-      createSubtaskAction(task.id, { 
-        title: subtaskForm.title, 
-        priority: subtaskForm.priority,
-        assigneeId: subtaskForm.assigneeId || undefined
-      }).then((res) => {
-        if(res.success) {
-          toast.success("Subtask created");
-          setIsSubtaskDialogOpen(false);
-          setSubtaskForm(prev => ({ ...prev, title: "", assigneeId: !canEditDetails ? (currentEmployeeId || "") : "" }));
-          router.refresh(); 
-        }
-      }).catch((err: any) => {
-        toast.error(err.message || "Failed to add subtask");
-      });
+    if (!subtaskForm.title.trim()) return;
+    startTransition(async () => {
+      try {
+        await createSubtaskAction(task.id, {
+          title: subtaskForm.title,
+          priority: subtaskForm.priority as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
+          assigneeIds: subtaskForm.assigneeIds,
+          dueDate: subtaskForm.dueDate || null,
+        });
+        toast.success("Subtask created");
+        setIsSubtaskDialogOpen(false);
+        setSubtaskForm(prev => ({ ...prev, title: "", dueDate: "", assigneeIds: !canEditDetails && currentEmployeeId ? [currentEmployeeId] : [] }));
+      } catch (err) {
+        toast.error(errorMessage(err, "Subtask not created. Try again."));
+      }
     });
   };
+
   const handleDelete = async () => {
-    if (!confirm("Are you sure you want to delete this task? This cannot be undone.")) return;
+    if (!confirm("Delete this task? This can't be undone.")) return;
     try {
       await deleteTaskAction(task.id);
       toast.success("Task deleted");
       router.push("/tasks");
-    } catch (e: any) {
-      toast.error(e.message || "Failed to delete task");
+    } catch (err) {
+      toast.error(errorMessage(err, "Task not deleted. Try again."));
     }
   };
 
@@ -149,7 +220,13 @@ export function TaskDetailClient({ initialTask, projectTasks, canEditDetails = t
               </Button>
             )}
           {canEditStatus && task.status !== "DONE" && (
-            <Button size="sm" className="h-8 shadow-none text-xs flex-1 sm:flex-initial" onClick={() => handleStatusChange("DONE")}>
+            <Button
+              size="sm"
+              className="h-8 shadow-none text-xs flex-1 sm:flex-initial"
+              onClick={() => handleStatusChange("DONE")}
+              disabled={openSubtasks > 0}
+              title={openSubtasks > 0 ? `Finish ${openSubtasks} open subtask${openSubtasks === 1 ? "" : "s"} first` : undefined}
+            >
               Mark as Done
             </Button>
           )}
@@ -276,218 +353,139 @@ export function TaskDetailClient({ initialTask, projectTasks, canEditDetails = t
 
             {/* Subtasks */}
             <div className="pt-6 border-t border-border/40">
-              <h3 className="text-sm font-medium mb-3 text-foreground flex items-center justify-between">
-                Subtasks
-                <span className="text-xs font-normal text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">{task.subtasks?.length || 0}</span>
-              </h3>
-              
-              <div className="border border-border/50 rounded-lg overflow-hidden flex flex-col bg-background/50">
-                {/* Recursive Subtask Renderer */}
-                {(() => {
-                  const renderTree = (tasks: any[], depth = 0) => {
-                    return tasks.map((subtask, index) => {
-                      const children = tasksByParent[subtask.id] || [];
-                      const isExpanded = expandedSubtasks[subtask.id];
-                      
-                      return (
-                        <div key={subtask.id} className="flex flex-col">
-                          <div 
-                            className="flex flex-col sm:flex-row sm:items-center justify-between py-2.5 pr-3 border-b border-border/40 hover:bg-muted/40 transition-colors gap-3"
-                            style={{ paddingLeft: `calc(0.75rem + ${depth * 1.5}rem)` }}
-                          >
-                            <div className="flex items-start sm:items-center gap-2.5 min-w-0">
-                              {children.length > 0 && (
-                                <button onClick={() => toggleSubtask(subtask.id)} className="p-0.5 hover:bg-accent rounded-sm shrink-0 mr-1.5">
-                                  {isExpanded ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRightIcon className="h-3.5 w-3.5 text-muted-foreground" />}
-                                </button>
-                              )}
-                              
-                              <Link href={`/tasks/${subtask.id}`} className="text-sm font-medium text-foreground hover:underline truncate">
-                                {subtask.title}
-                              </Link>
-                            </div>
-                            <div className="flex items-center gap-3 pl-9 sm:pl-0 shrink-0 sm:w-[220px] justify-end">
-                              <div className="w-[95px] flex justify-end">
-                                <DropdownMenu>
-                                <DropdownMenuTrigger className="focus:outline-none shrink-0" disabled={!canEditStatus}>
-                                  <Badge variant="outline" className={cn("text-[9px] px-1 py-0 shadow-none cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-0.5", statusColors[subtask.status], !canEditStatus && "opacity-70 cursor-not-allowed")}>
-                                    {subtask.status.replace("_", " ")} {canEditStatus && <ChevronDown className="h-2.5 w-2.5" />}
-                                  </Badge>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="start">
-                                  <DropdownMenuLabel className="text-xs">Change Status</DropdownMenuLabel>
-                                  <DropdownMenuSeparator />
-                                  {Object.keys(statusColors).map(s => (
-                                    <DropdownMenuItem 
-                                      key={s} 
-                                      onClick={() => {
-                                        const oldStatus = subtask.status;
-                                        setProjectTasksList(prev => prev.map(t => t.id === subtask.id ? { ...t, status: s } : t));
-                                        startTransition(() => {
-                                          updateTaskStatusAction(subtask.id, s)
-                                            .then(() => router.refresh())
-                                            .catch((err: any) => {
-                                              toast.error(err.message || "Failed to unblock task");
-                                              setProjectTasksList(prev => prev.map(t => t.id === subtask.id ? { ...t, status: oldStatus } : t));
-                                            });
-                                        });
-                                      }} 
-                                      className="text-xs cursor-pointer"
-                                    >
-                                      <div className={cn("w-2 h-2 rounded-full mr-2", statusColors[s].split(" ")[0])} />
-                                      {s.replace("_", " ")}
-                                    </DropdownMenuItem>
-                                  ))}
-                                </DropdownMenuContent>
-                                </DropdownMenu>
-                              </div>
-                              <div className="w-[115px] flex justify-start">
-                                <DropdownMenu>
-                                <DropdownMenuTrigger className="focus:outline-none" disabled={!canEditDetails}>
-                                  {subtask.assignees?.[0] ? (
-                                    <div className={cn("flex items-center gap-1.5 hover:bg-muted/50 p-1 rounded-md transition-colors", canEditDetails ? "cursor-pointer" : "opacity-70 cursor-not-allowed")}>
-                                      <Avatar className="h-5 w-5">
-                                        <AvatarImage src={subtask.assignees[0].avatarUrl} />
-                                        <AvatarFallback className="text-[8px] bg-secondary text-secondary-foreground">{subtask.assignees[0].firstName.charAt(0)}</AvatarFallback>
-                                      </Avatar>
-                                      <span className="text-[11px] text-muted-foreground truncate max-w-[80px] hidden sm:block">
-                                        {subtask.assignees[0].firstName}
-                                      </span>
-                                    </div>
-                                  ) : (
-                                    <div className={cn("flex items-center gap-1.5 hover:bg-muted/50 p-1 rounded-md transition-colors", canEditDetails ? "cursor-pointer" : "opacity-70 cursor-not-allowed")}>
-                                      <div className="h-5 w-5 rounded-full border border-dashed border-border/50 bg-accent/30 flex items-center justify-center">
-                                        <UserPlus className="h-3 w-3 text-muted-foreground" />
-                                      </div>
-                                      <span className="text-[11px] text-muted-foreground hidden sm:block">Assign</span>
-                                    </div>
-                                  )}
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-48 max-h-64 overflow-y-auto">
-                                  <DropdownMenuLabel className="text-xs">Assign To</DropdownMenuLabel>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem 
-                                    onClick={() => startTransition(() => { 
-                                      assignTaskAction(subtask.id, null)
-                                        .then(() => { toast.success("Task unassigned"); router.refresh(); })
-                                        .catch((err: any) => toast.error(err.message || "Failed to unassign task"));
-                                    })}
-                                    className="text-xs text-red-500 cursor-pointer"
-                                  >
-                                    Unassign
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                   {task.project?.members?.filter((m: any) => m.employee)?.map((m: any) => (
-                                     <DropdownMenuItem 
-                                       key={m.employee.id} 
-                                       onClick={() => startTransition(() => { 
-                                         assignTaskAction(subtask.id, m.employee.id)
-                                           .then(() => { toast.success("Task assigned"); router.refresh(); })
-                                           .catch((err: any) => toast.error(err.message || "Failed to assign task"));
-                                       })}
-                                       className="text-xs cursor-pointer flex items-center gap-2"
-                                     >
-                                       <Avatar className="h-4 w-4">
-                                         <AvatarImage src={m.employee.avatarUrl} />
-                                         <AvatarFallback className="text-[7px] bg-secondary text-secondary-foreground">{m.employee.firstName?.charAt(0) || "U"}</AvatarFallback>
-                                       </Avatar>
-                                       <span className="truncate">{m.employee.firstName} {m.employee.lastName}</span>
-                                     </DropdownMenuItem>
-                                   ))}
-                                </DropdownMenuContent>
-                                </DropdownMenu>
-                              </div>
-                            </div>
-                          </div>
-                          {isExpanded && children.length > 0 && (
-                            <div className="flex flex-col w-full relative">
-                              <div className="absolute top-0 bottom-0 w-px bg-border/40 z-0" style={{ left: `calc(1rem + ${depth * 1.5}rem)` }} />
-                              {renderTree(children, depth + 1)}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    });
-                  };
-
-                  return renderTree(task.subtasks || []);
-                })()}
-                {(!task.subtasks || task.subtasks.length === 0) && (
-                  <div className="p-4 text-center text-xs text-muted-foreground">
-                    No subtasks yet. Add one below.
+              <div className="mb-3 flex items-center justify-between gap-4">
+                <h3 className="text-sm font-medium text-foreground">Subtasks</h3>
+                {directSubtasks.length > 0 && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>{doneSubtasks} of {directSubtasks.length} done</span>
+                    <Progress value={(doneSubtasks / directSubtasks.length) * 100} className="h-1.5 w-20" aria-label="Subtask progress" />
                   </div>
                 )}
               </div>
 
-                {canEditStatus && (
-                  <Dialog open={isSubtaskDialogOpen} onOpenChange={setIsSubtaskDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button variant="outline" size="sm" className="mt-4 w-full justify-start text-muted-foreground border-dashed">
-                        <Plus className="h-3.5 w-3.5 mr-2" /> Add a new subtask...
-                      </Button>
-                    </DialogTrigger>
+              <div className="border border-border/50 rounded-lg overflow-hidden flex flex-col bg-background/50">
+                {directSubtasks.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-muted-foreground">
+                    No subtasks yet. Add one to split this task into smaller steps.
+                  </div>
+                ) : (
+                  <SubtaskRows
+                    nodes={directSubtasks}
+                    depth={0}
+                    tasksByParent={tasksByParent}
+                    expanded={expandedSubtasks}
+                    onToggle={toggleSubtask}
+                    canEditStatus={canEditStatus}
+                    canEditDetails={canEditDetails}
+                    assignableEmployees={assignableEmployees}
+                    onStatus={handleSubtaskStatus}
+                    onAssignee={handleSubtaskAssignee}
+                  />
+                )}
+              </div>
+
+              {canEditStatus && (
+                <Dialog open={isSubtaskDialogOpen} onOpenChange={setIsSubtaskDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="sm" className="mt-4 w-full justify-start text-muted-foreground border-dashed">
+                      <Plus className="h-3.5 w-3.5 mr-2" /> Add Subtask
+                    </Button>
+                  </DialogTrigger>
                   <DialogContent className="max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                       <DialogTitle>Create Subtask</DialogTitle>
                     </DialogHeader>
                     <form onSubmit={handleCreateSubtask} className="space-y-4 pt-4">
                       <div className="space-y-2">
-                        <label className="text-xs font-medium">Title</label>
-                        <Input 
+                        <label htmlFor="subtask-title" className="text-xs font-medium">Title</label>
+                        <Input
+                          id="subtask-title"
                           autoFocus
-                          placeholder="What needs to be done?" 
+                          placeholder="What needs to be done?"
                           value={subtaskForm.title}
-                          onChange={e => setSubtaskForm(prev => ({...prev, title: e.target.value}))}
+                          onChange={e => setSubtaskForm(prev => ({ ...prev, title: e.target.value }))}
                           disabled={isPending}
                         />
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <label className="text-xs font-medium">Priority</label>
-                          <Select 
-                            value={subtaskForm.priority} 
-                            onValueChange={(v: any) => setSubtaskForm(prev => ({...prev, priority: v}))}
+                          <Select
+                            value={subtaskForm.priority}
+                            onValueChange={(v) => setSubtaskForm(prev => ({ ...prev, priority: v }))}
                             disabled={isPending}
                           >
-                             <SelectTrigger><SelectValue/></SelectTrigger>
-                             <SelectContent>
-                               {Object.keys(priorityColors).map(p => (
-                                 <SelectItem key={p} value={p}>{p}</SelectItem>
-                               ))}
-                             </SelectContent>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {Object.keys(priorityColors).map(p => (
+                                <SelectItem key={p} value={p}>{p}</SelectItem>
+                              ))}
+                            </SelectContent>
                           </Select>
                         </div>
                         <div className="space-y-2">
-                          <label className="text-xs font-medium">Assignee</label>
-                          <Select 
-                            value={subtaskForm.assigneeId} 
-                            onValueChange={v => setSubtaskForm(prev => ({...prev, assigneeId: v}))}
-                            disabled={isPending || !canEditDetails}
-                          >
-                             <SelectTrigger><SelectValue placeholder="Unassigned"/></SelectTrigger>
-                             <SelectContent>
-                                <SelectItem value="">Unassigned</SelectItem>
-                                 {task.project?.members?.filter((m: any) => m.employee)?.map((m: any) => (
-                                   <SelectItem key={m.employee.id} value={m.employee.id}>
-                                     {m.employee.firstName} {m.employee.lastName}
-                                   </SelectItem>
-                                 ))}
-                             </SelectContent>
-                          </Select>
+                          <label htmlFor="subtask-due" className="text-xs font-medium">Due Date</label>
+                          <Input
+                            id="subtask-due"
+                            type="date"
+                            value={subtaskForm.dueDate}
+                            max={parentDueDate}
+                            onChange={e => setSubtaskForm(prev => ({ ...prev, dueDate: e.target.value }))}
+                            disabled={isPending}
+                          />
+                          {parentDueDate && <p className="text-[11px] text-muted-foreground">Parent is due {formatDate(task.dueDate)}.</p>}
                         </div>
+                      </div>
+                      <div className="space-y-2">
+                        <span className="text-xs font-medium">Assignees</span>
+                        {assignableEmployees.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">No one is on this project yet. Add members to the project first.</p>
+                        ) : (
+                          <div className="max-h-48 overflow-y-auto rounded-md border border-border/50 divide-y divide-border/40">
+                            {assignableEmployees
+                              .filter(e => canEditDetails || e.id === currentEmployeeId)
+                              .map(e => {
+                                const checked = subtaskForm.assigneeIds.includes(e.id);
+                                return (
+                                  <label key={e.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-muted/40">
+                                    <input
+                                      type="checkbox"
+                                      className="h-3.5 w-3.5 accent-foreground"
+                                      checked={checked}
+                                      disabled={isPending}
+                                      onChange={() => setSubtaskForm(prev => ({
+                                        ...prev,
+                                        assigneeIds: checked ? prev.assigneeIds.filter(id => id !== e.id) : [...prev.assigneeIds, e.id],
+                                      }))}
+                                    />
+                                    <span className="truncate">{e.firstName} {e.lastName}</span>
+                                  </label>
+                                );
+                              })}
+                          </div>
+                        )}
+                        <p className="text-[11px] text-muted-foreground">Only members of this project or its team can be assigned.</p>
                       </div>
                       <DialogFooter className="mt-4">
                         <Button type="button" variant="ghost" onClick={() => setIsSubtaskDialogOpen(false)}>Cancel</Button>
                         <Button type="submit" disabled={!subtaskForm.title.trim() || isPending}>
-                          {isPending ? "Creating..." : "Create"}
+                          {isPending ? "Creating…" : "Create Subtask"}
                         </Button>
                       </DialogFooter>
                     </form>
                   </DialogContent>
                 </Dialog>
-                )}
-              </div>
+              )}
             </div>
+
+            <TaskComments
+              taskId={task.id}
+              comments={task.comments ?? []}
+              currentEmployee={currentEmployee}
+              canModerate={canDelete}
+              canComment={canEditStatus}
+            />
+          </div>
 
           {/* Right Sidebar (Metadata) */}
           <div className="space-y-8">
@@ -518,11 +516,11 @@ export function TaskDetailClient({ initialTask, projectTasks, canEditDetails = t
               <div className="space-y-4">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground flex items-center gap-2"><Calendar className="h-3.5 w-3.5" /> Start Date</span>
-                  <span className="font-medium" suppressHydrationWarning>{task.startDate ? new Date(task.startDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}</span>
+                  <span className="font-medium" suppressHydrationWarning>{formatDate(task.startDate)}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground flex items-center gap-2"><Clock className="h-3.5 w-3.5" /> Due Date</span>
-                  <span className="font-medium text-foreground" suppressHydrationWarning>{task.dueDate ? new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}</span>
+                  <span className="font-medium text-foreground" suppressHydrationWarning>{formatDate(task.dueDate)}</span>
                 </div>
               </div>
             </div>
@@ -542,5 +540,147 @@ export function TaskDetailClient({ initialTask, projectTasks, canEditDetails = t
         </div>
       </div>
     </div>
+  );
+}
+
+function SubtaskRows({
+  nodes,
+  depth,
+  tasksByParent,
+  expanded,
+  onToggle,
+  canEditStatus,
+  canEditDetails,
+  assignableEmployees,
+  onStatus,
+  onAssignee,
+}: {
+  nodes: SubtaskNode[];
+  depth: number;
+  tasksByParent: Record<string, SubtaskNode[]>;
+  expanded: Record<string, boolean>;
+  onToggle: (id: string) => void;
+  canEditStatus: boolean;
+  canEditDetails: boolean;
+  assignableEmployees: Person[];
+  onStatus: (subtask: SubtaskNode, status: string) => void;
+  onAssignee: (subtask: SubtaskNode, person: Person, checked: boolean) => void;
+}) {
+  return (
+    <>
+      {nodes.map((subtask) => {
+        const children = tasksByParent[subtask.id] ?? [];
+        const isExpanded = expanded[subtask.id];
+        const childrenDone = children.filter((c) => c.status === "DONE").length;
+        return (
+          <div key={subtask.id} className="flex flex-col">
+            <div
+              className="flex flex-col sm:flex-row sm:items-center justify-between py-2.5 pr-3 border-b border-border/40 hover:bg-muted/40 transition-colors gap-3"
+              style={{ paddingLeft: `calc(0.75rem + ${depth * 1.5}rem)` }}
+            >
+              <div className="flex items-start sm:items-center gap-2.5 min-w-0">
+                {children.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => onToggle(subtask.id)}
+                    className="p-0.5 hover:bg-accent rounded-sm shrink-0"
+                    aria-label={isExpanded ? "Collapse subtasks" : "Expand subtasks"}
+                    aria-expanded={!!isExpanded}
+                  >
+                    {isExpanded ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRightIcon className="h-3.5 w-3.5 text-muted-foreground" />}
+                  </button>
+                )}
+                <Link href={`/tasks/${subtask.id}`} className={cn("text-sm font-medium hover:underline truncate", subtask.status === "DONE" ? "text-muted-foreground line-through" : "text-foreground")}>
+                  {subtask.title}
+                </Link>
+                {children.length > 0 && (
+                  <span className="text-[11px] text-muted-foreground shrink-0">{childrenDone}/{children.length}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-3 pl-9 sm:pl-0 shrink-0 justify-end">
+                {subtask.dueDate && (
+                  <span className="text-[11px] text-muted-foreground flex items-center gap-1" suppressHydrationWarning>
+                    <Clock className="h-3 w-3" /> {formatDate(subtask.dueDate)}
+                  </span>
+                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger className="focus:outline-none shrink-0" disabled={!canEditStatus}>
+                    <Badge variant="outline" className={cn("text-[9px] px-1 py-0 shadow-none cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-0.5", statusColors[subtask.status], !canEditStatus && "opacity-70 cursor-not-allowed")}>
+                      {subtask.status.replace("_", " ")} {canEditStatus && <ChevronDown className="h-2.5 w-2.5" />}
+                    </Badge>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuLabel className="text-xs">Change Status</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {Object.keys(statusColors).map(s => (
+                      <DropdownMenuItem key={s} onClick={() => onStatus(subtask, s)} className="text-xs cursor-pointer">
+                        <div className={cn("w-2 h-2 rounded-full mr-2", statusColors[s].split(" ")[0])} />
+                        {s.replace("_", " ")}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <DropdownMenu>
+                  <DropdownMenuTrigger className="focus:outline-none" disabled={!canEditDetails} aria-label="Change assignees">
+                    <div className={cn("flex items-center gap-1.5 hover:bg-muted/50 p-1 rounded-md transition-colors", canEditDetails ? "cursor-pointer" : "opacity-70 cursor-not-allowed")}>
+                      {subtask.assignees.length > 0 ? (
+                        <>
+                          <AvatarStack people={subtask.assignees} />
+                          {subtask.assignees.length === 1 && (
+                            <span className="text-[11px] text-muted-foreground truncate max-w-[80px] hidden sm:block">{subtask.assignees[0].firstName}</span>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <div className="h-5 w-5 rounded-full border border-dashed border-border/50 bg-accent/30 flex items-center justify-center">
+                            <UserPlus className="h-3 w-3 text-muted-foreground" />
+                          </div>
+                          <span className="text-[11px] text-muted-foreground hidden sm:block">Assign</span>
+                        </>
+                      )}
+                    </div>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56 max-h-64 overflow-y-auto">
+                    <DropdownMenuLabel className="text-xs">Assignees</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {assignableEmployees.length === 0 && (
+                      <DropdownMenuItem disabled className="text-xs">No project members yet</DropdownMenuItem>
+                    )}
+                    {assignableEmployees.map((person) => (
+                      <DropdownMenuCheckboxItem
+                        key={person.id}
+                        checked={subtask.assignees.some((a) => a.id === person.id)}
+                        onCheckedChange={(checked) => onAssignee(subtask, person, checked === true)}
+                        onSelect={(e) => e.preventDefault()}
+                        className="text-xs"
+                      >
+                        {person.firstName} {person.lastName}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+            {isExpanded && children.length > 0 && (
+              <div className="flex flex-col w-full relative">
+                <div className="absolute top-0 bottom-0 w-px bg-border/40 z-0" style={{ left: `calc(1rem + ${depth * 1.5}rem)` }} />
+                <SubtaskRows
+                  nodes={children}
+                  depth={depth + 1}
+                  tasksByParent={tasksByParent}
+                  expanded={expanded}
+                  onToggle={onToggle}
+                  canEditStatus={canEditStatus}
+                  canEditDetails={canEditDetails}
+                  assignableEmployees={assignableEmployees}
+                  onStatus={onStatus}
+                  onAssignee={onAssignee}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </>
   );
 }

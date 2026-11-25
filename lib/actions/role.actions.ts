@@ -2,7 +2,9 @@
 
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { audit } from "@/lib/audit";
+import { revalidatePath, updateTag } from "next/cache";
+import { CACHE_TAGS } from "@/lib/cache/tags";
 
 export async function getSystemRolesAction() {
   await requireAuth("role:manage");
@@ -12,7 +14,7 @@ export async function getSystemRolesAction() {
 }
 
 export async function updateSystemRolePermissionsAction(name: string, permissions: string[]) {
-  await requireAuth("role:manage");
+  const actor = await requireAuth("role:manage");
   
   // Prevent removing admin permissions from the core ADMIN role
   if (name === "ADMIN") {
@@ -24,13 +26,15 @@ export async function updateSystemRolePermissionsAction(name: string, permission
     data: { permissions }
   });
 
+  updateTag(CACHE_TAGS.roles);
+  audit({ actorId: actor.id, entity: "SystemRole", entityId: name, action: "update", changes: { permissions } });
   revalidatePath("/settings");
   revalidatePath("/employees");
   return role;
 }
 
 export async function createSystemRoleAction(name: string, permissions: string[]) {
-  await requireAuth("role:manage");
+  const actor = await requireAuth("role:manage");
 
   const normalizedName = name.toUpperCase().replace(/\s+/g, '_');
   if (normalizedName === "ADMIN") {
@@ -45,13 +49,15 @@ export async function createSystemRoleAction(name: string, permissions: string[]
     }
   });
 
+  updateTag(CACHE_TAGS.roles);
+  audit({ actorId: actor.id, entity: "SystemRole", entityId: role.name, action: "create", changes: { permissions } });
   revalidatePath("/settings");
   revalidatePath("/employees");
   return role;
 }
 
 export async function deleteSystemRoleAction(name: string) {
-  await requireAuth("role:manage");
+  const actor = await requireAuth("role:manage");
 
   const role = await db.systemRole.findUnique({ where: { name } });
   if (role?.isSystem) {
@@ -60,6 +66,8 @@ export async function deleteSystemRoleAction(name: string) {
 
   await db.systemRole.delete({ where: { name } });
   
+  updateTag(CACHE_TAGS.roles);
+  audit({ actorId: actor.id, entity: "SystemRole", entityId: name, action: "delete" });
   revalidatePath("/settings");
   revalidatePath("/employees");
   return true;

@@ -3,6 +3,7 @@
 import { db } from "@/lib/db";
 import { requireAuth, getCurrentEmployee } from "@/lib/auth";
 import { ALL_PERMISSIONS, type Permission } from "@/lib/permission-list";
+import { audit } from "@/lib/audit";
 import { revalidatePath } from "next/cache";
 
 /**
@@ -77,6 +78,7 @@ export async function grantPermissionAction(data: {
     });
   }
 
+  audit({ actorId: currentEmployee.id, entity: "EmployeePermission", entityId: data.employeeId, action: "grant", changes: JSON.parse(JSON.stringify(data)) });
   revalidatePath(`/employees/${data.employeeId}`);
   if (data.projectId) revalidatePath(`/projects/${data.projectId}`);
   return { success: true, permission };
@@ -106,6 +108,7 @@ export async function revokePermissionAction(data: {
     },
   });
 
+  audit({ actorId: currentEmployee.id, entity: "EmployeePermission", entityId: data.employeeId, action: "revoke", changes: JSON.parse(JSON.stringify(data)) });
   revalidatePath(`/employees/${data.employeeId}`);
   if (data.projectId) revalidatePath(`/projects/${data.projectId}`);
   return { success: true };
@@ -194,6 +197,7 @@ export async function setEmployeePermissionsAction(data: {
     }
   });
 
+  audit({ actorId: currentEmployee.id, entity: "EmployeePermission", entityId: data.employeeId, action: "set", changes: JSON.parse(JSON.stringify(data)) });
   revalidatePath(`/employees/${data.employeeId}`);
   revalidatePath("/employees");
   return { success: true };

@@ -167,6 +167,7 @@ export function ProjectsClient({ initialProjects, canCreate }: { initialProjects
                 <Card 
                   key={project.id} 
                   onClick={() => router.push(`/projects/${project.id}`)}
+                  onMouseEnter={() => router.prefetch(`/projects/${project.id}`)}
                   className="group border-border/40 shadow-none transition-all hover:bg-muted/20 cursor-pointer rounded-lg"
                 >
                   <CardHeader className="pb-3">
@@ -278,6 +279,7 @@ export function ProjectsClient({ initialProjects, canCreate }: { initialProjects
                     <TableRow 
                       key={project.id} 
                       onClick={() => router.push(`/projects/${project.id}`)}
+                  onMouseEnter={() => router.prefetch(`/projects/${project.id}`)}
                       className="cursor-pointer hover:bg-muted/30"
                     >
                       <TableCell>

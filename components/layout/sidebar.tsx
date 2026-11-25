@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
@@ -11,8 +12,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
-  LayoutDashboard, FolderKanban, Users, UserCircle, CalendarDays,
-  FileText, Bell, BarChart3, Settings, Zap, ClipboardCheck, Search, MessageSquare, 
+  LayoutDashboard, FolderKanban, Users, UserCircle,
+  FileText, Bell, Settings, ClipboardCheck, Search,
   PanelLeftClose, PanelLeft,
 } from "lucide-react";
 
@@ -32,12 +33,87 @@ const bottomItems: NavItem[] = [
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 
-export function Sidebar({ collapsed, setCollapsed, isMobile, isAdmin = false }: { collapsed: boolean; setCollapsed: (val: boolean) => void, isMobile?: boolean, isAdmin?: boolean }) {
-  const pathname = usePathname();
-  const { user, isLoaded } = useUser();
+// A constrained divider that doesn't bleed out in collapsed mode
+function Divider() {
+  return <div className="my-2 h-px bg-border w-[calc(100%-16px)] mx-auto" />;
+}
 
-  // A constrained divider that doesn't bleed out in collapsed mode
-  const Divider = () => <div className="my-2 h-px bg-border w-[calc(100%-16px)] mx-auto" />;
+type NavListsProps = { collapsed: boolean; isAdmin: boolean; onNavigate?: () => void };
+
+// usePathname() is request data on dynamic routes, so it lives in its own
+// component behind <Suspense>. The fallback renders the same links without the
+// active highlight, keeping the sidebar in the prerendered shell.
+function ActiveNavLists(props: NavListsProps) {
+  const pathname = usePathname();
+  return <NavLists pathname={pathname} {...props} />;
+}
+
+function isActivePath(pathname: string | null, href: string) {
+  if (!pathname) return false;
+  return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function NavItemLink({ item, active, collapsed, onNavigate }: { item: NavItem; active: boolean; collapsed: boolean; onNavigate?: () => void }) {
+  const link = (
+    <Link
+      href={item.href}
+      onClick={onNavigate}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors",
+        active
+          ? "bg-accent text-accent-foreground"
+          : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+        collapsed && "justify-center px-0 h-9"
+      )}
+    >
+      <item.icon className={cn("h-4 w-4 shrink-0", active && "text-foreground")} />
+      {!collapsed && (
+        <>
+          <span className="truncate">{item.label}</span>
+          {item.badge && (
+            <Badge variant="secondary" className="ml-auto h-5 min-w-5 justify-center rounded-full px-1.5 text-[10px] font-medium">
+              {item.badge}
+            </Badge>
+          )}
+        </>
+      )}
+    </Link>
+  );
+
+  if (!collapsed) return link;
+  return (
+    <Tooltip delayDuration={0}>
+      <TooltipTrigger asChild>{link}</TooltipTrigger>
+      <TooltipContent side="right">{item.label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function NavLists({ pathname, collapsed, isAdmin, onNavigate }: NavListsProps & { pathname: string | null }) {
+  return (
+    <>
+      <ScrollArea className="flex-1 px-2 py-1">
+        <nav className="flex flex-col gap-0.5 mt-1">
+          {navItems.filter((item) => isAdmin || item.label !== "Records").map((item) => (
+            <NavItemLink key={item.href} item={item} active={isActivePath(pathname, item.href)} collapsed={collapsed} onNavigate={onNavigate} />
+          ))}
+        </nav>
+      </ScrollArea>
+
+      <Divider />
+
+      <div className="px-2 py-1">
+        {bottomItems.filter((item) => isAdmin || item.label !== "Settings").map((item) => (
+          <NavItemLink key={item.href} item={item} active={isActivePath(pathname, item.href)} collapsed={collapsed} onNavigate={onNavigate} />
+        ))}
+      </div>
+    </>
+  );
+}
+
+export function Sidebar({ collapsed, setCollapsed, isMobile, isAdmin = false, onNavigate }: { collapsed: boolean; setCollapsed: (val: boolean) => void, isMobile?: boolean, isAdmin?: boolean, onNavigate?: () => void }) {
+  const { user, isLoaded } = useUser();
 
   return (
     <aside
@@ -96,94 +172,9 @@ export function Sidebar({ collapsed, setCollapsed, isMobile, isAdmin = false }: 
         </div>
       )}
 
-      {/* Nav */}
-      <ScrollArea className="flex-1 px-2 py-1">
-        <nav className="flex flex-col gap-0.5 mt-1">
-          {navItems.filter(item => isAdmin || (item.label !== "Reports" && item.label !== "Records")).map((item) => {
-            const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-            const link = (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-                  collapsed && "justify-center px-0 h-9"
-                )}
-              >
-                <item.icon className={cn("h-4 w-4 shrink-0", isActive && "text-foreground")} />
-                {!collapsed && (
-                  <>
-                    <span className="truncate">{item.label}</span>
-                    {item.badge && (
-                      <Badge variant="secondary" className="ml-auto h-5 min-w-5 justify-center rounded-full px-1.5 text-[10px] font-medium">
-                        {item.badge}
-                      </Badge>
-                    )}
-                  </>
-                )}
-              </Link>
-            );
-
-            if (collapsed) {
-              return (
-                <Tooltip key={item.href} delayDuration={0}>
-                  <TooltipTrigger asChild>{link}</TooltipTrigger>
-                  <TooltipContent side="right" className="flex items-center gap-2">
-                    {item.label}
-                    {item.badge && <Badge variant="secondary" className="text-[10px]">{item.badge}</Badge>}
-                  </TooltipContent>
-                </Tooltip>
-              );
-            }
-            return link;
-          })}
-        </nav>
-      </ScrollArea>
-
-      <Divider />
-
-      {/* Bottom items */}
-      <div className="px-2 py-1">
-        {bottomItems.filter(item => isAdmin || item.label !== "Settings").map((item) => {
-          const isActive = pathname.startsWith(item.href);
-          const link = (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors",
-                isActive ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-                collapsed && "justify-center px-0 h-9"
-              )}
-            >
-              <item.icon className="h-4 w-4 shrink-0" />
-              {!collapsed && (
-                <>
-                  <span className="truncate">{item.label}</span>
-                  {item.badge && (
-                    <Badge variant="secondary" className="ml-auto h-5 min-w-5 justify-center rounded-full px-1.5 text-[10px] font-medium bg-destructive/10 text-destructive">
-                      {item.badge}
-                    </Badge>
-                  )}
-                </>
-              )}
-            </Link>
-          );
-
-          if (collapsed) {
-            return (
-              <Tooltip key={item.href} delayDuration={0}>
-                <TooltipTrigger asChild>{link}</TooltipTrigger>
-                <TooltipContent side="right">{item.label}</TooltipContent>
-              </Tooltip>
-            );
-          }
-          return link;
-        })}
-      </div>
+      <Suspense fallback={<NavLists pathname={null} collapsed={collapsed} isAdmin={isAdmin} onNavigate={onNavigate} />}>
+        <ActiveNavLists collapsed={collapsed} isAdmin={isAdmin} onNavigate={onNavigate} />
+      </Suspense>
 
       <Divider />
 

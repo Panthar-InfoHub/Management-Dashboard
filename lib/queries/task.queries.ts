@@ -55,7 +55,10 @@ export async function getKanbanTasks(filters?: { team?: string, project?: string
           name: true,
           team: { select: { id: true, name: true } }
         }
-      }
+      },
+      // Subtask progress for the card ("2/5"): total count + ids of done ones.
+      _count: { select: { subtasks: true } },
+      subtasks: { where: { status: "DONE" }, select: { id: true } },
     },
     orderBy: [
       { order: "asc" },
@@ -91,7 +94,19 @@ export async function getTaskById(taskId: string, callerEmployee?: any, canUpdat
         select: { id: true, firstName: true, lastName: true, avatarUrl: true }
       },
       subtasks: {
-        include: { assignees: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } } }
+        select: {
+          id: true, title: true, status: true, priority: true, dueDate: true, parentId: true,
+          assignees: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
+        },
+        orderBy: { createdAt: "asc" },
+      },
+      comments: {
+        select: {
+          id: true, content: true, createdAt: true, editedAt: true,
+          author: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
+        },
+        orderBy: { createdAt: "asc" },
+        take: 200,
       },
       blockedBy: {
         select: { id: true, title: true, status: true }
@@ -113,7 +128,7 @@ export async function getTaskById(taskId: string, callerEmployee?: any, canUpdat
     }
   }
 
-  return { ...task, activity: [] };
+  return task;
 }
 
 export async function getTaskFilterDropdowns() {
@@ -143,4 +158,16 @@ export async function getTaskFilterDropdowns() {
   ]);
 
   return { projects, teams, employees };
+}
+
+/** Every nested subtask in a project, for rendering a task's subtask tree. */
+export async function getProjectSubtaskTree(projectId: string) {
+  return db.task.findMany({
+    where: { projectId, parentId: { not: null } },
+    select: {
+      id: true, title: true, status: true, priority: true, dueDate: true, parentId: true,
+      assignees: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  });
 }

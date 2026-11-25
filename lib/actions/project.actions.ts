@@ -2,6 +2,7 @@
 
 import { db } from "@/lib/db";
 import { requireAuth, getCurrentEmployee, checkPermission } from "@/lib/auth";
+import { audit } from "@/lib/audit";
 import { revalidatePath } from "next/cache";
 import type { ProjectStatus, TaskPriority } from "@/lib/generated/prisma";
 
@@ -41,6 +42,7 @@ export async function updateProjectStatusAction(projectId: string, newStatus: st
     data: { status: newStatus }
   });
 
+  audit({ actorId: employee.id, entity: "Project", entityId: projectId, action: "status", changes: { status: newStatus } });
   revalidatePath("/projects");
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/");
@@ -65,6 +67,7 @@ export async function updateProjectPriorityAction(projectId: string, newPriority
     data: { priority: newPriority }
   });
 
+  audit({ actorId: employee.id, entity: "Project", entityId: projectId, action: "update", changes: { priority: newPriority } });
   revalidatePath("/projects");
   revalidatePath(`/projects/${projectId}`);
 
@@ -125,6 +128,7 @@ export async function createProjectAction(data: {
     }
   });
 
+  audit({ actorId: employee.id, entity: "Project", entityId: project.id, action: "create", changes: { name: project.name, teamId: project.teamId } });
   revalidatePath("/projects");
   revalidatePath("/");
 
@@ -164,6 +168,7 @@ export async function updateProjectAction(projectId: string, data: {
     }
   });
 
+  audit({ actorId: employee.id, entity: "Project", entityId: projectId, action: "update", changes: JSON.parse(JSON.stringify(data)) });
   revalidatePath("/projects");
   revalidatePath(`/projects/${projectId}`);
   return { success: true, project };
@@ -208,6 +213,7 @@ export async function manageProjectMembersAction(projectId: string, memberIds: s
       })
     ));
   }
+  audit({ actorId: employee.id, entity: "Project", entityId: projectId, action: "members", changes: { memberIds } });
   revalidatePath("/projects");
   revalidatePath(`/projects/${projectId}`);
   return { success: true };
@@ -223,6 +229,7 @@ export async function deleteProjectAction(projectId: string) {
     where: { id: projectId }
   });
 
+  audit({ actorId: employee.id, entity: "Project", entityId: projectId, action: "delete" });
   revalidatePath("/projects");
   revalidatePath("/");
   return { success: true };

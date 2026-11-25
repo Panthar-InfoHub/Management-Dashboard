@@ -14,10 +14,6 @@ datasource db {
 // ENUMS
 // ─────────────────────────────────────────────
 
-// ─────────────────────────────────────────────
-// ENUMS
-// ─────────────────────────────────────────────
-
 enum EmployeeStatus {
   ACTIVE
   ON_LEAVE
@@ -97,6 +93,10 @@ model Employee {
 
   // ── Notification relations ──
   notifications Notification[]
+
+  // ── Comments & audit ──
+  comments  Comment[]
+  auditLogs AuditLog[]
 
   // ── Employment Records ──
   employmentRecords EmploymentRecord[]
@@ -224,13 +224,18 @@ model Task {
 }
 
 model Comment {
-  id       String @id @default(cuid())
+  id       String   @id @default(cuid())
   content  String
   taskId   String
-  task     Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task     Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   authorId String
+  author   Employee @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
+  editedAt  DateTime?
+
+  @@index([taskId, createdAt])
+  @@index([authorId])
 }
 
 // ─────────────────────────────────────────────
@@ -296,4 +301,22 @@ model EmployeePermission {
   @@unique([employeeId, permission, projectId]) // Ensures no duplicate permission for the same scope
   @@index([employeeId])
   @@index([projectId])
+}
+
+// ── Audit Log ──
+// Append-only record of who changed what. Written by Server Actions after a
+// successful mutation; never updated or deleted by the app.
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      Employee? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  entity     String   // "Task", "Project", "Team", "Employee", "SystemRole", "EmployeePermission", "Comment"
+  entityId   String
+  action     String   // "create", "update", "delete", "status", "assign", ...
+  changes    Json?    // { field: [before, after] } or a small payload
+  createdAt  DateTime @default(now())
+
+  @@index([entity, entityId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([createdAt])
 }

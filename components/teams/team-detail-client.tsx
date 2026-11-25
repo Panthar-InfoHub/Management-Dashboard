@@ -46,7 +46,6 @@ export function TeamDetailClient({ team, allEmployees = [], tasks = [], canEdit 
     startTransition(() => {
       updateTeamAction(team.id, editData).then(() => {
         setEditOpen(false);
-        router.refresh();
       }).catch((err: any) => toast.error(err.message || "Failed to update team"));
     });
   };
@@ -57,7 +56,6 @@ export function TeamDetailClient({ team, allEmployees = [], tasks = [], canEdit 
       const finalMemberIds = Array.from(new Set([...selectedMemberIds, team.leadId]));
       manageTeamMembersAction(team.id, finalMemberIds).then(() => {
         setManageOpen(false);
-        router.refresh();
       }).catch((err: any) => toast.error(err.message || "Failed to manage members"));
     });
   };

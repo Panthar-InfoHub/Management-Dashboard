@@ -11,7 +11,6 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar, Mail, Building2, Shield, Pencil, UserMinus, ArrowUpRight, Copy } from "lucide-react";
 import { toast } from "sonner";
-import { useRouter } from "next/navigation";
 import { 
   updateEmployeeAction, 
   generateEmployeeCodeAction, 
@@ -30,7 +29,6 @@ const formatDate = (dateString: string | Date) => {
 };
 
 export function EmployeeProfileClient({ employee, availableRoles, isAdmin, isManager }: { employee: any, availableRoles: string[], isAdmin: boolean, isManager: boolean }) {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   // Modals state
@@ -50,7 +48,6 @@ export function EmployeeProfileClient({ employee, availableRoles, isAdmin, isMan
     startTransition(() => {
       updateEmployeeAction(employee.id, editingEmp).then(() => {
         setEditOpen(false);
-        router.refresh();
         toast.success("Profile updated");
       }).catch((e: any) => toast.error(e.message));
     });
@@ -60,7 +57,6 @@ export function EmployeeProfileClient({ employee, availableRoles, isAdmin, isMan
     startTransition(() => {
       transitionRoleAction(employee.id, promoteData).then(() => {
         setPromoteOpen(false);
-        router.refresh();
         toast.success("Role transitioned successfully");
       }).catch((e: any) => toast.error(e.message));
     });
@@ -70,7 +66,6 @@ export function EmployeeProfileClient({ employee, availableRoles, isAdmin, isMan
     startTransition(() => {
       offboardEmployeeAction(employee.id, offboardData).then(() => {
         setOffboardOpen(false);
-        router.refresh();
         toast.success("Employee offboarded successfully");
       }).catch((e: any) => toast.error(e.message));
     });
@@ -96,7 +91,6 @@ export function EmployeeProfileClient({ employee, availableRoles, isAdmin, isMan
       generateEmployeeCodeAction(employee.id, codeType, joinDateStr).then(() => {
         setCodeType(null);
         setReservedSeq(null);
-        router.refresh();
         toast.success("Code generated!");
       }).catch((e: any) => toast.error(e.message));
     });

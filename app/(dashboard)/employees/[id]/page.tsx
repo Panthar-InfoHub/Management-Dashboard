@@ -3,7 +3,7 @@ import { getEmployeeById } from "@/lib/queries/employee.queries";
 import { getCurrentEmployee } from "@/lib/auth";
 import { notFound, redirect } from "next/navigation";
 import { EmployeeProfileClient } from "@/components/employees/employee-profile-client";
-import { db } from "@/lib/db";
+import { getRoleNames } from "@/lib/queries/reference.queries";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -56,7 +56,7 @@ async function EmployeeProfileDataAsync({ id }: { id: string }) {
 
   const [employee, roles] = await Promise.all([
     getEmployeeById(id),
-    db.systemRole.findMany({ select: { name: true } })
+    getRoleNames()
   ]);
 
   if (!employee) notFound();
@@ -64,7 +64,7 @@ async function EmployeeProfileDataAsync({ id }: { id: string }) {
   return (
     <EmployeeProfileClient 
       employee={JSON.parse(JSON.stringify(employee))} 
-      availableRoles={roles.map(r => r.name)}
+      availableRoles={roles}
       isAdmin={currentEmployee.role === "ADMIN"}
       isManager={currentEmployee.role === "MANAGER"}
     />

@@ -2,6 +2,7 @@
 
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
+import { audit } from "@/lib/audit";
 import { revalidatePath } from "next/cache";
 import { clerkClient } from "@clerk/nextjs/server";
 
@@ -149,6 +150,7 @@ export async function createEmployeeAction(data: {
       });
     }
 
+    audit({ actorId: currentEmployee.id, entity: "Employee", entityId: employee.id, action: "create", changes: { email: employee.email, role: employee.role } });
     revalidatePath("/employees");
     return employee;
   } catch (error: any) {
@@ -228,6 +230,8 @@ export async function updateEmployeeAction(id: string, data: {
     });
   }
 
+  audit({ actorId: currentEmployee.id, entity: "Employee", entityId: id, action: "update", changes: JSON.parse(JSON.stringify(data)) });
+  revalidatePath(`/employees/${id}`);
   revalidatePath("/employees");
   return employee;
 }
@@ -291,6 +295,7 @@ export async function deleteEmployeeAction(id: string) {
     }
   }
 
+  audit({ actorId: currentEmployee.id, entity: "Employee", entityId: id, action: "delete" });
   revalidatePath("/employees");
   revalidatePath("/");
   return employee;
@@ -360,6 +365,8 @@ export async function generateEmployeeCodeAction(employeeId: string, type: "PANT
     });
   });
 
+  audit({ actorId: currentEmployee.id, entity: "Employee", entityId: employeeId, action: "code", changes: { type } });
+  revalidatePath(`/employees/${employeeId}`);
   revalidatePath("/employees");
   return result;
 }
@@ -455,6 +462,7 @@ export async function transitionRoleAction(employeeId: string, data: { newRole: 
     });
   }
 
+  audit({ actorId: currentEmployee.id, entity: "Employee", entityId: employeeId, action: "role", changes: JSON.parse(JSON.stringify(data)) });
   revalidatePath(`/employees/${employeeId}`);
   revalidatePath("/employees");
   revalidatePath("/records");
@@ -535,6 +543,7 @@ export async function offboardEmployeeAction(employeeId: string, data: { endDate
     }
   }
 
+  audit({ actorId: currentEmployee.id, entity: "Employee", entityId: employeeId, action: "offboard", changes: JSON.parse(JSON.stringify(data)) });
   revalidatePath(`/employees/${employeeId}`);
   revalidatePath("/employees");
   revalidatePath("/records");

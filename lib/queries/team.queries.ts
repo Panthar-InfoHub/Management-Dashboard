@@ -1,3 +1,4 @@
+import { computeProgress } from "@/lib/projects/progress";
 import { db } from "@/lib/db";
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 
@@ -49,7 +50,8 @@ export async function getTeamById(teamId: string) {
       },
       projects: {
         include: {
-          lead: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } }
+          lead: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
+          tasks: { select: { status: true } }
         },
         orderBy: { updatedAt: "desc" }
       }
@@ -65,5 +67,11 @@ export async function getTeamById(teamId: string) {
     }
   }
 
-  return team;
+  return {
+    ...team,
+    projects: team.projects.map(({ tasks, ...project }) => ({
+      ...project,
+      progress: computeProgress(tasks.filter((t) => t.status === "DONE").length, tasks.length),
+    })),
+  };
 }

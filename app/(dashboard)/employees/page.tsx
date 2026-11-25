@@ -3,7 +3,7 @@ import { getEmployees } from "@/lib/queries/employee.queries";
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { EmployeesClient } from "@/components/employees/employees-client";
 import { getTeams } from "@/lib/queries/team.queries";
-import { db } from "@/lib/db";
+import { getRoleNames } from "@/lib/queries/reference.queries";
 import { EmployeesBodySkeleton } from "./skeleton";
 
 export default function EmployeesPage() {
@@ -30,14 +30,14 @@ async function EmployeesDataAsync() {
     checkPermission("employee:delete"),
     getEmployees(),
     getTeams(),
-    db.systemRole.findMany({ select: { name: true } })
+    getRoleNames()
   ]);
 
   return (
     <EmployeesClient 
       initialEmployees={employees} 
       teams={teams}
-      availableRoles={roles.map((r:any) => r.name)}
+      availableRoles={roles}
       isAdmin={currentEmployee.role === "ADMIN"}
       isManager={currentEmployee.role === "MANAGER"}
       canCreate={canCreate}

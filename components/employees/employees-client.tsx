@@ -68,7 +68,6 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
       generateEmployeeCodeAction(codeEmpTarget.id, codeType, joinDateStr, reservedSeq)
         .then((result) => {
           toast.success("Employee code generated!");
-          router.refresh();
           // Find the updated employee and update the local target to show the code immediately
           setCodeEmpTarget({
             ...codeEmpTarget,
@@ -104,7 +103,6 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
         setNewEmp({ firstName: "", lastName: "", email: "", role: "EMPLOYEE", designation: "", password: "", joinDate: new Date().toISOString().split("T")[0] });
         setSetCustomPassword(false);
         setShowPassword(false);
-        router.refresh();
       }).catch((err: any) => toast.error(err.message || "Failed to add employee"));
     });
   };
@@ -115,7 +113,6 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
       updateEmployeeAction(editingEmp.id, { role: editingEmp.role, designation: editingEmp.designation }).then(() => {
         setEditEmpOpen(false);
         setEditingEmp(null);
-        router.refresh();
       }).catch((err: any) => toast.error(err.message || "Failed to update employee"));
     });
   };
@@ -124,7 +121,6 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
     if (!employeeToDelete) return;
     startTransition(() => {
       deleteEmployeeAction(employeeToDelete).then(() => {
-        router.refresh();
         setDeleteDialogOpen(false);
         setEmployeeToDelete(null);
       }).catch((err: any) => toast.error(err.message || "Failed to delete employee"));
@@ -471,6 +467,7 @@ export function EmployeesClient({ initialEmployees, teams, availableRoles = [], 
                 <TableRow 
                   key={emp.id} 
                   className={cn("hover:bg-muted/30", (isAdmin || isManager) && "cursor-pointer")}
+                  onMouseEnter={(isAdmin || isManager) ? () => router.prefetch(`/employees/${emp.id}`) : undefined}
                   onClick={(e) => {
                     // Prevent row click if clicking on the dropdown or its children
                     if ((e.target as HTMLElement).closest('.action-menu')) return;

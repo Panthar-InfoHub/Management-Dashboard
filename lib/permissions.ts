@@ -3,16 +3,13 @@ import { db } from "@/lib/db";
 export { type Permission, ALL_PERMISSIONS } from "./permission-list";
 import { type Permission as LocalPermission } from "./permission-list";
 import { cache } from "react";
+import { getRolePermissions } from "@/lib/queries/reference.queries";
 
 // ─── Internal: request-scoped cache for role records ───
 
-/** Fetch a SystemRole record, cached per-request so multiple
- *  `hasPermission()` calls for the same role hit the DB only once. */
-const getRoleCached = cache(async (roleName: string) => {
-  return db.systemRole.findUnique({
-    where: { name: roleName },
-  });
-});
+/** Role permissions: cached across requests (tag "roles"), and deduped
+ *  per request so several `hasPermission()` calls share one lookup. */
+const getRolePermissionsCached = cache(getRolePermissions);
 
 /** Fetch per-user permission overrides, cached per-request. */
 const getUserPermissionsCached = cache(async (employeeId: string) => {
@@ -44,8 +41,8 @@ export async function hasPermission(
   // ADMINs always have every permission — no DB lookup needed.
   if (roleName === "ADMIN") return true;
 
-  const roleRecord = await getRoleCached(roleName);
-  if (roleRecord?.permissions.includes(permission as string)) return true;
+  const rolePermissions = await getRolePermissionsCached(roleName);
+  if (rolePermissions?.includes(permission as string)) return true;
 
   // Check per-user overrides (if employeeId available)
   if (employeeId) {
@@ -79,6 +76,5 @@ export async function requirePermission(
 
 /** Get all permissions for a given role */
 export async function getPermissionsForRole(roleName: string): Promise<string[]> {
-  const roleRecord = await getRoleCached(roleName);
-  return roleRecord?.permissions || [];
+  return (await getRolePermissionsCached(roleName)) ?? [];
 }

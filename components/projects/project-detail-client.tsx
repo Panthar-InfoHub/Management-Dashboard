@@ -75,7 +75,6 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
     startTransition(() => {
       updateProjectAction(project.id, editData).then(() => {
         setEditOpen(false);
-        router.refresh();
       }).catch((err: any) => toast.error(err.message || "Failed to update project"));
     });
   };
@@ -105,7 +104,6 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
       const finalMemberIds = Array.from(new Set([...selectedMemberIds, project.leadId]));
       manageProjectMembersAction(project.id, finalMemberIds).then(() => {
         setManageOpen(false);
-        router.refresh();
       }).catch((err: any) => toast.error(err.message || "Failed to manage members"));
     });
   };
@@ -267,6 +265,7 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
                               <div 
                                 className="p-4 hover:bg-muted/20 transition-colors flex items-center justify-between group cursor-pointer"
                                 style={{ paddingLeft: `${Math.max(1, depth * 1.5) + 0.5}rem` }}
+                                onMouseEnter={() => router.prefetch(`/tasks/${task.id}`)}
                                 onClick={(e) => {
                                   if (hasChildren) {
                                     toggleTask(task.id, e);

@@ -3,7 +3,7 @@
 import { useTheme } from "@/components/providers/theme-provider";
 import { UserButton, ClerkLoading, ClerkLoaded } from "@clerk/nextjs";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,20 +24,16 @@ import { formatDistanceToNow } from "date-fns";
 import { Sidebar } from "./sidebar";
 
 export function TopNav({ isAdmin = false }: { isAdmin?: boolean }) {
+  const router = useRouter();
   const { theme, setTheme } = useTheme();
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isPending, startTransition] = useTransition();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const pathname = usePathname();
 
   useEffect(() => {
     setMounted(true);
   }, []);
-
-  useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [pathname]);
 
   useEffect(() => {
     const fetchNotifs = async () => {
@@ -62,7 +58,7 @@ export function TopNav({ isAdmin = false }: { isAdmin?: boolean }) {
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="p-0 w-64 border-r border-border">
-            <Sidebar collapsed={false} setCollapsed={() => setMobileMenuOpen(false)} isMobile={true} isAdmin={isAdmin} />
+            <Sidebar collapsed={false} setCollapsed={() => setMobileMenuOpen(false)} isMobile={true} isAdmin={isAdmin} onNavigate={() => setMobileMenuOpen(false)} />
           </SheetContent>
         </Sheet>
         
@@ -130,7 +126,7 @@ export function TopNav({ isAdmin = false }: { isAdmin?: boolean }) {
               </div>
             ) : (
               notifications.slice(0, 5).map((n) => (
-                <DropdownMenuItem key={n.id} className="flex flex-col items-start gap-0.5 px-3 py-2 cursor-pointer" onClick={() => window.location.href = n.actionUrl || "/notifications"}>
+                <DropdownMenuItem key={n.id} className="flex flex-col items-start gap-0.5 px-3 py-2 cursor-pointer" onClick={() => router.push(n.actionUrl || "/notifications")}>
                   <div className="flex w-full items-center gap-2">
                     <span className={`text-xs font-medium ${n.isRead ? "text-muted-foreground" : "text-foreground"}`}>{n.title}</span>
                     {!n.isRead && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-blue-500" />}

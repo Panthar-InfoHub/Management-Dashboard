@@ -26,7 +26,6 @@ export function NotificationsClient({ initialNotifications }: { initialNotificat
     e?.stopPropagation();
     startTransition(() => {
       markNotificationAsReadAction(id).then(() => {
-        router.refresh();
       }).catch((err) => toast.error(err.message));
     });
   };
@@ -35,7 +34,6 @@ export function NotificationsClient({ initialNotifications }: { initialNotificat
     startTransition(() => {
       markAllNotificationsAsReadAction().then(() => {
         toast.success("All notifications marked as read");
-        router.refresh();
       }).catch((err) => toast.error(err.message));
     });
   };

@@ -1,3 +1,4 @@
+import { computeProgress } from "@/lib/projects/progress";
 import { db } from "@/lib/db";
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 
@@ -31,7 +32,7 @@ export async function getProjectsList() {
   return projects.map((p: any) => {
     const totalTasks = p.tasks.length;
     const completedTasks = p.tasks.filter((t: any) => t.status === "DONE").length;
-    const computedProgress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : p.progress;
+    const computedProgress = computeProgress(completedTasks, totalTasks);
 
     return {
       ...p,
@@ -75,7 +76,7 @@ export async function getProjectById(projectId: string) {
 
   const totalTasks = project.tasks.length;
   const completedTasks = project.tasks.filter((t: any) => t.status === "DONE").length;
-  const computedProgress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : project.progress;
+  const computedProgress = computeProgress(completedTasks, totalTasks);
 
   return {
     ...project,

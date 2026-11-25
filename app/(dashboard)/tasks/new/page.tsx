@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { getAssignableIdsByProject } from "@/lib/tasks/assignees";
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { NewTaskForm } from "@/components/tasks/new-task-form";
 
@@ -34,6 +35,7 @@ export default async function NewTaskPage() {
       orderBy: { firstName: "asc" }
     })
   ]);
+  const assignableByProject = await getAssignableIdsByProject(projects.map((p) => p.id));
 
-  return <NewTaskForm projects={projects} employees={employees} />;
+  return <NewTaskForm projects={projects} employees={employees} assignableByProject={assignableByProject} />;
 }

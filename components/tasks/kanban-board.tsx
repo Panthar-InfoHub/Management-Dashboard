@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { Filter, Search, ClipboardList, Clock, Loader2, X } from "lucide-react";
+import { Filter, Search, ClipboardList, Clock, Loader2, X, ListChecks } from "lucide-react";
 import { updateTaskStatusAction, rebalanceColumnTasksAction } from "@/lib/actions/task.actions";
 import { toast } from "sonner";
 import { format, isPast, isToday, endOfDay } from "date-fns";
@@ -336,7 +336,7 @@ export function KanbanBoard({
         .then(() => toast.success("Task updated"))
         .catch(err => {
           setTaskList(prev => prev.map(t => t.id === taskId ? { ...t, status: oldStatus, order: oldOrder } : t));
-          toast.error("Failed to update task position");
+          toast.error(err.message || "Task not moved. Try again.");
         });
       return;
     }
@@ -515,6 +515,7 @@ export function KanbanBoard({
                               onDragEnd={handleDragEnd}
                               onDragOver={(e) => handleCardDragOver(e, col.id, idx)}
                               onClick={() => router.push(`/tasks/${task.id}`)}
+                              onMouseEnter={() => router.prefetch(`/tasks/${task.id}`)}
                               className={cn(
                                 "border-border/40 shadow-none hover:border-border transition-all hover:bg-muted/20 cursor-grab active:cursor-grabbing rounded-md select-none",
                                 isDraggingCurrent && "opacity-35 border-dashed scale-[0.98]"
@@ -545,6 +546,12 @@ export function KanbanBoard({
                                 <div className="flex items-center justify-between mt-1">
                                   <div className="flex items-center gap-1.5">
                                     <div className={cn("h-1.5 w-1.5 rounded-full shrink-0", priorityDots[task.priority] || "bg-muted")} title={`Priority: ${task.priority}`} />
+                                    {task._count?.subtasks > 0 && (
+                                      <span className="text-[9px] font-medium text-muted-foreground flex items-center gap-0.5" title={`${task.subtasks?.length ?? 0} of ${task._count.subtasks} subtasks done`}>
+                                        <ListChecks className="h-2.5 w-2.5" />
+                                        {task.subtasks?.length ?? 0}/{task._count.subtasks}
+                                      </span>
+                                    )}
                                     {task.dueDate && (() => {
                                       const date = new Date(task.dueDate);
                                       const isOverdue = task.status !== "DONE" && !isToday(date) && isPast(endOfDay(date));
@@ -632,6 +639,7 @@ export function KanbanBoard({
                       <TableRow 
                         key={task.id} 
                         onClick={() => router.push(`/tasks/${task.id}`)}
+                              onMouseEnter={() => router.prefetch(`/tasks/${task.id}`)}
                         className="cursor-pointer hover:bg-muted/30"
                       >
                         <TableCell>

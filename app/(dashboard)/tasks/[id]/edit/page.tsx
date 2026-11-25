@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { getAssignableIdsByProject } from "@/lib/tasks/assignees";
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { NewTaskForm } from "@/components/tasks/new-task-form";
 import { notFound } from "next/navigation";
@@ -56,6 +57,7 @@ export default async function EditTaskPage({ params }: { params: Promise<{ id: s
       orderBy: { firstName: "asc" }
     })
   ]);
+  const assignableByProject = await getAssignableIdsByProject(projects.map((p) => p.id));
 
-  return <NewTaskForm projects={projects} employees={employees} initialData={task} canAssign={canEditGlobal} />;
+  return <NewTaskForm projects={projects} employees={employees} assignableByProject={assignableByProject} initialData={task} canAssign={canEditGlobal} />;
 }

@@ -2,6 +2,7 @@
 
 import { db } from "@/lib/db";
 import { requireAuth, getCurrentEmployee, checkPermission } from "@/lib/auth";
+import { audit } from "@/lib/audit";
 import { revalidatePath } from "next/cache";
 
 export async function createTeamAction(data: {
@@ -24,6 +25,7 @@ export async function createTeamAction(data: {
     }
   });
 
+  audit({ actorId: employee.id, entity: "Team", entityId: team.id, action: "create", changes: { name: team.name } });
   revalidatePath("/teams");
   return team;
 }
@@ -52,6 +54,7 @@ export async function updateTeamAction(teamId: string, data: {
     }
   });
 
+  audit({ actorId: employee.id, entity: "Team", entityId: teamId, action: "update", changes: JSON.parse(JSON.stringify(data)) });
   revalidatePath("/teams");
   revalidatePath(`/teams/${teamId}`);
   return team;
@@ -96,6 +99,7 @@ export async function manageTeamMembersAction(teamId: string, memberIds: string[
     });
   }
 
+  audit({ actorId: employee.id, entity: "Team", entityId: teamId, action: "members", changes: { memberIds } });
   revalidatePath("/teams");
   revalidatePath(`/teams/${teamId}`);
   return team;
@@ -118,6 +122,7 @@ export async function deleteTeamAction(teamId: string) {
     throw error;
   }
 
+  audit({ actorId: employee.id, entity: "Team", entityId: teamId, action: "delete" });
   revalidatePath("/teams");
   return true;
 }

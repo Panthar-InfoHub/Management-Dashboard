@@ -22,10 +22,12 @@ export function NewTaskForm({
   projects, 
   employees,
   initialData,
-  canAssign
+  canAssign,
+  assignableByProject = {},
 }: { 
   projects: { id: string; name: string }[];
   employees: { id: string; firstName: string; lastName: string }[];
+  assignableByProject?: Record<string, string[]>;
   initialData?: any;
   canAssign?: boolean;
 }) {
@@ -56,6 +58,25 @@ export function NewTaskForm({
     })(),
     blockers: initialData?.blockers || "",
   });
+
+  // Only people on the selected project (or its team) can be assigned. People
+  // already on an existing task stay selectable so editing never drops them.
+  const initialAssigneeIds: string[] = initialData?.assignees?.map((a: any) => a.id) ?? [];
+  const assignableIds = new Set([
+    ...(assignableByProject[newTask.project] ?? []),
+    ...(newTask.project === initialData?.projectId ? initialAssigneeIds : []),
+  ]);
+  const assignableEmployees = employees.filter((e) => assignableIds.has(e.id));
+
+  const changeProject = (projectId: string) => {
+    setNewTask(prev => {
+      const allowed = new Set([
+        ...(assignableByProject[projectId] ?? []),
+        ...(projectId === initialData?.projectId ? initialAssigneeIds : []),
+      ]);
+      return { ...prev, project: projectId, assigneeIds: prev.assigneeIds.filter(id => allowed.has(id)) };
+    });
+  };
 
   const toggleAssignee = (id: string) => {
     setNewTask(prev => {
@@ -94,8 +115,7 @@ export function NewTaskForm({
           dueDate: newTask.dueDate,
           blockers: newTask.blockers
         }).then(() => {
-          toast.success("Task updated successfully!");
-          router.refresh();
+          toast.success("Task updated");
           router.push(`/tasks/${initialData.id}`);
         }).catch((err: any) => {
           toast.error(err.message || "Failed to update task");
@@ -111,8 +131,7 @@ export function NewTaskForm({
           dueDate: newTask.dueDate,
           blockers: newTask.blockers
         }).then(() => {
-          toast.success("Task created successfully!");
-          router.refresh();
+          toast.success("Task created");
           router.push("/tasks");
         }).catch((err: any) => {
           toast.error(err.message || "Failed to create task");
@@ -193,7 +212,7 @@ export function NewTaskForm({
             <CardContent className="p-6 space-y-5">
               <div className="space-y-1.5 flex flex-col">
                 <label className="text-xs font-semibold text-muted-foreground">Project</label>
-                <Select value={newTask.project} onValueChange={v => setNewTask({ ...newTask, project: v })}>
+                <Select value={newTask.project} onValueChange={changeProject}>
                   <SelectTrigger className="bg-background"><SelectValue placeholder="Select project" /></SelectTrigger>
                   <SelectContent>
                     {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
@@ -244,9 +263,9 @@ export function NewTaskForm({
                     <Command>
                       <CommandInput placeholder="Search team members..." />
                       <CommandList>
-                        <CommandEmpty>No employee found.</CommandEmpty>
+                        <CommandEmpty>No one on this project matches. Add people to the project to assign them.</CommandEmpty>
                         <CommandGroup>
-                          {employees.map((employee) => (
+                          {assignableEmployees.map((employee) => (
                             <CommandItem
                               key={employee.id}
                               value={`${employee.firstName} ${employee.lastName}`}
