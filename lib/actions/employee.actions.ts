@@ -1,4 +1,5 @@
 "use server";
+import { UserError } from "@/lib/errors";
 
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
@@ -8,16 +9,17 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { CLERK_WRITES_ENABLED } from "@/lib/clerk-writes";
 import { createNotification } from "@/lib/notifications";
 import { setTeams, teamIdsOf } from "@/lib/teams/membership";
+import { recalculateBalances } from "@/lib/leave/balances";
 import { canActOnEmployee, canAssignRoles, type AccessRole, type EmploymentTypeValue } from "@/lib/access";
 
 const ROLE_VALUES: AccessRole[] = ["SUPER_ADMIN", "ADMIN", "MEMBER"];
 const EMPLOYMENT_VALUES: EmploymentTypeValue[] = ["FULL_TIME", "INTERN", "CONTRACT"];
 
 function assertRole(value: unknown): asserts value is AccessRole {
-  if (!ROLE_VALUES.includes(value as AccessRole)) throw new Error(`Invalid role: ${String(value)}`);
+  if (!ROLE_VALUES.includes(value as AccessRole)) throw new UserError(`Invalid role: ${String(value)}`);
 }
 function assertEmploymentType(value: unknown): asserts value is EmploymentTypeValue {
-  if (!EMPLOYMENT_VALUES.includes(value as EmploymentTypeValue)) throw new Error(`Invalid employment type: ${String(value)}`);
+  if (!EMPLOYMENT_VALUES.includes(value as EmploymentTypeValue)) throw new UserError(`Invalid employment type: ${String(value)}`);
 }
 
 export async function createEmployeeAction(data: {
@@ -39,7 +41,7 @@ export async function createEmployeeAction(data: {
   assertRole(role);
   assertEmploymentType(employmentType);
   if (role !== "MEMBER" && !canAssignRoles(currentEmployee.role)) {
-    throw new Error("Only Super Admins can add an Admin or Super Admin.");
+    throw new UserError("Only Super Admins can add an Admin or Super Admin.");
   }
 
   const client = await clerkClient();
@@ -48,12 +50,12 @@ export async function createEmployeeAction(data: {
   // 1. Check if user already exists in DB
   const existingDbUser = await db.employee.findUnique({ where: { email: data.email } });
   if (existingDbUser && existingDbUser.status === "ACTIVE") {
-    throw new Error("An active employee with this email already exists.");
+    throw new UserError("An active employee with this email already exists.");
   }
 
   const teamIds = [...new Set(data.teamIds ?? [])];
   if (teamIds.length && (await db.team.count({ where: { id: { in: teamIds } } })) !== teamIds.length) {
-    throw new Error("One of those teams no longer exists. Reload and pick again.");
+    throw new UserError("One of those teams no longer exists. Reload and pick again.");
   }
 
   if (!CLERK_WRITES_ENABLED) {
@@ -77,7 +79,7 @@ export async function createEmployeeAction(data: {
         publicMetadata: { role, designation: data.designation }
       });
     } catch (error: any) {
-      throw new Error("Failed to restore existing user account in authentication provider.");
+      throw new UserError("Failed to restore existing user account in authentication provider.");
     }
   } else {
     // Standard creation/invite logic
@@ -93,9 +95,9 @@ export async function createEmployeeAction(data: {
         clerkUserId = newUser.id;
       } catch (error: any) {
         if (error.errors && error.errors.length > 0) {
-          throw new Error(error.errors[0].message || "Failed to create user in authentication provider.");
+          throw new UserError(error.errors[0].message || "Failed to create user in authentication provider.");
         }
-        throw new Error("Failed to create user. Please check the password requirements.");
+        throw new UserError("Failed to create user. Please check the password requirements.");
       }
     } else {
       try {
@@ -113,9 +115,9 @@ export async function createEmployeeAction(data: {
         });
       } catch (error: any) {
         if (error.errors && error.errors.length > 0) {
-          throw new Error(error.errors[0].message || "Failed to send invitation.");
+          throw new UserError(error.errors[0].message || "Failed to send invitation.");
         }
-        throw new Error("Failed to create invitation.");
+        throw new UserError("Failed to create invitation.");
       }
     }
   }
@@ -200,7 +202,7 @@ export async function createEmployeeAction(data: {
     if (data.password && clerkUserId) {
       await client.users.deleteUser(clerkUserId).catch(() => {});
     }
-    throw new Error("Failed to save employee to database. Please try again.");
+    throw new UserError("Failed to save employee to database. Please try again.");
   }
 }
 
@@ -213,16 +215,16 @@ export async function updateEmployeeAction(id: string, data: {
   const currentEmployee = await requireAuth("employee:update");
 
   const target = await db.employee.findUnique({ where: { id } });
-  if (!target) throw new Error("Employee not found");
+  if (!target) throw new UserError("Employee not found");
 
   if (!canActOnEmployee(currentEmployee.role, target.role)) {
-    throw new Error("Only Super Admins can change an Admin or Super Admin.");
+    throw new UserError("Only Super Admins can change an Admin or Super Admin.");
   }
   const roleChanged = data.role !== undefined && data.role !== target.role;
   if (roleChanged) {
     assertRole(data.role);
-    if (id === currentEmployee.id) throw new Error("You can't change your own role.");
-    if (!canAssignRoles(currentEmployee.role)) throw new Error("Only Super Admins can change roles.");
+    if (id === currentEmployee.id) throw new UserError("You can't change your own role.");
+    if (!canAssignRoles(currentEmployee.role)) throw new UserError("Only Super Admins can change roles.");
   }
   if (data.employmentType !== undefined) assertEmploymentType(data.employmentType);
 
@@ -246,7 +248,7 @@ export async function updateEmployeeAction(id: string, data: {
         });
         if (oldestRecord) {
           if (oldestRecord.endDate && new Date(data.joinDate) > oldestRecord.endDate) {
-            throw new Error("Original Join Date cannot be set after the end date of their very first role.");
+            throw new UserError("Original Join Date cannot be set after the end date of their very first role.");
           }
           await tx.employmentRecord.update({
             where: { id: oldestRecord.id },
@@ -259,6 +261,10 @@ export async function updateEmployeeAction(id: string, data: {
   });
 
 
+  if (data.joinDate && target.joinDate.toISOString().slice(0, 10) !== data.joinDate) {
+    // Allowance is prorated from the join date.
+    await recalculateBalances([id], Number(new Date().toISOString().slice(0, 4)));
+  }
   audit({ actorId: currentEmployee.id, entity: "Employee", entityId: id, action: "update", changes: JSON.parse(JSON.stringify(data)) });
   revalidatePath(`/employees/${id}`);
   revalidatePath("/employees");
@@ -273,17 +279,17 @@ export async function deleteEmployeeAction(id: string) {
   const currentEmployee = await requireAuth("employee:delete");
 
   const target = await db.employee.findUnique({ where: { id } });
-  if (!target) throw new Error("Employee not found");
-  if (target.id === currentEmployee.id) throw new Error("You cannot delete your own account.");
+  if (!target) throw new UserError("Employee not found");
+  if (target.id === currentEmployee.id) throw new UserError("You cannot delete your own account.");
   if (!canActOnEmployee(currentEmployee.role, target.role)) {
-    throw new Error("Only Super Admins can remove an Admin or Super Admin.");
+    throw new UserError("Only Super Admins can remove an Admin or Super Admin.");
   }
   if (!target.clerkId.startsWith("pending_")) {
-    throw new Error(`${target.firstName} has already joined. Use Offboard instead, so their history is kept.`);
+    throw new UserError(`${target.firstName} has already joined. Use Offboard instead, so their history is kept.`);
   }
 
   const leads = (await db.project.count({ where: { leadId: id } })) + (await db.team.count({ where: { leadId: id } }));
-  if (leads > 0) throw new Error("They're set as a project or team lead. Reassign that first.");
+  if (leads > 0) throw new UserError("They're set as a project or team lead. Reassign that first.");
 
   await db.employee.delete({ where: { id } });
 
@@ -322,7 +328,7 @@ export async function reserveEmployeeSequenceAction(type: "PANTHAR" | "KAVACHX")
  * Internal helper (not exported to the client).
  */
 async function assignEmployeeCode(employeeId: string, type: "PANTHAR" | "KAVACHX", joinDateStr: string) {
-  if (!/^\d{4}-\d{2}-\d{2}/.test(joinDateStr)) throw new Error("Invalid join date.");
+  if (!/^\d{4}-\d{2}-\d{2}/.test(joinDateStr)) throw new UserError("Invalid join date.");
   const dateStr = `${joinDateStr.slice(8, 10)}${joinDateStr.slice(5, 7)}${joinDateStr.slice(2, 4)}`;
   const seqName = type === "PANTHAR" ? "SEQ_PANTHAR" : "SEQ_KAVACHX";
   const prefix = type === "PANTHAR" ? "PTHUB" : "KAVACHX";
@@ -345,13 +351,13 @@ export async function generateEmployeeCodeAction(employeeId: string, type: "PANT
   const currentEmployee = await requireAuth("employee:update");
 
   const employee = await db.employee.findUnique({ where: { id: employeeId } });
-  if (!employee) throw new Error("Employee not found.");
+  if (!employee) throw new UserError("Employee not found.");
 
   if (type === "PANTHAR" && employee.pantharCode) {
-    throw new Error("Panthar code already exists.");
+    throw new UserError("Panthar code already exists.");
   }
   if (type === "KAVACHX" && employee.kavachXCode) {
-    throw new Error("KavachX code already exists.");
+    throw new UserError("KavachX code already exists.");
   }
 
   const result = await assignEmployeeCode(employeeId, type, joinDateStr);
@@ -369,7 +375,7 @@ export async function getInvitationLinkAction(email: string) {
   // could take over a pre-provisioned admin invitation by signing up themselves.
   const invitedEmployee = await db.employee.findUnique({ where: { email }, select: { role: true } });
   if (invitedEmployee && !canActOnEmployee(currentEmployee.role, invitedEmployee.role)) {
-    throw new Error("Only Super Admins can view invitations for an Admin account.");
+    throw new UserError("Only Super Admins can view invitations for an Admin account.");
   }
 
   const client = await clerkClient();
@@ -377,7 +383,7 @@ export async function getInvitationLinkAction(email: string) {
   const invite = invites.data.find((inv) => inv.emailAddress === email);
   
   if (!invite) {
-    throw new Error("No pending invitation found for this email in Clerk.");
+    throw new UserError("No pending invitation found for this email in Clerk.");
   }
   
   return invite.url;
@@ -399,19 +405,19 @@ const EVENT_LABELS = { PROMOTION: "Promotion", TRANSFER: "Transfer", TITLE_CHANG
 export async function transitionRoleAction(employeeId: string, data: TransitionInput) {
   const currentEmployee = await requireAuth("employee:update");
   const type = data.type ?? "PROMOTION";
-  if (!(type in EVENT_LABELS)) throw new Error("Choose Promotion, Transfer or Title change.");
+  if (!(type in EVENT_LABELS)) throw new UserError("Choose Promotion, Transfer or Title change.");
 
   const target = await db.employee.findUnique({ where: { id: employeeId } });
-  if (!target) throw new Error("Employee not found.");
-  if (target.status !== "ACTIVE") throw new Error("Only active employees can be promoted or transferred.");
+  if (!target) throw new UserError("Employee not found.");
+  if (target.status !== "ACTIVE") throw new UserError("Only active employees can be promoted or transferred.");
   if (!canActOnEmployee(currentEmployee.role, target.role)) {
-    throw new Error("Only Super Admins can change an Admin or Super Admin.");
+    throw new UserError("Only Super Admins can change an Admin or Super Admin.");
   }
   const newRole = data.newRole ?? target.role;
   assertRole(newRole);
   if (newRole !== target.role) {
-    if (employeeId === currentEmployee.id) throw new Error("You can't change your own role.");
-    if (!canAssignRoles(currentEmployee.role)) throw new Error("Only Super Admins can change roles.");
+    if (employeeId === currentEmployee.id) throw new UserError("You can't change your own role.");
+    if (!canAssignRoles(currentEmployee.role)) throw new UserError("Only Super Admins can change roles.");
   }
 
   // Team changes: compare the wanted teams with the current ones.
@@ -419,24 +425,24 @@ export async function transitionRoleAction(employeeId: string, data: TransitionI
   const wanted = data.teamIds ? [...new Set(data.teamIds)] : current;
   const join = wanted.filter((t) => !current.includes(t));
   const leave = current.filter((t) => !wanted.includes(t));
-  if (join.length && (await db.team.count({ where: { id: { in: join } } })) !== join.length) throw new Error("One of those teams no longer exists.");
+  if (join.length && (await db.team.count({ where: { id: { in: join } } })) !== join.length) throw new UserError("One of those teams no longer exists.");
   if (leave.length) {
     const led = await db.team.findFirst({ where: { id: { in: leave }, leadId: employeeId }, select: { name: true } });
-    if (led) throw new Error(`${target.firstName} leads ${led.name}. Choose a new lead for that team before they leave it.`);
+    if (led) throw new UserError(`${target.firstName} leads ${led.name}. Choose a new lead for that team before they leave it.`);
   }
 
   const designation = data.newDesignation?.trim() || target.designation || null;
-  if (type === "TRANSFER" && !join.length && !leave.length) throw new Error("Change at least one team for a transfer.");
-  if (type === "TITLE_CHANGE" && !data.newDesignation?.trim()) throw new Error("Enter the new title.");
+  if (type === "TRANSFER" && !join.length && !leave.length) throw new UserError("Change at least one team for a transfer.");
+  if (type === "TITLE_CHANGE" && !data.newDesignation?.trim()) throw new UserError("Enter the new title.");
   const reason = data.reason?.trim();
-  if (!reason) throw new Error("Add a short reason.");
+  if (!reason) throw new UserError("Add a short reason.");
 
   const startDateObj = new Date(data.startDate);
-  if (isNaN(startDateObj.getTime())) throw new Error("Choose the date it takes effect.");
-  if (startDateObj < target.joinDate) throw new Error("It can't take effect before they joined.");
+  if (isNaN(startDateObj.getTime())) throw new UserError("Choose the date it takes effect.");
+  if (startDateObj < target.joinDate) throw new UserError("It can't take effect before they joined.");
   const currentRecord = await db.employmentRecord.findFirst({ where: { employeeId, endDate: null } });
   if (currentRecord && startDateObj < currentRecord.startDate) {
-    throw new Error("It can't take effect before their current role started.");
+    throw new UserError("It can't take effect before their current role started.");
   }
 
   const updatedEmployee = await db.$transaction(async (tx) => {
@@ -473,22 +479,22 @@ export async function offboardEmployeeAction(employeeId: string, data: { endDate
   const currentEmployee = await requireAuth("employee:offboard");
 
   const target = await db.employee.findUnique({ where: { id: employeeId } });
-  if (!target) throw new Error("Employee not found.");
-  if (currentEmployee.id === employeeId) throw new Error("You cannot offboard your own account.");
+  if (!target) throw new UserError("Employee not found.");
+  if (currentEmployee.id === employeeId) throw new UserError("You cannot offboard your own account.");
   if (!canActOnEmployee(currentEmployee.role, target.role)) {
-    throw new Error("Only Super Admins can offboard an Admin or Super Admin.");
+    throw new UserError("Only Super Admins can offboard an Admin or Super Admin.");
   }
-  if (target.status === "INACTIVE") throw new Error(`${target.firstName} has already left.`);
+  if (target.status === "INACTIVE") throw new UserError(`${target.firstName} has already left.`);
   const reason = data.reason?.trim();
-  if (!reason) throw new Error("Add the reason they're leaving.");
+  if (!reason) throw new UserError("Add the reason they're leaving.");
   const endDate = new Date(data.endDate);
-  if (isNaN(endDate.getTime())) throw new Error("Choose their last day.");
+  if (isNaN(endDate.getTime())) throw new UserError("Choose their last day.");
 
   // Leads must be handed over first.
   const ledProjects = await db.project.count({ where: { leadId: employeeId, status: { not: "ARCHIVED" } } });
-  if (ledProjects > 0) throw new Error("They lead active projects. Choose new project leads first.");
+  if (ledProjects > 0) throw new UserError("They lead active projects. Choose new project leads first.");
   const ledTeams = await db.team.count({ where: { leadId: employeeId } });
-  if (ledTeams > 0) throw new Error("They lead a team. Choose a new team lead first.");
+  if (ledTeams > 0) throw new UserError("They lead a team. Choose a new team lead first.");
 
   const lastDayKey = data.endDate.slice(0, 10);
   const result = await db.$transaction(async (tx) => {
@@ -510,9 +516,14 @@ export async function offboardEmployeeAction(employeeId: string, data: { endDate
     // 3. Open tasks: unassign them so they show up as needing an owner.
     let unassigned = 0;
     if (data.unassignTasks) {
-      const open = await tx.task.findMany({ where: { status: { not: "DONE" }, assignees: { some: { id: employeeId } } }, select: { id: true } });
+      const open = await tx.task.findMany({
+        where: { status: { notIn: ["DONE", "CANCELLED"] }, assignees: { some: { id: employeeId } } },
+        select: { id: true, ownerId: true, assignees: { where: { id: { not: employeeId } }, select: { id: true }, take: 1 } },
+      });
       for (const t of open) {
-        await tx.task.update({ where: { id: t.id }, data: { assignees: { disconnect: { id: employeeId } } } });
+        // If they owned it, the next assignee takes over (or it has no owner).
+        const ownerId = t.ownerId === employeeId ? t.assignees[0]?.id ?? null : t.ownerId;
+        await tx.task.update({ where: { id: t.id }, data: { ownerId, assignees: { disconnect: { id: employeeId } } } });
       }
       unassigned = open.length;
     }

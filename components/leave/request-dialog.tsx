@@ -1,10 +1,12 @@
 "use client";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { TimePicker } from "@/components/ui/time-picker";
+import { DatePicker } from "@/components/ui/date-picker";
 
 import { useState, useTransition } from "react";
 import { CalendarCheck, Home, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -135,16 +137,16 @@ export function RequestDialog({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <label htmlFor="req-start" className="text-xs font-semibold text-muted-foreground">{single ? "Date" : "From"}</label>
-              <Input
-                id="req-start" type="date" required value={form.startDate} disabled={isPending}
+              <DatePicker
+                id="req-start" value={form.startDate} disabled={isPending}
                 max={kind === "ATTENDANCE_FIX" ? today : undefined}
-                onChange={(e) => set({ startDate: e.target.value, endDate: form.endDate && form.endDate >= e.target.value ? form.endDate : e.target.value })}
+                onChange={(v) => set({ startDate: v, endDate: form.endDate && form.endDate >= v ? form.endDate : v })}
               />
             </div>
             {!single && (
               <div className="space-y-1.5">
                 <label htmlFor="req-end" className="text-xs font-semibold text-muted-foreground">To</label>
-                <Input id="req-end" type="date" required value={form.endDate} min={form.startDate || undefined} onChange={(e) => set({ endDate: e.target.value })} disabled={isPending} />
+                <DatePicker id="req-end" value={form.endDate} min={form.startDate || undefined} onChange={(v) => set({ endDate: v })} disabled={isPending} />
               </div>
             )}
           </div>
@@ -152,14 +154,14 @@ export function RequestDialog({
           {kind === "ATTENDANCE_FIX" && (
             <fieldset className="space-y-1.5">
               <legend className="text-xs font-semibold text-muted-foreground">Where Did You Work?</legend>
-              <div className="grid grid-cols-2 gap-2">
+              <RadioGroup className="grid-cols-2 gap-2" value={form.workMode} onValueChange={(v) => set({ workMode: v as "OFFICE" | "WFH" })} disabled={isPending}>
                 {([["OFFICE", "At the office"], ["WFH", "From home"]] as const).map(([value, label]) => (
                   <label key={value} className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm ${form.workMode === value ? "border-foreground" : "border-border/60"}`}>
-                    <input type="radio" name="workMode" value={value} className="accent-foreground" checked={form.workMode === value} onChange={() => set({ workMode: value })} disabled={isPending} />
+                    <RadioGroupItem value={value} />
                     {label}
                   </label>
                 ))}
-              </div>
+              </RadioGroup>
             </fieldset>
           )}
 
@@ -167,11 +169,11 @@ export function RequestDialog({
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <label htmlFor="req-in" className="text-xs font-semibold text-muted-foreground">Clock-In Time</label>
-                <Input id="req-in" type="time" required value={form.fixCheckIn} onChange={(e) => set({ fixCheckIn: e.target.value })} disabled={isPending} />
+                <TimePicker id="req-in" value={form.fixCheckIn} onChange={(v) => set({ fixCheckIn: v })} disabled={isPending} />
               </div>
               <div className="space-y-1.5">
                 <label htmlFor="req-out" className="text-xs font-semibold text-muted-foreground">Clock-Out Time</label>
-                <Input id="req-out" type="time" required value={form.fixCheckOut} onChange={(e) => set({ fixCheckOut: e.target.value })} disabled={isPending} />
+                <TimePicker id="req-out" value={form.fixCheckOut} onChange={(v) => set({ fixCheckOut: v })} disabled={isPending} />
               </div>
             </div>
           )}
@@ -188,7 +190,7 @@ export function RequestDialog({
 
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button type="submit" disabled={isPending || !form.startDate || form.reason.trim().length < 3}>
+            <Button type="submit" disabled={isPending || !form.startDate || (kind === "ATTENDANCE_FIX" && (!form.fixCheckIn || !form.fixCheckOut)) || form.reason.trim().length < 3}>
               {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />}
               {isPending ? "Sending…" : "Send Request"}
             </Button>

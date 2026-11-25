@@ -81,7 +81,9 @@ export function TeamMonthGrid({ data }: { data: TeamMonth }) {
                 <tr key={employee.id} className="hover:bg-muted/20">
                   <td className="sticky left-0 z-10 border-b border-border/40 bg-background px-3 py-1.5">
                     <p className="truncate font-medium">{employee.name}</p>
-                    <p className="truncate text-[10px] text-muted-foreground">{employee.team ?? employee.designation ?? "—"}</p>
+                    <p className="truncate text-[10px] text-muted-foreground">
+                      {employee.leftOn ? `Left ${fromDateKey(employee.leftOn).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" })}` : employee.team ?? employee.designation ?? "—"}
+                    </p>
                   </td>
                   {days.map((d) => (
                     <td key={d.dateKey} className={cn("border-b border-border/40 px-0.5 py-1.5 text-center", d.dateKey === data.today && "bg-muted/40")} title={tooltip(d)}>

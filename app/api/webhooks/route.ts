@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
   // ── User Created → Link to existing Employee (invite-only) ──
   if (eventType === "user.created") {
-    const { id, email_addresses, first_name, last_name, image_url } = evt.data;
+    const { id, email_addresses, first_name, last_name, image_url, has_image } = evt.data;
     const email = email_addresses[0]?.email_address;
 
     if (!email) {
@@ -46,7 +46,8 @@ export async function POST(req: NextRequest) {
             clerkId: id,
             ...(name && { firstName: name }),
             ...(surname && { lastName: surname }),
-            avatarUrl: image_url ?? existingEmployee.avatarUrl,
+            // Clerk's placeholder image is the same for everyone; keep initials instead.
+            avatarUrl: has_image ? image_url : existingEmployee.avatarUrl,
           },
         });
         console.log(`[Webhook] Linked invited employee ${email} to Clerk ID ${id}`);
@@ -67,7 +68,7 @@ export async function POST(req: NextRequest) {
 
   // ── User Updated → Sync Fields ──
   if (eventType === "user.updated") {
-    const { id, email_addresses, first_name, last_name, image_url } = evt.data;
+    const { id, email_addresses, first_name, last_name, image_url, has_image } = evt.data;
     const email = email_addresses[0]?.email_address;
 
     try {
@@ -77,7 +78,7 @@ export async function POST(req: NextRequest) {
           ...(email && { email }),
           ...(first_name !== undefined && { firstName: first_name ?? "" }),
           ...(last_name !== undefined && { lastName: last_name ?? "" }),
-          ...(image_url !== undefined && { avatarUrl: image_url }),
+          ...(image_url !== undefined && { avatarUrl: has_image ? image_url : null }),
         },
       });
       console.log(`[Webhook] Updated employee ${id}`);

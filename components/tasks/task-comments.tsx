@@ -6,7 +6,7 @@ import { formatDistanceToNow } from "date-fns";
 import { Loader2, MessageSquare, MoreHorizontal } from "lucide-react";
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -106,10 +106,7 @@ export function TaskComments({
             return (
               <li key={c.id} className={c.pending ? "opacity-60" : undefined}>
                 <div className="flex gap-3">
-                  <Avatar className="h-7 w-7 shrink-0">
-                    {c.author.avatarUrl && <AvatarImage src={c.author.avatarUrl} alt="" />}
-                    <AvatarFallback className="text-[10px] bg-secondary text-secondary-foreground">{c.author.firstName.charAt(0)}</AvatarFallback>
-                  </Avatar>
+                  <UserAvatar className="h-7 w-7 shrink-0" user={c.author} textClassName="text-[10px]" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 text-xs">
                       <span className="font-medium text-foreground">{c.author.firstName} {c.author.lastName}</span>

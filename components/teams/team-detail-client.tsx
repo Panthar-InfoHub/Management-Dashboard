@@ -1,4 +1,5 @@
 "use client";
+import { errorMessage } from "@/lib/errors";
 
 import { ConfirmAction } from "@/components/ui/confirm-action";
 
@@ -8,7 +9,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -18,7 +19,7 @@ import { updateTeamAction, manageTeamMembersAction, deleteTeamAction } from "@/l
 
 const statusColors: Record<string, string> = { ACTIVE: "bg-blue-500/10 text-blue-600 border-blue-500/20", PLANNING: "bg-purple-500/10 text-purple-600 border-purple-500/20", PAUSED: "bg-orange-500/10 text-orange-600 border-orange-500/20", COMPLETED: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20", ARCHIVED: "bg-gray-500/10 text-gray-600 border-gray-500/20" };
 
-const taskStatusColors: Record<string, string> = { BACKLOG: "bg-gray-500/10 text-gray-600 border-gray-500/20", TODO: "bg-slate-500/10 text-slate-600 border-slate-500/20", IN_PROGRESS: "bg-blue-500/10 text-blue-600 border-blue-500/20", REVIEW: "bg-purple-500/10 text-purple-600 border-purple-500/20", TESTING: "bg-orange-500/10 text-orange-600 border-orange-500/20", DONE: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" };
+const taskStatusColors: Record<string, string> = { CANCELLED: "bg-gray-500/10 text-gray-500 border-gray-500/20 line-through", TODO: "bg-slate-500/10 text-slate-600 border-slate-500/20", IN_PROGRESS: "bg-blue-500/10 text-blue-600 border-blue-500/20", REVIEW: "bg-purple-500/10 text-purple-600 border-purple-500/20", TESTING: "bg-orange-500/10 text-orange-600 border-orange-500/20", DONE: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" };
 
 export function TeamDetailClient({ team, allEmployees = [], tasks = [], canEdit = true, canDelete = false }: { team: any, allEmployees?: any[], tasks?: any[], canEdit?: boolean, canDelete?: boolean }) {
   const router = useRouter();
@@ -48,7 +49,7 @@ export function TeamDetailClient({ team, allEmployees = [], tasks = [], canEdit 
     startTransition(() => {
       updateTeamAction(team.id, editData).then(() => {
         setEditOpen(false);
-      }).catch((err: any) => toast.error(err.message || "Failed to update team"));
+      }).catch((err) => toast.error(errorMessage(err, "Failed to update team")));
     });
   };
 
@@ -58,7 +59,7 @@ export function TeamDetailClient({ team, allEmployees = [], tasks = [], canEdit 
       const finalMemberIds = Array.from(new Set([...selectedMemberIds, team.leadId]));
       manageTeamMembersAction(team.id, finalMemberIds).then(() => {
         setManageOpen(false);
-      }).catch((err: any) => toast.error(err.message || "Failed to manage members"));
+      }).catch((err) => toast.error(errorMessage(err, "Failed to manage members")));
     });
   };
 
@@ -160,10 +161,7 @@ export function TeamDetailClient({ team, allEmployees = [], tasks = [], canEdit 
                           </div>
                         </div>
                         {project.lead && (
-                          <Avatar className="h-7 w-7 border-2 border-background">
-                            <AvatarImage src={project.lead.avatarUrl} />
-                            <AvatarFallback className="text-[9px] bg-primary/10">{project.lead.firstName.charAt(0)}</AvatarFallback>
-                          </Avatar>
+                          <UserAvatar className="h-7 w-7 border-2 border-background" user={project.lead} textClassName="text-[9px]" />
                         )}
                       </div>
                     ))}
@@ -195,10 +193,7 @@ export function TeamDetailClient({ team, allEmployees = [], tasks = [], canEdit 
                     {team.members.map((member: any) => (
                       <div key={member.id} className="grid grid-cols-[2fr_1.5fr_1fr] gap-4 px-5 py-3.5 items-center hover:bg-muted/30 transition-colors">
                         <div className="flex items-center gap-3">
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage src={member.avatarUrl} />
-                            <AvatarFallback className="text-xs bg-primary/10">{member.firstName.charAt(0)}</AvatarFallback>
-                          </Avatar>
+                          <UserAvatar className="h-8 w-8" user={member} textClassName="text-xs" />
                           <div className="min-w-0">
                             <p className="text-sm font-medium text-foreground truncate">{member.firstName} {member.lastName}</p>
                             {member.id === team.leadId && (
@@ -233,10 +228,7 @@ export function TeamDetailClient({ team, allEmployees = [], tasks = [], canEdit 
               {team.lead ? (
                 <div className="bg-muted/20 border border-border/40 rounded-lg p-4">
                   <div className="flex items-center gap-3">
-                    <Avatar className="h-10 w-10 border border-border/50 shadow-sm">
-                      <AvatarImage src={team.lead.avatarUrl} />
-                      <AvatarFallback className="bg-primary/10">{team.lead.firstName.charAt(0)}</AvatarFallback>
-                    </Avatar>
+                    <UserAvatar className="h-10 w-10 border border-border/50 shadow-sm" user={team.lead} />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-foreground truncate">{team.lead.firstName} {team.lead.lastName}</p>
                       <p className="text-xs text-muted-foreground mt-0.5 truncate">{team.lead.designation || "Team Lead"}</p>
@@ -331,10 +323,7 @@ export function TeamDetailClient({ team, allEmployees = [], tasks = [], canEdit 
                   )}>
                     {isSelected && <Check className="h-3 w-3" />}
                   </div>
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src={emp.avatarUrl} />
-                    <AvatarFallback className="text-xs">{emp.firstName.charAt(0)}</AvatarFallback>
-                  </Avatar>
+                  <UserAvatar className="h-8 w-8" user={emp} textClassName="text-xs" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{emp.firstName} {emp.lastName}</p>
                     <p className="text-[10px] text-muted-foreground truncate">{emp.designation || emp.email}</p>

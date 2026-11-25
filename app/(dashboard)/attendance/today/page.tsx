@@ -7,7 +7,7 @@ import { getTodayBoard } from "@/lib/attendance/queries";
 import { fromDateKey } from "@/lib/attendance/calendar";
 import { TodayBoard } from "@/components/attendance/today-board";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Skeleton } from "@/components/ui/skeleton";
 
 type Params = { date?: string };
@@ -38,10 +38,10 @@ async function Board({ searchParams }: { searchParams: Promise<Params> }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">{board.isToday ? "Today" : label} · {board.scope}</p>
-        {/* A plain GET form: works before any JavaScript loads. */}
+        {/* A plain GET form: the URL holds the day, so it can be shared. */}
         <form action="/attendance/today" className="flex items-center gap-2">
           <label htmlFor="day" className="sr-only">Date</label>
-          <Input id="day" name="date" type="date" defaultValue={board.dateKey} max={board.isToday ? board.dateKey : undefined} className="h-8 w-40 text-xs" />
+          <DatePicker key={board.dateKey} id="day" name="date" defaultValue={board.dateKey} max={board.isToday ? board.dateKey : undefined} className="w-40" />
           <Button type="submit" size="sm" variant="outline" className="h-8 text-xs">Show Day</Button>
           {!board.isToday && <Button asChild size="sm" variant="ghost" className="h-8 text-xs"><Link href="/attendance/today">Today</Link></Button>}
           <Button asChild size="sm" variant="ghost" className="h-8 gap-1 text-xs"><Link href="/attendance/team"><LayoutGrid className="h-3.5 w-3.5" /> Month</Link></Button>

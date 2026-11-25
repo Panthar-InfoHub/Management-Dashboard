@@ -1,4 +1,5 @@
 "use server";
+import { UserError } from "@/lib/errors";
 
 // Who can do what beyond their role: access presets (named permission lists,
 // e.g. "HR") and personal grants. Only Admins and Super Admins manage access.
@@ -12,29 +13,29 @@ import { audit } from "@/lib/audit";
 
 async function requireAccessManager() {
   const actor = await getCurrentEmployee();
-  if (!canManageAccess(actor.role)) throw new Error("Only Admins and Super Admins can change access.");
+  if (!canManageAccess(actor.role)) throw new UserError("Only Admins and Super Admins can change access.");
   return actor;
 }
 
 function cleanPermissions(input: string[]): Permission[] {
   const invalid = input.filter((p) => !isPermission(p));
-  if (invalid.length > 0) throw new Error(`Unknown permission: ${invalid.join(", ")}`);
+  if (invalid.length > 0) throw new UserError(`Unknown permission: ${invalid.join(", ")}`);
   return [...new Set(input)] as Permission[];
 }
 
 function cleanPresetName(name: string) {
   const value = name?.trim() ?? "";
-  if (!value) throw new Error("Preset name is required.");
-  if (value.length > 60) throw new Error("Preset name is too long. Keep it under 60 characters.");
+  if (!value) throw new UserError("Preset name is required.");
+  if (value.length > 60) throw new UserError("Preset name is too long. Keep it under 60 characters.");
   return value;
 }
 
 async function assertCanChangeAccessOf(actorRole: string, actorId: string, employeeId: string) {
   const target = await db.employee.findUnique({ where: { id: employeeId }, select: { role: true } });
-  if (!target) throw new Error("Employee not found.");
-  if (employeeId === actorId) throw new Error("You can't change your own access. Ask another admin.");
-  if (isAdminRole(target.role)) throw new Error("Admins and Super Admins already have every permission.");
-  if (!canActOnEmployee(actorRole, target.role)) throw new Error("You can't change this person's access.");
+  if (!target) throw new UserError("Employee not found.");
+  if (employeeId === actorId) throw new UserError("You can't change your own access. Ask another admin.");
+  if (isAdminRole(target.role)) throw new UserError("Admins and Super Admins already have every permission.");
+  if (!canActOnEmployee(actorRole, target.role)) throw new UserError("You can't change this person's access.");
 }
 
 // ─── Presets ───
@@ -53,7 +54,7 @@ export async function createAccessPresetAction(data: { name: string; description
   const permissions = cleanPermissions(data.permissions);
 
   const exists = await db.accessPreset.findUnique({ where: { name }, select: { id: true } });
-  if (exists) throw new Error(`A preset named “${name}” already exists.`);
+  if (exists) throw new UserError(`A preset named “${name}” already exists.`);
 
   const preset = await db.accessPreset.create({
     data: { name, description: data.description?.trim() || null, permissions },
@@ -68,11 +69,11 @@ export async function createAccessPresetAction(data: { name: string; description
 export async function updateAccessPresetAction(presetId: string, data: { name?: string; description?: string | null; permissions?: string[] }) {
   const actor = await requireAccessManager();
   const existing = await db.accessPreset.findUnique({ where: { id: presetId }, include: { members: { select: { employeeId: true } } } });
-  if (!existing) throw new Error("Preset not found.");
+  if (!existing) throw new UserError("Preset not found.");
 
   const name = data.name !== undefined ? cleanPresetName(data.name) : existing.name;
   if (name !== existing.name && (await db.accessPreset.findUnique({ where: { name }, select: { id: true } }))) {
-    throw new Error(`A preset named “${name}” already exists.`);
+    throw new UserError(`A preset named “${name}” already exists.`);
   }
   const permissions = data.permissions !== undefined ? cleanPermissions(data.permissions) : existing.permissions;
 
@@ -92,7 +93,7 @@ export async function updateAccessPresetAction(presetId: string, data: { name?: 
 export async function deleteAccessPresetAction(presetId: string) {
   const actor = await requireAccessManager();
   const existing = await db.accessPreset.findUnique({ where: { id: presetId }, include: { members: { select: { employeeId: true } } } });
-  if (!existing) throw new Error("Preset not found.");
+  if (!existing) throw new UserError("Preset not found.");
 
   await db.accessPreset.delete({ where: { id: presetId } });
 
@@ -109,7 +110,7 @@ export async function deleteAccessPresetAction(presetId: string) {
 export async function getEmployeeAccessAction(employeeId: string) {
   const actor = await getCurrentEmployee();
   if (!canManageAccess(actor.role) && actor.id !== employeeId) {
-    throw new Error("You do not have permission to view this information.");
+    throw new UserError("You do not have permission to view this information.");
   }
 
   const [presets, grants] = await Promise.all([
@@ -128,7 +129,7 @@ export async function setEmployeePresetsAction(employeeId: string, presetIds: st
 
   const ids = [...new Set(presetIds)];
   const found = await db.accessPreset.count({ where: { id: { in: ids } } });
-  if (found !== ids.length) throw new Error("One of the presets no longer exists. Reload and try again.");
+  if (found !== ids.length) throw new UserError("One of the presets no longer exists. Reload and try again.");
 
   const before = await db.employeeAccessPreset.findMany({ where: { employeeId }, select: { presetId: true } });
   await db.$transaction([
@@ -151,7 +152,7 @@ export async function setEmployeePermissionsAction(data: { employeeId: string; p
   await assertCanChangeAccessOf(actor.role, actor.id, data.employeeId);
   const permissions = cleanPermissions(data.permissions);
   const expiresAt = data.expiresAt ? new Date(data.expiresAt) : null;
-  if (expiresAt && isNaN(expiresAt.getTime())) throw new Error("Invalid expiry date.");
+  if (expiresAt && isNaN(expiresAt.getTime())) throw new UserError("Invalid expiry date.");
 
   const before = await db.employeePermission.findMany({ where: { employeeId: data.employeeId, projectId: null }, select: { permission: true } });
   await db.$transaction([
@@ -173,27 +174,27 @@ export async function setEmployeePermissionsAction(data: { employeeId: string; p
 async function requireProjectDelegator(projectId: string) {
   const actor = await getCurrentEmployee();
   const project = await db.project.findUnique({ where: { id: projectId }, select: { leadId: true } });
-  if (!project) throw new Error("Project not found.");
+  if (!project) throw new UserError("Project not found.");
   if (!canManageAccess(actor.role) && project.leadId !== actor.id && !(await checkPermission("project:update", projectId))) {
-    throw new Error("Only Admins and the project lead can change project permissions.");
+    throw new UserError("Only Admins and the project lead can change project permissions.");
   }
   return actor;
 }
 
 function assertProjectPermission(permission: string): asserts permission is Permission {
   if (!PROJECT_SCOPED_PERMISSIONS.includes(permission as Permission)) {
-    throw new Error(`“${permission}” can't be given for a single project.`);
+    throw new UserError(`“${permission}” can't be given for a single project.`);
   }
 }
 
 export async function grantProjectPermissionAction(data: { employeeId: string; permission: string; projectId: string; expiresAt?: string | null }) {
   assertProjectPermission(data.permission);
   const actor = await requireProjectDelegator(data.projectId);
-  if (data.employeeId === actor.id) throw new Error("You can't change your own permissions.");
+  if (data.employeeId === actor.id) throw new UserError("You can't change your own permissions.");
 
   const target = await db.employee.findUnique({ where: { id: data.employeeId }, select: { role: true } });
-  if (!target) throw new Error("Employee not found.");
-  if (isAdminRole(target.role)) throw new Error("Admins and Super Admins already have every permission.");
+  if (!target) throw new UserError("Employee not found.");
+  if (isAdminRole(target.role)) throw new UserError("Admins and Super Admins already have every permission.");
 
   const expiresAt = data.expiresAt ? new Date(data.expiresAt) : null;
   const existing = await db.employeePermission.findFirst({
@@ -215,7 +216,7 @@ export async function grantProjectPermissionAction(data: { employeeId: string; p
 export async function revokeProjectPermissionAction(data: { employeeId: string; permission: string; projectId: string }) {
   assertProjectPermission(data.permission);
   const actor = await requireProjectDelegator(data.projectId);
-  if (data.employeeId === actor.id) throw new Error("You can't change your own permissions.");
+  if (data.employeeId === actor.id) throw new UserError("You can't change your own permissions.");
 
   await db.employeePermission.deleteMany({
     where: { employeeId: data.employeeId, permission: data.permission, projectId: data.projectId },

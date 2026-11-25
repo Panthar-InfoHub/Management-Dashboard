@@ -1,9 +1,10 @@
 "use client";
+import { errorMessage } from "@/lib/errors";
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -27,7 +28,7 @@ export function TeamsClient({ initialTeams, employees, canCreate = false }: { in
       createTeamAction(newTeam).then((team) => {
         setNewTeamOpen(false);
         setNewTeam({ name: "", description: "", leadId: "" });
-      }).catch((err: any) => toast.error(err.message || "Failed to create team"));
+      }).catch((err) => toast.error(errorMessage(err, "Failed to create team")));
     });
   };
 
@@ -113,10 +114,7 @@ export function TeamsClient({ initialTeams, employees, canCreate = false }: { in
                       <div className="flex items-center gap-2">
                         {lead ? (
                           <>
-                            <Avatar className="h-5 w-5">
-                              <AvatarImage src={lead.avatarUrl} />
-                              <AvatarFallback className="text-[8px] bg-primary/10">{lead.firstName?.charAt(0)}</AvatarFallback>
-                            </Avatar>
+                            <UserAvatar className="h-5 w-5" user={lead} textClassName="text-[8px]" />
                             <span className="text-sm font-medium">{lead.firstName} {lead.lastName}</span>
                           </>
                         ) : (
@@ -140,10 +138,7 @@ export function TeamsClient({ initialTeams, employees, canCreate = false }: { in
                     </div>
                     <div className="flex -space-x-1.5">
                       {members.slice(0, 5).map((m: any) => (
-                        <Avatar key={m.id} className="h-6 w-6 border-2 border-background ring-1 ring-border/20">
-                          <AvatarImage src={m.avatarUrl} />
-                          <AvatarFallback className="text-[8px] bg-primary/10">{m.firstName?.charAt(0)}</AvatarFallback>
-                        </Avatar>
+                        <UserAvatar key={m.id} className="h-6 w-6 border-2 border-background ring-1 ring-border/20" user={m} textClassName="text-[8px]" />
                       ))}
                       {members.length > 5 && (
                         <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-background bg-muted text-[8px] font-medium">

@@ -6,6 +6,9 @@ import { getCurrentEmployee, type AuthEmployee } from "@/lib/auth";
 import { getMyToday } from "@/lib/attendance/queries";
 import { minutesOfDay } from "@/lib/attendance/calendar";
 import { ClockCard } from "@/components/attendance/clock-card";
+import { getAnnouncements } from "@/lib/queries/announcement.queries";
+import { AnnouncementCard } from "@/components/announcements/announcement-card";
+import Link from "next/link";
 import {
   getDashboardOverview, getTaskRadar, getAttentionProjects, getDashboardProjectsSummary, getDashboardChartsData, getCompletionTrend,
 } from "@/lib/queries/dashboard.queries";
@@ -108,6 +111,20 @@ async function DashboardProjectsSummary({ employee }: { employee: any }) {
   return <ProjectsSummary projects={projectsSummary} />;
 }
 
+async function DashboardAnnouncements({ employee }: { employee: AuthEmployee }) {
+  const posts = await getAnnouncements(employee, { limit: 2 });
+  if (posts.length === 0) return null;
+  return (
+    <section className="space-y-2">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-medium">Announcements</h2>
+        <Link href="/announcements" className="text-xs text-muted-foreground hover:text-foreground">See all</Link>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">{posts.map((a) => <AnnouncementCard key={a.id} a={a} compact />)}</div>
+    </section>
+  );
+}
+
 async function DashboardClockCard({ employee }: { employee: AuthEmployee }) {
   const today = await getMyToday(employee);
   return today ? <ClockCard today={today} /> : null;
@@ -139,6 +156,10 @@ async function DashboardHeaderAsync() {
 
       <Suspense fallback={<Skeleton className="h-[84px] w-full rounded-xl" />}>
         <DashboardClockCard employee={employee} />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <DashboardAnnouncements employee={employee} />
       </Suspense>
 
       <OverviewBlocks overview={overview} />

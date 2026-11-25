@@ -1,3 +1,4 @@
+import { UserError } from "@/lib/errors";
 // ── Auth Helpers ──
 // Bridge between Clerk identity and our Employee/permissions model.
 // Every server-side function that needs "who is this user + what can they do?"
@@ -25,7 +26,7 @@ async function resolveSignedInEmployee(): Promise<AuthEmployee> {
   const { userId } = await auth();
 
   if (!userId) {
-    throw new Error("Unauthorized: no active session");
+    throw new UserError("Unauthorized: no active session");
   }
 
   let employee = await db.employee.findUnique({
@@ -41,14 +42,14 @@ async function resolveSignedInEmployee(): Promise<AuthEmployee> {
   // If webhook failed or isn't set up (local dev), fetch from Clerk.
   if (!employee) {
     const user = await currentUser();
-    if (!user) throw new Error("Unauthorized: user not found in Clerk");
+    if (!user) throw new UserError("Unauthorized: user not found in Clerk");
 
     // Use the verified primary email specifically — not emailAddresses[0], which
     // isn't guaranteed to be the primary or even a verified address, and could be
     // used to link a Clerk account to someone else's pre-provisioned Employee record.
     const primaryEmail = user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId);
     if (!primaryEmail || primaryEmail.verification?.status !== "verified") {
-      throw new Error("Unauthorized: primary email address is not verified");
+      throw new UserError("Unauthorized: primary email address is not verified");
     }
     const email = primaryEmail.emailAddress;
 
@@ -64,7 +65,7 @@ async function resolveSignedInEmployee(): Promise<AuthEmployee> {
         data: {
           clerkId: user.id,
           // Only override avatar if the user actually uploaded one to Clerk
-          avatarUrl: user.imageUrl.includes("gravatar") ? existingEmployee.avatarUrl : user.imageUrl
+          avatarUrl: user.hasImage ? user.imageUrl : existingEmployee.avatarUrl
         },
         select: {
           id: true, clerkId: true, email: true, firstName: true,
@@ -80,12 +81,12 @@ async function resolveSignedInEmployee(): Promise<AuthEmployee> {
       // an ADMIN whenever the Employee table happened to be empty was a standing
       // account-takeover risk (e.g. after the last employee is removed).
       console.log(`[Auth Blocked] Rejected uninvited signup attempt from ${email}`);
-      throw new Error("INVITATION_REQUIRED");
+      throw new UserError("INVITATION_REQUIRED");
     }
   }
 
   if (employee.status === "INACTIVE") {
-    throw new Error("FORBIDDEN: This account has been deactivated.");
+    throw new UserError("FORBIDDEN: This account has been deactivated.");
   }
 
   return employee as AuthEmployee;
@@ -117,7 +118,7 @@ export async function requireAuth(permission: Permission, projectId?: string): P
   if (!hasPerm) {
     const scopeStr = projectId ? ` for project ${projectId}` : "";
     console.error(`[Auth] Forbidden: ${employee.email} (Role: ${employee.role}) attempted action requiring ${permission}${scopeStr}`);
-    throw new Error("You do not have permission for this action.");
+    throw new UserError("You do not have permission for this action.");
   }
   return employee;
 }

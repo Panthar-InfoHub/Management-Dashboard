@@ -1,4 +1,4 @@
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { FolderKanban, ArrowRight } from "lucide-react";
@@ -65,10 +65,7 @@ export function ProjectsSummary({ projects }: { projects: ProjectSummary[] }) {
                 )}
               </div>
               {project.lead && (
-                <Avatar className="h-5 w-5 shrink-0 rounded-full" title={`${project.lead.firstName} ${project.lead.lastName}`}>
-                  <AvatarImage src={project.lead.avatarUrl ?? undefined} />
-                  <AvatarFallback className="text-[8px]">{project.lead.firstName.charAt(0)}</AvatarFallback>
-                </Avatar>
+                <UserAvatar className="h-5 w-5 shrink-0 rounded-full" title={`${project.lead.firstName} ${project.lead.lastName}`} user={project.lead} textClassName="text-[8px]" />
               )}
             </div>
             <div className="flex items-center gap-3">

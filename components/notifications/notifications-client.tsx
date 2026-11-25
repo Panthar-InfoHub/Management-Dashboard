@@ -1,4 +1,5 @@
 "use client";
+import { errorMessage } from "@/lib/errors";
 
 import { useState, useTransition } from "react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -26,7 +27,7 @@ export function NotificationsClient({ initialNotifications }: { initialNotificat
     e?.stopPropagation();
     startTransition(() => {
       markNotificationAsReadAction(id).then(() => {
-      }).catch((err) => toast.error(err.message));
+      }).catch((err) => toast.error(errorMessage(err)));
     });
   };
 
@@ -34,7 +35,7 @@ export function NotificationsClient({ initialNotifications }: { initialNotificat
     startTransition(() => {
       markAllNotificationsAsReadAction().then(() => {
         toast.success("All notifications marked as read");
-      }).catch((err) => toast.error(err.message));
+      }).catch((err) => toast.error(errorMessage(err)));
     });
   };
 

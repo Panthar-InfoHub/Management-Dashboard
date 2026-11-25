@@ -6,7 +6,7 @@ const LEDGER_LABELS: Record<string, string> = {
 
 import { useState } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -70,10 +70,7 @@ export function RecordsClient({ records }: { records: any[] }) {
                 <TableRow key={record.id} className="hover:bg-muted/30">
                   <TableCell>
                     <Link href={`/employees/${record.employeeId}`} className="flex items-center gap-3 min-w-0 group cursor-pointer">
-                      <Avatar className="h-9 w-9 border border-border/40 group-hover:border-primary/50 transition-colors">
-                        <AvatarImage src={record.employee.avatarUrl} />
-                        <AvatarFallback className="bg-primary/5 text-sm font-medium">{record.employee.firstName[0]}{record.employee.lastName[0]}</AvatarFallback>
-                      </Avatar>
+                      <UserAvatar className="h-9 w-9 border border-border/40 group-hover:border-primary/50 transition-colors" user={record.employee} textClassName="text-sm" />
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors truncate">
                           {record.employee.firstName} {record.employee.lastName}

@@ -1,4 +1,6 @@
 "use client";
+import { Checkbox } from "@/components/ui/checkbox";
+import { DatePicker } from "@/components/ui/date-picker";
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
@@ -79,7 +81,7 @@ export function OffboardDialog({ employeeId, name, checklist }: { employeeId: st
                   {checklist.openTaskCount > checklist.openTasks.length && <li>…and {checklist.openTaskCount - checklist.openTasks.length} more</li>}
                 </ul>
                 <label className="flex items-center gap-2 text-xs">
-                  <input type="checkbox" className="h-3.5 w-3.5 accent-foreground" checked={unassignTasks} onChange={(e) => setUnassignTasks(e.target.checked)} disabled={isPending} />
+                  <Checkbox checked={unassignTasks} onCheckedChange={(v) => setUnassignTasks(v === true)} disabled={isPending} />
                   Unassign them, so they show as needing an owner
                 </label>
               </>
@@ -100,7 +102,7 @@ export function OffboardDialog({ employeeId, name, checklist }: { employeeId: st
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <label htmlFor="ob-date" className="text-xs font-semibold text-muted-foreground">Last Working Day</label>
-            <Input id="ob-date" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} disabled={isPending} />
+            <DatePicker id="ob-date" value={endDate} onChange={setEndDate} disabled={isPending} />
           </div>
           <div className="space-y-1.5">
             <label htmlFor="ob-reason" className="text-xs font-semibold text-muted-foreground">Reason</label>

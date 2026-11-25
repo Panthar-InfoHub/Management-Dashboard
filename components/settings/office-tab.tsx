@@ -1,4 +1,5 @@
 "use client";
+import { TimePicker } from "@/components/ui/time-picker";
 
 import { useState, useTransition } from "react";
 import { MapPin } from "lucide-react";
@@ -150,15 +151,16 @@ export function OfficeTab({ office }: { office: OfficeSettings }) {
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <label htmlFor="office-start" className="text-xs font-semibold text-muted-foreground">Office Start</label>
-            <Input id="office-start" type="time" {...field("workStart")} />
+            <TimePicker id="office-start" value={form.workStart} onChange={(v) => setForm((f) => ({ ...f, workStart: v }))} disabled={isPending} />
           </div>
           <div className="space-y-1.5">
             <label htmlFor="office-end" className="text-xs font-semibold text-muted-foreground">Office End</label>
-            <Input id="office-end" type="time" {...field("workEnd")} />
+            <TimePicker id="office-end" value={form.workEnd} onChange={(v) => setForm((f) => ({ ...f, workEnd: v }))} disabled={isPending} />
           </div>
+
           <div className="space-y-1.5">
             <label htmlFor="office-late" className="text-xs font-semibold text-muted-foreground">Late After</label>
-            <Input id="office-late" type="time" {...field("lateAfter")} />
+            <TimePicker id="office-late" value={form.lateAfter} onChange={(v) => setForm((f) => ({ ...f, lateAfter: v }))} disabled={isPending} />
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-muted-foreground">Late Clock-In Counts As</label>

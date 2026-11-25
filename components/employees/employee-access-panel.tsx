@@ -1,4 +1,5 @@
 "use client";
+import { Checkbox } from "@/components/ui/checkbox";
 
 import { useMemo, useState, useTransition } from "react";
 import { KeyRound } from "lucide-react";
@@ -80,13 +81,7 @@ export function EmployeeAccessPanel({
           <div className="grid gap-2 sm:grid-cols-2">
             {presets.map((p) => (
               <label key={p.id} className="flex items-start gap-3 rounded-lg border border-border/40 p-3 cursor-pointer hover:bg-muted/30">
-                <input
-                  type="checkbox"
-                  className="mt-0.5 h-3.5 w-3.5 accent-foreground"
-                  checked={presetIds.includes(p.id)}
-                  onChange={() => setPresetIds((ids) => toggle(ids, p.id))}
-                  disabled={isPending}
-                />
+                <Checkbox className="mt-0.5" checked={presetIds.includes(p.id)} onCheckedChange={() => setPresetIds((ids) => toggle(ids, p.id))} disabled={isPending} />
                 <span className="min-w-0">
                   <span className="block text-sm font-medium">{p.name}</span>
                   <span className="block text-xs text-muted-foreground">{p.description || `${p.permissions.length} permissions`}</span>
@@ -110,13 +105,7 @@ export function EmployeeAccessPanel({
                 const included = fromPresets.has(item.id);
                 return (
                   <label key={item.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="h-3.5 w-3.5 accent-foreground"
-                      checked={included || permissions.includes(item.id)}
-                      disabled={included || isPending}
-                      onChange={() => setPermissions((list) => toggle(list, item.id))}
-                    />
+                    <Checkbox checked={included || permissions.includes(item.id)} disabled={included || isPending} onCheckedChange={() => setPermissions((list) => toggle(list, item.id))} />
                     <span className={included ? "text-muted-foreground" : undefined}>{item.label}</span>
                     {included && <Badge variant="outline" className="text-[9px] px-1.5 py-0">preset</Badge>}
                   </label>

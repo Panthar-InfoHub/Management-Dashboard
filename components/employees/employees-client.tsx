@@ -1,7 +1,9 @@
 "use client";
+import { DatePicker } from "@/components/ui/date-picker";
+import { errorMessage } from "@/lib/errors";
 
 import { useState, useTransition, useMemo } from "react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -12,10 +14,7 @@ import { Search, Plus, Mail, Shield, Building2, UserPlus, MoreVertical, Calendar
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createEmployeeAction, updateEmployeeAction, deleteEmployeeAction, generateEmployeeCodeAction, reserveEmployeeSequenceAction, getInvitationLinkAction } from "@/lib/actions/employee.actions";
-import { Calendar as CalendarComponent } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -60,7 +59,7 @@ export function EmployeesClient({ initialEmployees, teams = [], canViewProfiles 
       reserveEmployeeSequenceAction(codeType).then((seq) => {
         setReservedSeq(seq);
         setIsGenerating(true);
-      }).catch((err: any) => toast.error(err.message || "Failed to reserve sequence"));
+      }).catch((err) => toast.error(errorMessage(err, "Failed to reserve sequence")));
     });
   };
 
@@ -84,7 +83,7 @@ export function EmployeesClient({ initialEmployees, teams = [], canViewProfiles 
           setIsGenerating(false);
           setReservedSeq(null);
         })
-        .catch((err: any) => toast.error(err.message || "Failed to generate code"));
+        .catch((err) => toast.error(errorMessage(err, "Failed to generate code")));
     });
   };
 
@@ -97,7 +96,7 @@ export function EmployeesClient({ initialEmployees, teams = [], canViewProfiles 
         }
         navigator.clipboard.writeText(link);
         toast.success("Invite link copied to clipboard!");
-      }).catch((err: any) => toast.error(err.message || "Failed to get invite link"));
+      }).catch((err) => toast.error(errorMessage(err, "Failed to get invite link")));
     });
   };
 
@@ -113,7 +112,7 @@ export function EmployeesClient({ initialEmployees, teams = [], canViewProfiles 
         setNewEmp(emptyNewEmp);
         setSetCustomPassword(false);
         setShowPassword(false);
-      }).catch((err: any) => toast.error(err.message || "Failed to add employee"));
+      }).catch((err) => toast.error(errorMessage(err, "Failed to add employee")));
     });
   };
 
@@ -123,7 +122,7 @@ export function EmployeesClient({ initialEmployees, teams = [], canViewProfiles 
       updateEmployeeAction(editingEmp.id, { ...(canAssignRoles && { role: editingEmp.role }), designation: editingEmp.designation }).then(() => {
         setEditEmpOpen(false);
         setEditingEmp(null);
-      }).catch((err: any) => toast.error(err.message || "Failed to update employee"));
+      }).catch((err) => toast.error(errorMessage(err, "Failed to update employee")));
     });
   };
 
@@ -133,7 +132,7 @@ export function EmployeesClient({ initialEmployees, teams = [], canViewProfiles 
       deleteEmployeeAction(employeeToDelete).then(() => {
         setDeleteDialogOpen(false);
         setEmployeeToDelete(null);
-      }).catch((err: any) => toast.error(err.message || "Failed to delete employee"));
+      }).catch((err) => toast.error(errorMessage(err, "Failed to delete employee")));
     });
   };
 
@@ -230,7 +229,7 @@ export function EmployeesClient({ initialEmployees, teams = [], canViewProfiles 
                   </div>
                   <div className="space-y-1.5 flex flex-col">
                     <label className="text-xs font-semibold text-muted-foreground">Date of Joining</label>
-                    <Input type="date" value={newEmp.joinDate} onChange={e => setNewEmp({ ...newEmp, joinDate: e.target.value })} />
+                    <DatePicker value={newEmp.joinDate} onChange={(v) => setNewEmp({ ...newEmp, joinDate: v })} aria-label="Date of joining" />
                   </div>
                 </div>
                 <div className="space-y-1.5 flex flex-col">
@@ -373,12 +372,7 @@ export function EmployeesClient({ initialEmployees, teams = [], canViewProfiles 
                         <div className="space-y-4 animate-in slide-in-from-bottom-2 duration-200">
                           <div className="space-y-1.5 flex flex-col">
                             <label className="text-xs font-semibold text-muted-foreground">Confirm Date of Joining</label>
-                            <Input 
-                              type="date" 
-                              value={joinDateStr} 
-                              onChange={(e) => setJoinDateStr(e.target.value)} 
-                              className="w-full"
-                            />
+                            <DatePicker value={joinDateStr} onChange={setJoinDateStr} aria-label="Date of joining" />
                             <p className="text-[10px] text-muted-foreground/80 mt-1 leading-tight">
                               This code cannot be modified after generation. Ensure the Date of Joining is correct.
                             </p>
@@ -426,12 +420,7 @@ export function EmployeesClient({ initialEmployees, teams = [], canViewProfiles 
                         <div className="space-y-4 animate-in slide-in-from-bottom-2 duration-200">
                           <div className="space-y-1.5 flex flex-col">
                             <label className="text-xs font-semibold text-muted-foreground">Confirm Date of Joining</label>
-                            <Input 
-                              type="date" 
-                              value={joinDateStr} 
-                              onChange={(e) => setJoinDateStr(e.target.value)} 
-                              className="w-full"
-                            />
+                            <DatePicker value={joinDateStr} onChange={setJoinDateStr} aria-label="Date of joining" />
                             <p className="text-[10px] text-muted-foreground/80 mt-1 leading-tight">
                               This code cannot be modified after generation. Ensure the Date of Joining is correct.
                             </p>
@@ -511,10 +500,7 @@ export function EmployeesClient({ initialEmployees, teams = [], canViewProfiles 
                   <TableCell>
                     <div className="flex items-center gap-4 min-w-0">
                       <div className="relative shrink-0">
-                        <Avatar className="h-10 w-10 border border-border/40">
-                          <AvatarImage src={emp.avatarUrl} />
-                          <AvatarFallback className="bg-primary/5 text-sm font-medium text-foreground">{emp.firstName.charAt(0)}{emp.lastName.charAt(0)}</AvatarFallback>
-                        </Avatar>
+                        <UserAvatar className="h-10 w-10 border border-border/40" user={emp} textClassName="text-sm" />
                         {emp.status === "ACTIVE" && (
                           <span className="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-background" />
                         )}

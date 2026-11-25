@@ -4,7 +4,6 @@ import { useTheme } from "@/components/providers/theme-provider";
 import { UserButton, ClerkLoading, ClerkLoaded } from "@clerk/nextjs";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
   Bell, ChevronRight, Moon, Sun, Monitor, Plus,
-  Search, Command, Menu, CheckCheck
+  Menu, CheckCheck
 } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
 import { getRecentNotificationsAction, markAllNotificationsAsReadAction } from "@/lib/actions/notification.actions";
@@ -71,17 +70,6 @@ export function TopNav() {
 
       {/* Actions */}
       <div className="flex items-center gap-1">
-        {/* Search */}
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          className="gap-2 text-muted-foreground"
-          onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}
-        >
-          <Search className="h-4 w-4" />
-          <span className="hidden text-xs sm:inline">Search</span>
-        </Button>
-
         {/* Notifications */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

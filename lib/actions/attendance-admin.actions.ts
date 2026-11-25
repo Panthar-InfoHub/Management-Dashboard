@@ -1,4 +1,5 @@
 "use server";
+import { UserError } from "@/lib/errors";
 
 // Admins and HR (attendance:edit) set any past or current day for someone:
 // status and, optionally, the times. Always with a reason; never your own day.
@@ -22,32 +23,32 @@ export async function editAttendanceDayAction(input: {
   reason: string;
 }) {
   const actor = await getCurrentEmployee();
-  if (!(await hasPermission(actor, "attendance:edit"))) throw new Error("You don't have permission to edit attendance.");
-  if (input.employeeId === actor.id) throw new Error("You can't edit your own attendance. Ask another admin, or send an attendance fix.");
+  if (!(await hasPermission(actor, "attendance:edit"))) throw new UserError("You don't have permission to edit attendance.");
+  if (input.employeeId === actor.id) throw new UserError("You can't edit your own attendance. Ask another admin, or send an attendance fix.");
 
   const target = await db.employee.findUnique({ where: { id: input.employeeId }, select: { role: true, firstName: true, lastName: true } });
-  if (!target) throw new Error("Employee not found.");
-  if (!tracksAttendance(target.role)) throw new Error("Super Admins aren't tracked.");
-  if (!canActOnEmployee(actor.role, target.role)) throw new Error("Only Super Admins can edit an Admin's attendance.");
+  if (!target) throw new UserError("Employee not found.");
+  if (!tracksAttendance(target.role)) throw new UserError("Super Admins aren't tracked.");
+  if (!canActOnEmployee(actor.role, target.role)) throw new UserError("Only Super Admins can edit an Admin's attendance.");
 
-  if (!EDITABLE_STATUSES.includes(input.status)) throw new Error("Choose Present, Late, Half Day, WFH or Absent.");
+  if (!EDITABLE_STATUSES.includes(input.status)) throw new UserError("Choose Present, Late, Half Day, WFH or Absent.");
   const reason = input.reason?.trim() ?? "";
-  if (reason.length < 3) throw new Error("Add a short reason; the person sees it.");
+  if (reason.length < 3) throw new UserError("Add a short reason; the person sees it.");
 
   const office = await getOfficeFor(input.employeeId);
   const today = todayKey(office.timezone);
   const date = fromDateKey(input.date);
-  if (input.date > today) throw new Error("You can only edit today or an earlier day.");
+  if (input.date > today) throw new UserError("You can only edit today or an earlier day.");
 
   // Leave is changed through leave requests, not here.
   const cover = (await getCoverage([input.employeeId], input.date, input.date)).get(input.employeeId)?.get(input.date);
-  if (cover?.kind === "LEAVE" && !cover.halfDay) throw new Error("That day is approved leave. Cancel the leave first to record attendance.");
+  if (cover?.kind === "LEAVE" && !cover.halfDay) throw new UserError("That day is approved leave. Cancel the leave first to record attendance.");
 
   const absent = input.status === "ABSENT";
   const checkIn = !absent && input.checkIn ? zonedDateTime(input.date, input.checkIn, office.timezone) : null;
   const checkOut = !absent && input.checkOut ? zonedDateTime(input.date, input.checkOut, office.timezone) : null;
-  if (checkOut && !checkIn) throw new Error("Add the clock-in time too.");
-  if (checkIn && checkOut && checkOut <= checkIn) throw new Error("Clock-out must be after clock-in.");
+  if (checkOut && !checkIn) throw new UserError("Add the clock-in time too.");
+  if (checkIn && checkOut && checkOut <= checkIn) throw new UserError("Clock-out must be after clock-in.");
 
   const baseKind = (await dayKindsBetween(office, input.date, input.date))[0].dayKind;
   const dayKind = input.status === "WFH" && baseKind === "OFFICE" ? "WFH" : cover?.kind === "WFH" && baseKind === "OFFICE" ? "WFH" : baseKind;

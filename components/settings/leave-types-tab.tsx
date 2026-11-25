@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Plus } from "lucide-react";
+import { Download, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -69,14 +69,21 @@ export function LeaveTypesTab({ types }: { types: LeaveTypeRow[] }) {
           <h3 className="text-sm font-medium">Leave Types</h3>
           <p className="text-xs text-muted-foreground">
             Same for everyone. Leave the days empty for no limit. Unused days up to the carry-over limit move to the next year (January–December).
-            Types already used can be turned off, not deleted.
+            Types already used can be turned off, not deleted. Changing the days or carry-over updates everyone&apos;s balance.
           </p>
         </div>
-        {!adding && (
-          <Button variant="outline" size="sm" className="gap-1" onClick={() => setAdding(true)}>
-            <Plus className="h-3.5 w-3.5" /> New Leave Type
-          </Button>
-        )}
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {[new Date().getFullYear(), new Date().getFullYear() - 1].map((y) => (
+            <Button key={y} asChild variant="outline" size="sm" className="gap-1">
+              <a href={`/api/leave/export?year=${y}`} download><Download className="h-3.5 w-3.5" /> Leave Report {y}</a>
+            </Button>
+          ))}
+          {!adding && (
+            <Button variant="outline" size="sm" className="gap-1" onClick={() => setAdding(true)}>
+              <Plus className="h-3.5 w-3.5" /> New Leave Type
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-border/40 px-4">

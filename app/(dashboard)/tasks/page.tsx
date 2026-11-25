@@ -13,11 +13,14 @@ async function TasksDataAsync({ searchParams }: { searchParams: Promise<{ [key: 
   // Start dropdown options fetch immediately in parallel with auth and searchParams resolution
   const filterOptionsPromise = getTaskFilterDropdowns();
 
-  const [resolvedParams, employee, canEdit] = await Promise.all([
+  const [resolvedParams, employee, canCreateAnywhere] = await Promise.all([
     searchParams,
     getCurrentEmployee(),
     checkPermission("task:create"),
   ]);
+  // Everyone can add General tasks; project tasks are checked on the form.
+  void canCreateAnywhere;
+  const canEdit = true;
 
   const [tasks, filterOptions] = await Promise.all([
     getKanbanTasks(resolvedParams),

@@ -1,3 +1,4 @@
+import { UserError } from "@/lib/errors";
 // Office, calendar and leave-type settings. Shared by every user and changed
 // rarely, so cached across requests; the settings actions call updateTag().
 import { cacheLife, cacheTag } from "next/cache";
@@ -24,7 +25,7 @@ export async function getOffices() {
 export async function getDefaultOffice(): Promise<OfficeSettings> {
   const offices = await getOffices();
   const office = offices.find((o) => o.isDefault) ?? offices[0];
-  if (!office) throw new Error("No office is set up. Add one in Settings → Office.");
+  if (!office) throw new UserError("No office is set up. Add one in Settings → Office.");
   return office;
 }
 

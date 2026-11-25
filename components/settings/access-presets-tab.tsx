@@ -1,4 +1,5 @@
 "use client";
+import { Checkbox } from "@/components/ui/checkbox";
 
 import { useState, useTransition } from "react";
 import { Plus, Trash2, Users } from "lucide-react";
@@ -130,13 +131,7 @@ export function AccessPresetsTab({ presets }: { presets: PresetRow[] }) {
                 <legend className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{group.label}</legend>
                 {group.items.map((item) => (
                   <label key={item.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="h-3.5 w-3.5 accent-foreground"
-                      checked={draft.permissions.includes(item.id)}
-                      onChange={() => togglePermission(item.id)}
-                      disabled={isPending}
-                    />
+                    <Checkbox checked={draft.permissions.includes(item.id)} onCheckedChange={() => togglePermission(item.id)} disabled={isPending} />
                     {item.label}
                   </label>
                 ))}

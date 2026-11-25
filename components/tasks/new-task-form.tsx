@@ -1,4 +1,5 @@
 "use client";
+import { errorMessage } from "@/lib/errors";
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -7,11 +8,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Plus, Check, Calendar as CalendarIcon, ChevronsUpDown, X } from "lucide-react";
+import { ArrowLeft, Plus, Check, ChevronsUpDown, X } from "lucide-react";
 import Link from "next/link";
 import { createTaskAction, updateTaskAction } from "@/lib/actions/task.actions";
 import { format } from "date-fns";
-import { Calendar } from "@/components/ui/calendar";
+import { DatePicker } from "@/components/ui/date-picker";
+
+/** Project value for General tasks (no project). Must match GENERAL_FILTER. */
+const GENERAL = "GENERAL";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Badge } from "@/components/ui/badge";
@@ -24,12 +28,15 @@ export function NewTaskForm({
   initialData,
   canAssign,
   assignableByProject = {},
+  defaultProject,
 }: { 
   projects: { id: string; name: string }[];
   employees: { id: string; firstName: string; lastName: string }[];
   assignableByProject?: Record<string, string[]>;
   initialData?: any;
   canAssign?: boolean;
+  /** Pre-selected project, e.g. from a project's Add Task button. */
+  defaultProject?: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -40,24 +47,26 @@ export function NewTaskForm({
     description: string;
     priority: any;
     assigneeIds: string[];
+    ownerId: string;
     project: string;
-    startDate: Date | undefined;
-    dueDate: Date | undefined;
-    blockers: string;
+    /** "YYYY-MM-DD" or "" for none. */
+    startDate: string;
+    dueDate: string;
   }>({ 
     title: initialData?.title || "", 
     description: initialData?.description || "",
     priority: initialData?.priority || "MEDIUM", 
     assigneeIds: initialData?.assignees?.map((a: any) => a.id) || [],
-    project: initialData?.projectId || projects[0]?.id || "",
-    startDate: initialData?.startDate ? new Date(initialData.startDate) : new Date(),
-    dueDate: initialData?.dueDate ? new Date(initialData.dueDate) : (() => {
-      const d = new Date(Date.now() + 7 * 86400000);
-      d.setHours(23, 59, 59, 999);
-      return d;
-    })(),
-    blockers: initialData?.blockers || "",
+    ownerId: initialData?.ownerId || "",
+    // "GENERAL" = no project (ID GEN-n).
+    project: initialData ? (initialData.projectId ?? GENERAL) : (defaultProject ?? projects[0]?.id ?? GENERAL),
+    // Dates are optional: nothing is pre-filled.
+    startDate: initialData?.startDate ? format(new Date(initialData.startDate), "yyyy-MM-dd") : "",
+    dueDate: initialData?.dueDate ? format(new Date(initialData.dueDate), "yyyy-MM-dd") : "",
   });
+
+  const startOfDay = (key: string) => (key ? new Date(`${key}T00:00:00`) : undefined);
+  const endOfDayDate = (key: string) => (key ? new Date(`${key}T23:59:59.999`) : undefined);
 
   // Only people on the selected project (or its team) can be assigned. People
   // already on an existing task stay selectable so editing never drops them.
@@ -74,17 +83,18 @@ export function NewTaskForm({
         ...(assignableByProject[projectId] ?? []),
         ...(projectId === initialData?.projectId ? initialAssigneeIds : []),
       ]);
-      return { ...prev, project: projectId, assigneeIds: prev.assigneeIds.filter(id => allowed.has(id)) };
+      const assigneeIds = prev.assigneeIds.filter(id => allowed.has(id));
+      return { ...prev, project: projectId, assigneeIds, ownerId: assigneeIds.includes(prev.ownerId) ? prev.ownerId : assigneeIds[0] ?? "" };
     });
   };
 
   const toggleAssignee = (id: string) => {
     setNewTask(prev => {
       const current = prev.assigneeIds;
-      if (current.includes(id)) {
-        return { ...prev, assigneeIds: current.filter(a => a !== id) };
-      }
-      return { ...prev, assigneeIds: [...current, id] };
+      const assigneeIds = current.includes(id) ? current.filter(a => a !== id) : [...current, id];
+      // The Owner is always one of the assignees; the first one by default.
+      const ownerId = assigneeIds.includes(prev.ownerId) ? prev.ownerId : assigneeIds[0] ?? "";
+      return { ...prev, assigneeIds, ownerId };
     });
   };
 
@@ -98,43 +108,40 @@ export function NewTaskForm({
       toast.error("Task title is required");
       return;
     }
-    if (!newTask.project) {
-      toast.error("Please select a project");
-      return;
-    }
+
     
     startTransition(() => {
       if (initialData) {
         updateTaskAction(initialData.id, {
           title: newTask.title,
           description: newTask.description,
-          projectId: newTask.project,
+          projectId: newTask.project === GENERAL ? null : newTask.project,
           assigneeIds: newTask.assigneeIds,
+          ownerId: newTask.ownerId || null,
           priority: newTask.priority,
-          startDate: newTask.startDate,
-          dueDate: newTask.dueDate,
-          blockers: newTask.blockers
+          startDate: startOfDay(newTask.startDate),
+          dueDate: endOfDayDate(newTask.dueDate),
         }).then(() => {
           toast.success("Task updated");
           router.push(`/tasks/${initialData.id}`);
         }).catch((err: any) => {
-          toast.error(err.message || "Failed to update task");
+          toast.error(errorMessage(err, "Failed to update task"));
         });
       } else {
         createTaskAction({
           title: newTask.title,
           description: newTask.description,
-          projectId: newTask.project,
+          projectId: newTask.project === GENERAL ? null : newTask.project,
           assigneeIds: newTask.assigneeIds,
+          ownerId: newTask.ownerId || null,
           priority: newTask.priority,
-          startDate: newTask.startDate,
-          dueDate: newTask.dueDate,
-          blockers: newTask.blockers
+          startDate: startOfDay(newTask.startDate),
+          dueDate: endOfDayDate(newTask.dueDate),
         }).then(() => {
           toast.success("Task created");
           router.push("/tasks");
         }).catch((err: any) => {
-          toast.error(err.message || "Failed to create task");
+          toast.error(errorMessage(err, "Failed to create task"));
         });
       }
     });
@@ -194,16 +201,6 @@ export function NewTaskForm({
                   className="min-h-[200px] resize-none"
                 />
               </div>
-
-              <div className="space-y-2 pt-4 border-t border-border/50">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Blockers & Dependencies</label>
-                <Textarea 
-                  value={newTask.blockers} 
-                  onChange={e => setNewTask({ ...newTask, blockers: e.target.value })} 
-                  placeholder="Is this task blocked by anything?" 
-                  className="min-h-[100px] resize-none"
-                />
-              </div>
             </CardContent>
           </Card>
 
@@ -215,10 +212,13 @@ export function NewTaskForm({
                 <Select value={newTask.project} onValueChange={changeProject}>
                   <SelectTrigger className="bg-background"><SelectValue placeholder="Select project" /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={GENERAL}>General (no project)</SelectItem>
                     {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                    {projects.length === 0 && <SelectItem value="none" disabled>No active projects</SelectItem>}
                   </SelectContent>
                 </Select>
+                {newTask.project === GENERAL && (
+                  <p className="text-[11px] text-muted-foreground">ID like GEN-4. Only you, the people assigned, admins and people with task access see it.</p>
+                )}
               </div>
 
               <div className="space-y-1.5 flex flex-col">
@@ -239,6 +239,7 @@ export function NewTaskForm({
                             return emp ? (
                               <Badge variant="secondary" key={id} className="text-[10px] rounded-sm pr-1">
                                 {emp.firstName} {emp.lastName}
+                                {id === newTask.ownerId && <span className="ml-1 rounded-sm bg-foreground px-1 text-[9px] text-background">Owner</span>}
                                 <span 
                                   className={cn("ml-1 p-0.5 rounded-full", canAssign === false ? "opacity-50 cursor-not-allowed" : "hover:bg-muted cursor-pointer")} 
                                   onClick={(e) => {
@@ -287,6 +288,22 @@ export function NewTaskForm({
                 </Popover>
               </div>
               
+              {newTask.assigneeIds.length > 1 && (
+                <div className="space-y-1.5 flex flex-col">
+                  <label className="text-xs font-semibold text-muted-foreground">Owner</label>
+                  <Select value={newTask.ownerId} onValueChange={(v) => setNewTask({ ...newTask, ownerId: v })} disabled={isPending || canAssign === false}>
+                    <SelectTrigger className="bg-background"><SelectValue placeholder="Choose the owner" /></SelectTrigger>
+                    <SelectContent>
+                      {newTask.assigneeIds.map((id) => {
+                        const emp = employees.find((e) => e.id === id);
+                        return emp ? <SelectItem key={id} value={id}>{emp.firstName} {emp.lastName}</SelectItem> : null;
+                      })}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground">The one person accountable. Everyone else helps.</p>
+                </div>
+              )}
+
               <div className="h-px w-full bg-border/50 my-2" />
               
               <div className="space-y-1.5 flex flex-col">
@@ -305,61 +322,14 @@ export function NewTaskForm({
               <div className="h-px w-full bg-border/50 my-2" />
 
               <div className="space-y-1.5 flex flex-col">
-                <label className="text-xs font-semibold text-muted-foreground">Start Date</label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant={"outline"}
-                      className={cn(
-                        "w-full justify-start text-left font-normal bg-background",
-                        !newTask.startDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {newTask.startDate ? format(newTask.startDate, "PPP") : <span>Pick a date</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={newTask.startDate}
-                      onSelect={(d: any) => setNewTask({ ...newTask, startDate: d })}
-                    />
-                  </PopoverContent>
-                </Popover>
+                <label htmlFor="task-start" className="text-xs font-semibold text-muted-foreground">Start Date (optional)</label>
+                <DatePicker id="task-start" value={newTask.startDate} max={newTask.dueDate || undefined} onChange={(v) => setNewTask({ ...newTask, startDate: v })} placeholder="No start date" clearable disabled={isPending} className="bg-background" />
               </div>
-              
+
               <div className="space-y-1.5 flex flex-col">
-                <label className="text-xs font-semibold text-muted-foreground">Deadline</label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant={"outline"}
-                      className={cn(
-                        "w-full justify-start text-left font-normal bg-background",
-                        !newTask.dueDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {newTask.dueDate ? format(newTask.dueDate, "PPP") : <span>Pick a date</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={newTask.dueDate}
-                      onSelect={(d: any) => {
-                        if (d) {
-                          const end = new Date(d);
-                          end.setHours(23, 59, 59, 999);
-                          setNewTask({ ...newTask, dueDate: end });
-                        } else {
-                          setNewTask({ ...newTask, dueDate: undefined });
-                        }
-                      }}
-                    />
-                  </PopoverContent>
-                </Popover>
+                <label htmlFor="task-due" className="text-xs font-semibold text-muted-foreground">Due Date (optional)</label>
+                <DatePicker id="task-due" value={newTask.dueDate} min={newTask.startDate || undefined} onChange={(v) => setNewTask({ ...newTask, dueDate: v })} placeholder="No due date" clearable disabled={isPending} className="bg-background" />
+                <p className="text-[11px] text-muted-foreground">Only tasks with a due date can be overdue.</p>
               </div>
             </CardContent>
           </Card>

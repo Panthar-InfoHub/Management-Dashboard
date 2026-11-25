@@ -10,12 +10,12 @@ export async function getOffboardingChecklist(employeeId: string, role: string) 
     db.project.findMany({ where: { leadId: employeeId, status: { not: "ARCHIVED" } }, select: { id: true, name: true } }),
     db.team.findMany({ where: { leadId: employeeId }, select: { id: true, name: true } }),
     db.task.findMany({
-      where: { status: { not: "DONE" }, assignees: { some: { id: employeeId } } },
+      where: { status: { notIn: ["DONE", "CANCELLED"] }, assignees: { some: { id: employeeId } } },
       select: { id: true, title: true, project: { select: { name: true } } },
       orderBy: { dueDate: "asc" },
       take: 5,
     }),
-    db.task.count({ where: { status: { not: "DONE" }, assignees: { some: { id: employeeId } } } }),
+    db.task.count({ where: { status: { notIn: ["DONE", "CANCELLED"] }, assignees: { some: { id: employeeId } } } }),
     db.request.count({
       where: { employeeId, OR: [{ status: "PENDING" }, { status: "APPROVED", startDate: { gt: fromDateKey(today) } }] },
     }),
@@ -27,7 +27,7 @@ export async function getOffboardingChecklist(employeeId: string, role: string) 
   return {
     ledProjects,
     ledTeams,
-    openTasks: openTasks.map((t) => ({ id: t.id, title: t.title, project: t.project.name })),
+    openTasks: openTasks.map((t) => ({ id: t.id, title: t.title, project: t.project?.name ?? "General" })),
     openTaskCount,
     openRequests: requests,
     balances: balances.map((b) => ({ name: b.name, available: b.available ?? 0 })),

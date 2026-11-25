@@ -1,4 +1,5 @@
 "use server";
+import { UserError } from "@/lib/errors";
 
 // Clock in / clock out. A day ends at midnight (office time): a clock-in with
 // no clock-out by then becomes a missed checkout, without hours, fixed later
@@ -48,7 +49,7 @@ async function markMissedCheckout(attendanceId: string) {
 
 async function requireTracked() {
   const employee = await getCurrentEmployee();
-  if (!tracksAttendance(employee.role)) throw new Error("Super Admins don't clock in.");
+  if (!tracksAttendance(employee.role)) throw new UserError("Super Admins don't clock in.");
   return employee;
 }
 
@@ -59,9 +60,9 @@ function locationFor(dayKind: string, point: GeoPoint | null, office: OfficeSett
   const fence = checkGeofence(point, office);
   if (!fence.ok) {
     if (fence.reason === "outside") {
-      throw new Error(`You're ${fence.distanceMeters} m from ${office.name}; clock-in works within ${office.radiusMeters} m. If you're working from home today, ask for WFH.`);
+      throw new UserError(`You're ${fence.distanceMeters} m from ${office.name}; clock-in works within ${office.radiusMeters} m. If you're working from home today, ask for WFH.`);
     }
-    throw new Error(GEOFENCE_MESSAGES[fence.reason]);
+    throw new UserError(GEOFENCE_MESSAGES[fence.reason]);
   }
   return { ...base, distanceMeters: fence.distanceMeters, inside: true };
 }
@@ -78,7 +79,7 @@ export async function clockInAction(input: { location?: GeoPoint | null }) {
   const open = await findOpenSession(employee.id);
   if (open?.checkInAt) {
     if (!isSessionExpired(toDateKey(open.date), dateKey)) {
-      throw new Error(`You already clocked in today at ${formatTime(open.checkInAt, office.timezone)}.`);
+      throw new UserError(`You already clocked in today at ${formatTime(open.checkInAt, office.timezone)}.`);
     }
     await markMissedCheckout(open.id);
     closedMissed = dayLabel(open.date);
@@ -90,7 +91,7 @@ export async function clockInAction(input: { location?: GeoPoint | null }) {
     getCoverage([employee.id], dateKey, dateKey).then((m) => m.get(employee.id)?.get(dateKey) ?? null),
   ]);
   if (coverage?.kind === "LEAVE" && !coverage.halfDay) {
-    throw new Error(`You're on ${coverage.typeName ?? "leave"} today. Cancel the leave first if you're working.`);
+    throw new UserError(`You're on ${coverage.typeName ?? "leave"} today. Cancel the leave first if you're working.`);
   }
   const halfDayLeave = coverage?.kind === "LEAVE" && !!coverage.halfDay;
   const dayKind = coverage?.kind === "WFH" && baseKind === "OFFICE" ? "WFH" : baseKind;
@@ -149,7 +150,7 @@ export async function clockInAction(input: { location?: GeoPoint | null }) {
   } catch (err) {
     // Two clicks at once: the second insert hits the one-row-per-day constraint.
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-      throw new Error("You already clocked in today.");
+      throw new UserError("You already clocked in today.");
     }
     throw err;
   }
@@ -173,12 +174,12 @@ export async function clockOutAction(input: { location?: GeoPoint | null }) {
   const today = todayKey(office.timezone, now);
 
   const open = await findOpenSession(employee.id);
-  if (!open?.checkInAt) throw new Error("You haven't clocked in today.");
+  if (!open?.checkInAt) throw new UserError("You haven't clocked in today.");
   if (isSessionExpired(toDateKey(open.date), today)) {
     // Clocked in on an earlier day and the day ended at midnight.
     await markMissedCheckout(open.id);
     refresh();
-    throw new Error(
+    throw new UserError(
       `You clocked in on ${dayLabel(open.date)} at ${formatTime(open.checkInAt, office.timezone)} but didn't clock out before midnight, so that day closed as a missed checkout. Ask for an attendance fix.`
     );
   }

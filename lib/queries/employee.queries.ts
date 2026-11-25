@@ -1,3 +1,4 @@
+import { UserError } from "@/lib/errors";
 import { db } from "@/lib/db";
 import { checkPermission } from "@/lib/auth";
 
@@ -31,7 +32,7 @@ export async function getEmployees() {
 
 export async function getEmployeeById(id: string) {
   const isPrivileged = await checkPermission("employee:view-all");
-  if (!isPrivileged) throw new Error("Unauthorized to view detailed employee profile");
+  if (!isPrivileged) throw new UserError("Unauthorized to view detailed employee profile");
 
   return db.employee.findUnique({
     where: { id },

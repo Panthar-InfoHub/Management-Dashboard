@@ -1,4 +1,5 @@
 "use client";
+import { publicMessage } from "@/lib/errors";
 
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -9,13 +10,14 @@ import { useRouter } from "next/navigation";
 export default function Error({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   const router = useRouter();
 
+  const safeMessage = publicMessage(error) ?? "";
   useEffect(() => {
     // Log the error to an error reporting service
     console.error(error);
   }, [error]);
 
-  const isInviteError = error.message.includes("INVITATION_REQUIRED");
-  const isForbiddenError = error.message.includes("FORBIDDEN");
+  const isInviteError = safeMessage.includes("INVITATION_REQUIRED");
+  const isForbiddenError = safeMessage.includes("FORBIDDEN");
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-6">

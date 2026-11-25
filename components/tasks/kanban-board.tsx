@@ -1,12 +1,13 @@
 "use client";
+import { errorMessage } from "@/lib/errors";
 
 import { useState, useTransition, useMemo, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -17,23 +18,21 @@ import { cn } from "@/lib/utils";
 import { Filter, Search, ClipboardList, Clock, Loader2, X, ListChecks } from "lucide-react";
 import { updateTaskStatusAction, rebalanceColumnTasksAction } from "@/lib/actions/task.actions";
 import { toast } from "sonner";
+import { taskKey } from "@/lib/tasks/keys";
+import { DoneNoteDialog } from "@/components/tasks/done-note-dialog";
+import { TaskListView } from "@/components/tasks/task-list-view";
 import { format, isPast, isToday, endOfDay } from "date-fns";
 
 const statusColors: Record<string, string> = { 
-  BACKLOG: "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20 hover:bg-gray-500/20", 
   TODO: "bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20 hover:bg-slate-500/20", 
   IN_PROGRESS: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20", 
   REVIEW: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20 hover:bg-purple-500/20", 
   TESTING: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/20", 
-  DONE: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20" 
+  DONE: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20",
+  CANCELLED: "bg-gray-500/10 text-gray-500 border-gray-500/20 line-through",
 };
 
-const priorityColors: Record<string, string> = { 
-  CRITICAL: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20 hover:bg-red-500/20", 
-  HIGH: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20 hover:bg-orange-500/20", 
-  MEDIUM: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20", 
-  LOW: "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20 hover:bg-gray-500/20" 
-};
+
 
 const priorityDots: Record<string, string> = { 
   CRITICAL: "bg-red-500", 
@@ -43,8 +42,7 @@ const priorityDots: Record<string, string> = {
 };
 
 const columns = [
-  { id: "BACKLOG", title: "Backlog" },
-  { id: "TODO", title: "Todo" },
+  { id: "TODO", title: "To Do" },
   { id: "IN_PROGRESS", title: "In Progress" },
   { id: "REVIEW", title: "Review" },
   { id: "TESTING", title: "Testing" },
@@ -68,6 +66,11 @@ export function KanbanBoard({
   const searchParams = useSearchParams();
   const [isFilterPending, startFilterTransition] = useTransition();
   const [showAllDone, setShowAllDone] = useState(false);
+  // A drop on Done waits for the "what was done?" note.
+  const [pendingDone, setPendingDone] = useState<{ taskId: string; order: number } | null>(null);
+  const [savingDone, setSavingDone] = useState(false);
+  const showSubtasks = searchParams.get("subtasks") === "1";
+  const showCancelled = searchParams.get("cancelled") === "1";
   
   // Drag-and-drop snapping & insertion state
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
@@ -111,6 +114,10 @@ export function KanbanBoard({
   const urlTeam = optimisticFilters.team !== undefined ? optimisticFilters.team : (searchParams.get("team") || "ALL");
   const urlProject = optimisticFilters.project !== undefined ? optimisticFilters.project : (searchParams.get("project") || "ALL");
   const urlAssignee = optimisticFilters.assignee !== undefined ? optimisticFilters.assignee : (searchParams.get("assignee") || "ALL");
+  // Fixed at mount, for the "due in 7 days" filter.
+  const [now] = useState(() => Date.now());
+  const urlPriority = searchParams.get("priority") || "ALL";
+  const urlDue = searchParams.get("due") || "ALL";
   const urlSearch = optimisticFilters.search !== undefined ? optimisticFilters.search : (searchParams.get("search") || "");
 
   // Build filter options combining explicit lists with task references
@@ -135,25 +142,33 @@ export function KanbanBoard({
     return taskList.filter(t => {
       const matchSearch = !urlSearch || 
                           t.title.toLowerCase().includes(urlSearch.toLowerCase()) || 
+                          (taskKey(t) ?? "").toLowerCase() === urlSearch.trim().toLowerCase() ||
                           (t.project?.name || "").toLowerCase().includes(urlSearch.toLowerCase());
       const matchTeam = urlTeam === "ALL" || t.project?.team?.id === urlTeam;
-      const matchProject = urlProject === "ALL" || t.project?.id === urlProject;
+      const matchProject = urlProject === "ALL" || (urlProject === "GENERAL" ? !t.projectId : t.project?.id === urlProject);
       const matchAssignee = urlAssignee === "ALL" || 
                             (urlAssignee === "UNASSIGNED" ? (!t.assignees || t.assignees.length === 0) : (t.assignees && t.assignees.some((a: any) => a.id === urlAssignee)));
       
-      return matchSearch && matchTeam && matchProject && matchAssignee;
+      const matchPriority = urlPriority === "ALL" || t.priority === urlPriority;
+      const due = t.dueDate ? new Date(t.dueDate) : null;
+      const open = t.status !== "DONE" && t.status !== "CANCELLED";
+      const matchDue = urlDue === "ALL"
+        || (urlDue === "NONE" && !due)
+        || (urlDue === "OVERDUE" && !!due && open && !isToday(due) && isPast(endOfDay(due)))
+        || (urlDue === "WEEK" && !!due && due.getTime() - now <= 7 * 86400000 && !isPast(endOfDay(due)));
+      return matchSearch && matchTeam && matchProject && matchAssignee && matchPriority && matchDue;
     });
-  }, [taskList, urlSearch, urlTeam, urlProject, urlAssignee]);
+  }, [taskList, urlSearch, urlTeam, urlProject, urlAssignee, urlPriority, urlDue, now]);
 
   // Tasks grouped by status, sorted by order asc, then updatedAt desc
   const tasksByStatus = useMemo(() => {
     const map: Record<string, any[]> = {
-      BACKLOG: [],
       TODO: [],
       IN_PROGRESS: [],
       REVIEW: [],
       TESTING: [],
       DONE: [],
+      CANCELLED: [],
     };
     for (const t of filteredTasks) {
       if (map[t.status]) {
@@ -173,19 +188,6 @@ export function KanbanBoard({
     return map;
   }, [filteredTasks]);
 
-  // In the List view, push DONE tasks to the bottom, then sort by order
-  const listTasks = useMemo(() => {
-    return [...filteredTasks].sort((a, b) => {
-      const aDone = a.status === "DONE";
-      const bDone = b.status === "DONE";
-      if (aDone && !bDone) return 1;
-      if (!aDone && bDone) return -1;
-      const orderA = a.order ?? 0;
-      const orderB = b.order ?? 0;
-      if (orderA !== orderB) return orderA - orderB;
-      return new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime();
-    });
-  }, [filteredTasks]);
 
   const updateUrlFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -294,6 +296,10 @@ export function KanbanBoard({
     if (!taskId) return;
     const task = taskList.find(t => t.id === taskId);
     if (!task) return;
+    if (statusId === "CANCELLED" && task.status !== "CANCELLED") {
+      toast.info("Open the task and use Cancel Task to give a reason");
+      return;
+    }
 
     const oldStatus = task.status;
     const oldOrder = task.order ?? 0;
@@ -306,6 +312,12 @@ export function KanbanBoard({
       : otherTasksInTarget.length;
 
     const newOrder = calculateNewOrder(otherTasksInTarget, targetIndex);
+
+    // Done needs a note first; nothing moves until it's given.
+    if (statusId === "DONE" && task.status !== "DONE") {
+      setPendingDone({ taskId, order: newOrder });
+      return;
+    }
 
     // If neither status nor position changed, skip
     if (task.status === statusId && Math.abs((task.order ?? 0) - newOrder) < 0.0001) {
@@ -334,7 +346,7 @@ export function KanbanBoard({
         .then(() => toast.success("Task updated"))
         .catch(err => {
           setTaskList(prev => prev.map(t => t.id === taskId ? { ...t, status: oldStatus, order: oldOrder } : t));
-          toast.error(err.message || "Task not moved. Try again.");
+          toast.error(errorMessage(err, "Task not moved. Try again."));
         });
       return;
     }
@@ -354,13 +366,33 @@ export function KanbanBoard({
     } catch (err: any) {
       // Revert optimistic update
       setTaskList(prev => prev.map(t => t.id === taskId ? { ...t, status: oldStatus, order: oldOrder } : t));
-      toast.error(err.message || "Failed to update task");
+      toast.error(errorMessage(err, "Failed to update task"));
     } finally {
       inFlightStatusUpdatesRef.current.delete(taskId);
     }
   };
 
-  const hasActiveFilters = urlTeam !== "ALL" || urlProject !== "ALL" || urlAssignee !== "ALL" || urlSearch !== "";
+  const confirmDone = async (note: string) => {
+    if (!pendingDone) return;
+    const { taskId, order } = pendingDone;
+    const task = taskList.find(t => t.id === taskId);
+    if (!task) return setPendingDone(null);
+    setSavingDone(true);
+    inFlightStatusUpdatesRef.current.set(taskId, { status: "DONE", order });
+    try {
+      await updateTaskStatusAction(taskId, "DONE", order, note);
+      setTaskList(prev => prev.map(t => t.id === taskId ? { ...t, status: "DONE", order, completionNote: note } : t));
+      toast.success(`${taskKey(task) ?? "Task"} done`);
+      setPendingDone(null);
+    } catch (err) {
+      toast.error(errorMessage(err, "Task not marked done. Try again."));
+    } finally {
+      inFlightStatusUpdatesRef.current.delete(taskId);
+      setSavingDone(false);
+    }
+  };
+
+  const hasActiveFilters = urlTeam !== "ALL" || urlProject !== "ALL" || urlAssignee !== "ALL" || urlSearch !== "" || urlPriority !== "ALL" || urlDue !== "ALL" || showSubtasks || showCancelled;
 
   return (
     <div className="flex flex-col gap-4 flex-1 min-w-0">
@@ -369,7 +401,7 @@ export function KanbanBoard({
         <div className="relative flex-1 w-full min-w-[200px]">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input 
-            placeholder="Search tasks…" 
+            placeholder="Search tasks or an ID like KX-12…" 
             defaultValue={urlSearch}
             onChange={(e) => {
               const val = e.target.value;
@@ -394,6 +426,14 @@ export function KanbanBoard({
             />
             <Label htmlFor="my-tasks" className="text-xs font-medium cursor-pointer">My Tasks</Label>
           </div>
+          <div className={cn("flex items-center gap-2 px-3 h-9 rounded-md border border-border/50 bg-background shrink-0", showSubtasks && "border-primary/50 bg-primary/5")}>
+            <Switch id="show-subtasks" checked={showSubtasks} onCheckedChange={(c) => updateUrlFilter("subtasks", c ? "1" : "ALL")} />
+            <Label htmlFor="show-subtasks" className="text-xs font-medium cursor-pointer">Subtasks</Label>
+          </div>
+          <div className={cn("flex items-center gap-2 px-3 h-9 rounded-md border border-border/50 bg-background shrink-0", showCancelled && "border-primary/50 bg-primary/5")}>
+            <Switch id="show-cancelled" checked={showCancelled} onCheckedChange={(c) => updateUrlFilter("cancelled", c ? "1" : "ALL")} />
+            <Label htmlFor="show-cancelled" className="text-xs font-medium cursor-pointer">Cancelled</Label>
+          </div>
 
           <Select value={urlTeam} onValueChange={(v) => updateUrlFilter("team", v)}>
             <SelectTrigger className={cn("h-9 min-w-[130px] max-w-[160px] text-xs transition-colors", urlTeam !== "ALL" && "border-primary/50 bg-primary/5 text-foreground font-medium")}>
@@ -417,6 +457,7 @@ export function KanbanBoard({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All Projects</SelectItem>
+              <SelectItem value="GENERAL">General (no project)</SelectItem>
               {projects.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
             </SelectContent>
           </Select>
@@ -432,6 +473,27 @@ export function KanbanBoard({
               <SelectItem value="ALL">All Assignees</SelectItem>
               <SelectItem value="UNASSIGNED">Unassigned</SelectItem>
               {allEmployees.map((e: any) => <SelectItem key={e.id} value={e.id}>{e.firstName} {e.lastName}</SelectItem>)}
+            </SelectContent>
+          </Select>
+
+          <Select value={urlPriority} onValueChange={(v) => updateUrlFilter("priority", v)}>
+            <SelectTrigger className={cn("h-9 min-w-[120px] text-xs", urlPriority !== "ALL" && "border-primary/50 bg-primary/5 font-medium")} aria-label="Priority"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Any Priority</SelectItem>
+              <SelectItem value="CRITICAL">Critical</SelectItem>
+              <SelectItem value="HIGH">High</SelectItem>
+              <SelectItem value="MEDIUM">Medium</SelectItem>
+              <SelectItem value="LOW">Low</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={urlDue} onValueChange={(v) => updateUrlFilter("due", v)}>
+            <SelectTrigger className={cn("h-9 min-w-[120px] text-xs", urlDue !== "ALL" && "border-primary/50 bg-primary/5 font-medium")} aria-label="Due date"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Any Due Date</SelectItem>
+              <SelectItem value="OVERDUE">Overdue</SelectItem>
+              <SelectItem value="WEEK">Due in 7 Days</SelectItem>
+              <SelectItem value="NONE">No Due Date</SelectItem>
             </SelectContent>
           </Select>
 
@@ -461,7 +523,7 @@ export function KanbanBoard({
           className="mt-6 h-[380px]"
         />
       ) : (
-        <Tabs defaultValue="board" className="flex-1 flex flex-col min-w-0">
+        <Tabs value={searchParams.get("view") === "list" ? "list" : "board"} onValueChange={(v) => updateUrlFilter("view", v === "list" ? "list" : "ALL")} className="flex-1 flex flex-col min-w-0">
           <TabsList className="shrink-0 w-fit">
             <TabsTrigger value="board" className="text-xs">Board</TabsTrigger>
             <TabsTrigger value="list" className="text-xs">List</TabsTrigger>
@@ -469,7 +531,7 @@ export function KanbanBoard({
 
           <TabsContent value="board" className="mt-0 pt-4 flex-1 focus-visible:outline-none">
             <div className="flex overflow-x-auto pb-4 gap-4 snap-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-              {columns.map(col => {
+              {(showCancelled ? [...columns, { id: "CANCELLED", title: "Cancelled" }] : columns).map(col => {
                 const colTasks = tasksByStatus[col.id] || [];
                 const isDoneCol = col.id === "DONE";
                 const visibleTasks = (isDoneCol && !showAllDone) ? colTasks.slice(0, 8) : colTasks;
@@ -494,7 +556,10 @@ export function KanbanBoard({
 
                     <div className="space-y-2 flex-1 pr-1 pb-2 max-h-[calc(100vh-250px)] overflow-y-auto custom-scrollbar min-h-[80px]">
                       {visibleTasks.map((task, idx) => {
-                        const assignee = task.assignees && task.assignees.length > 0 ? task.assignees[0] : null;
+                        const assignee = task.owner ?? (task.assignees && task.assignees.length > 0 ? task.assignees[0] : null);
+                        const others = (task.assignees?.length ?? 0) - (assignee ? 1 : 0);
+                        const subtaskTotal = task.subtasks?.length ?? 0;
+                        const subtaskDone = task.subtasks?.filter((st: any) => st.status === "DONE").length ?? 0;
                         const isDraggingCurrent = draggedTaskId === task.id;
                         const showInsertionBarBefore = isColumnActive && dragOverInfo.index === idx;
 
@@ -522,41 +587,42 @@ export function KanbanBoard({
                               <CardContent className="p-2.5 flex flex-col gap-2">
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="flex flex-col gap-0.5 min-w-0">
-                                    {task.project?.name && (
-                                      <span className="text-[9px] font-medium text-muted-foreground uppercase tracking-wider truncate">
-                                        {task.project.team?.name ? `${task.project.team.name} › ` : ""}{task.project.name}
-                                      </span>
-                                    )}
+                                    <span className="text-[9px] font-medium text-muted-foreground uppercase tracking-wider truncate">
+                                      {taskKey(task) && <span className="font-mono normal-case tracking-normal text-foreground/70">{taskKey(task)}</span>}
+                                      {taskKey(task) ? " · " : ""}
+                                      {task.project?.name ?? "General"}
+                                    </span>
+                                    {task.parent && <span className="text-[9px] text-muted-foreground truncate">↳ {task.parent.title}</span>}
                                     <p className="text-xs font-semibold leading-tight text-foreground">{task.title}</p>
                                   </div>
-                                  <Avatar className="h-5 w-5 shrink-0 ring-1 ring-border/50">
-                                    {assignee ? (
-                                      <>
-                                        <AvatarImage src={assignee.avatarUrl} />
-                                        <AvatarFallback className="text-[8px] bg-primary/10">{assignee.firstName?.charAt(0)}</AvatarFallback>
-                                      </>
-                                    ) : (
+                                  {assignee ? (
+                                    <span className="flex shrink-0 items-center gap-0.5" title={others > 0 ? `Owner: ${assignee.firstName} ${assignee.lastName} · +${others} more` : `Owner: ${assignee.firstName} ${assignee.lastName}`}>
+                                      <UserAvatar className="h-5 w-5 ring-1 ring-border/50" user={assignee} textClassName="text-[8px]" />
+                                      {others > 0 && <span className="text-[9px] font-medium text-muted-foreground">+{others}</span>}
+                                    </span>
+                                  ) : (
+                                    <Avatar className="h-5 w-5 shrink-0 ring-1 ring-border/50" title="Unassigned">
                                       <AvatarFallback className="text-[8px] bg-muted text-muted-foreground border-dashed">?</AvatarFallback>
-                                    )}
-                                  </Avatar>
+                                    </Avatar>
+                                  )}
                                 </div>
 
                                 <div className="flex items-center justify-between mt-1">
                                   <div className="flex items-center gap-1.5">
                                     <div className={cn("h-1.5 w-1.5 rounded-full shrink-0", priorityDots[task.priority] || "bg-muted")} title={`Priority: ${task.priority}`} />
-                                    {task._count?.subtasks > 0 && (
-                                      <span className="text-[9px] font-medium text-muted-foreground flex items-center gap-0.5" title={`${task.subtasks?.length ?? 0} of ${task._count.subtasks} subtasks done`}>
+                                    {subtaskTotal > 0 && (
+                                      <span className="text-[9px] font-medium text-muted-foreground flex items-center gap-0.5" title={`${subtaskDone} of ${subtaskTotal} subtasks done`}>
                                         <ListChecks className="h-2.5 w-2.5" />
-                                        {task.subtasks?.length ?? 0}/{task._count.subtasks}
+                                        {subtaskDone}/{subtaskTotal}
                                       </span>
                                     )}
                                     {task.dueDate && (() => {
                                       const date = new Date(task.dueDate);
-                                      const isOverdue = task.status !== "DONE" && !isToday(date) && isPast(endOfDay(date));
+                                      const isOverdue = task.status !== "DONE" && task.status !== "CANCELLED" && !isToday(date) && isPast(endOfDay(date));
                                       return (
                                         <span className={cn("text-[9px] font-medium flex items-center gap-1", isOverdue ? "text-red-500/90 font-medium" : "text-muted-foreground")}>
                                           <Clock className={cn("h-2.5 w-2.5", isOverdue && "text-red-500")} />
-                                          <span>Target: {format(date, "MMM d")}</span>
+                                          <span>Due {format(date, "MMM d")}</span>
                                           {isOverdue && (
                                             <span className="text-[8px] text-red-600 dark:text-red-400 font-semibold uppercase tracking-wider ml-0.5">
                                               (Overdue)
@@ -567,14 +633,6 @@ export function KanbanBoard({
                                     })()}
                                   </div>
                                   
-                                  {task.labels && task.labels.length > 0 && (
-                                    <div className="flex gap-1 shrink-0">
-                                      {task.labels.slice(0, 1).map((l: string) => (
-                                        <span key={l} className="rounded text-[8px] font-medium bg-accent text-muted-foreground px-1 py-0.5 max-w-[60px] truncate">{l}</span>
-                                      ))}
-                                      {task.labels.length > 1 && <span className="rounded text-[8px] font-medium bg-accent text-muted-foreground px-1 py-0.5">+{task.labels.length - 1}</span>}
-                                    </div>
-                                  )}
                                 </div>
                               </CardContent>
                             </Card>
@@ -619,87 +677,17 @@ export function KanbanBoard({
           </TabsContent>
 
           <TabsContent value="list" className="mt-0 pt-4 flex-1 overflow-y-auto focus-visible:outline-none">
-            <div className="border border-border/40 rounded-lg overflow-x-auto bg-background">
-              <Table className="min-w-[1000px]">
-                <TableHeader className="bg-muted/20">
-                  <TableRow>
-                    <TableHead className="min-w-[250px] font-medium text-[11px] uppercase tracking-wider">Task</TableHead>
-                    <TableHead className="min-w-[120px] font-medium text-[11px] uppercase tracking-wider">Status</TableHead>
-                    <TableHead className="min-w-[120px] font-medium text-[11px] uppercase tracking-wider">Priority</TableHead>
-                    <TableHead className="min-w-[150px] font-medium text-[11px] uppercase tracking-wider">Assignee</TableHead>
-                    <TableHead className="min-w-[120px] font-medium text-[11px] uppercase tracking-wider">Due Date</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {listTasks.map(task => {
-                    const assignee = task.assignees && task.assignees.length > 0 ? task.assignees[0] : null;
-                    return (
-                      <TableRow 
-                        key={task.id} 
-                        onClick={() => router.push(`/tasks/${task.id}`)}
-                              onMouseEnter={() => router.prefetch(`/tasks/${task.id}`)}
-                        className="cursor-pointer hover:bg-muted/30"
-                      >
-                        <TableCell>
-                          <div className="min-w-0">
-                            {task.project?.name && (
-                              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider truncate block">
-                                {task.project.team?.name ? `${task.project.team.name} › ` : ""}{task.project.name}
-                              </span>
-                            )}
-                            <p className="text-sm font-medium text-foreground truncate">{task.title}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={cn("text-[10px] shadow-none", statusColors[task.status])}>{task.status.replace("_", " ")}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={cn("text-[10px] shadow-none", priorityColors[task.priority])}>
-                            <div className={cn("w-1.5 h-1.5 rounded-full mr-1.5", priorityDots[task.priority])} />
-                            {task.priority}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {assignee ? (
-                            <div className="flex items-center gap-2">
-                              <Avatar className="h-6 w-6">
-                                <AvatarImage src={assignee.avatarUrl} />
-                                <AvatarFallback className="text-[10px] bg-primary/10">{assignee.firstName?.charAt(0)}</AvatarFallback>
-                              </Avatar>
-                              <span className="text-xs font-medium truncate">{assignee.firstName} {assignee.lastName}</span>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground italic">Unassigned</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {task.dueDate ? (() => {
-                            const date = new Date(task.dueDate);
-                            const isOverdue = task.status !== "DONE" && !isToday(date) && isPast(endOfDay(date));
-                            return (
-                              <div className="flex items-center gap-1.5 text-xs flex-wrap">
-                                <Clock className={cn("h-3.5 w-3.5", isOverdue ? "text-red-500" : "text-muted-foreground")} />
-                                <span className={isOverdue ? "text-red-500/90 font-medium" : "text-muted-foreground"}>
-                                  Target: {format(date, "MMM d, yyyy")}
-                                </span>
-                                {isOverdue && (
-                                  <Badge variant="outline" className="border-red-500/20 bg-red-500/10 text-[9px] text-red-600 dark:text-red-400 py-0 px-1 font-medium">
-                                    Overdue
-                                  </Badge>
-                                )}
-                              </div>
-                            );
-                          })() : <span className="text-xs text-muted-foreground">-</span>}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+            <TaskListView tasks={filteredTasks} employees={allEmployees} />
           </TabsContent>
         </Tabs>
       )}
+      <DoneNoteDialog
+        open={pendingDone !== null}
+        taskTitle={taskList.find(t => t.id === pendingDone?.taskId)?.title}
+        pending={savingDone}
+        onConfirm={confirmDone}
+        onCancel={() => setPendingDone(null)}
+      />
     </div>
   );
 }

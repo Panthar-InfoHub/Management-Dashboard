@@ -1,3 +1,4 @@
+import { UserError } from "@/lib/errors";
 import { computeProgress } from "@/lib/projects/progress";
 import { db } from "@/lib/db";
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
@@ -70,7 +71,7 @@ export async function getProjectById(projectId: string) {
   if (project.leadId !== employee.id && !(await checkPermission("project:update", project.id))) {
     const isMember = project.members.some(m => m.employeeId === employee.id);
     if (!isMember) {
-      throw new Error("FORBIDDEN: Requires higher permission level");
+      throw new UserError("FORBIDDEN: Requires higher permission level");
     }
   }
 

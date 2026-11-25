@@ -6,7 +6,7 @@ import { startOfWeek, startOfMonth, startOfDay, endOfDay, subDays, addDays, each
 import { ROLE_ORDER, sortByOrder } from "@/lib/dashboard-colors";
 import { hasPermission } from "@/lib/permissions";
 
-const OPEN_TASK_STATUSES: TaskStatus[] = ["BACKLOG", "TODO", "IN_PROGRESS", "REVIEW", "TESTING"];
+const OPEN_TASK_STATUSES: TaskStatus[] = ["TODO", "IN_PROGRESS", "REVIEW", "TESTING"];
 
 /** Org-wide dashboard for admins and anyone who can manage all projects. */
 function isAdminOrManager(employee: AuthEmployee) {
@@ -40,7 +40,7 @@ export async function getDashboardOverview(employee: AuthEmployee) {
         (SELECT COUNT(*) FROM "Project" WHERE status = 'ACTIVE') as "activeProjects",
         (SELECT COUNT(*) FROM "Project" WHERE status = 'PLANNING') as "planningProjects",
         (SELECT COUNT(*) FROM "Project" WHERE status = 'COMPLETED') as "completedProjects",
-        (SELECT COUNT(*) FROM "Task" WHERE status IN ('BACKLOG', 'TODO', 'IN_PROGRESS', 'REVIEW', 'TESTING')) as "openTasks",
+        (SELECT COUNT(*) FROM "Task" WHERE status IN ('TODO', 'IN_PROGRESS', 'REVIEW', 'TESTING')) as "openTasks",
         (SELECT COUNT(*) FROM "Task" WHERE status != 'DONE' AND (CASE WHEN "dueDate"::time = '18:30:00'::time OR "dueDate"::time = '00:00:00'::time THEN "dueDate" + INTERVAL '1 day' ELSE "dueDate" END) < ${now}) as "overdueTasks",
         (SELECT COUNT(*) FROM "Task" WHERE status = 'DONE' AND "completedAt" >= ${weekStart}) as "completedThisWeek",
         (SELECT COUNT(*) FROM "Employee" WHERE status = 'ACTIVE') as "teamMembers",
@@ -133,8 +133,8 @@ export async function getTaskRadar(employee: AuthEmployee) {
 
   const tasks = await db.task.findMany({
     where: admin
-      ? { status: { not: "DONE" }, dueDate: { not: null, lte: weekEnd } }
-      : { assignees: { some: { id: employee.id } }, status: { not: "DONE" }, dueDate: { not: null, lte: weekEnd } },
+      ? { status: { notIn: ["DONE", "CANCELLED"] }, dueDate: { not: null, lte: weekEnd } }
+      : { assignees: { some: { id: employee.id } }, status: { notIn: ["DONE", "CANCELLED"] }, dueDate: { not: null, lte: weekEnd } },
     include: {
       project: { select: { id: true, name: true } },
       assignees: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
@@ -167,7 +167,7 @@ export async function getAttentionProjects(employee: AuthEmployee) {
       OR: [
         { priority: "CRITICAL" },
         { endDate: { lte: attentionEndThreshold } },
-        { tasks: { some: { status: { not: "DONE" }, dueDate: { lt: now } } } },
+        { tasks: { some: { status: { notIn: ["DONE", "CANCELLED"] }, dueDate: { lt: now } } } },
       ],
     },
   ];
@@ -189,7 +189,7 @@ export async function getAttentionProjects(employee: AuthEmployee) {
     const totalTasks = p.tasks.length;
     const completedTasks = p.tasks.filter((t) => t.status === "DONE").length;
     const computedProgress = computeProgress(completedTasks, totalTasks);
-    const overdueTasksCount = p.tasks.filter((t) => t.status !== "DONE" && checkIsOverdue(t.dueDate, now)).length;
+    const overdueTasksCount = p.tasks.filter((t) => t.status !== "DONE" && t.status !== "CANCELLED" && checkIsOverdue(t.dueDate, now)).length;
 
     return {
       id: p.id,

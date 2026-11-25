@@ -5,8 +5,8 @@ import { getTeams } from "@/lib/queries/team.queries";
 import { notFound } from "next/navigation";
 import { ProjectDetailClient } from "@/components/projects/project-detail-client";
 
-export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+export default async function ProjectDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ edit?: string }> }) {
+  const [{ id }, query] = await Promise.all([params, searchParams]);
   const [project, allEmployees, allTeams, employee, canUpdateGlobal, canDelete] = await Promise.all([
     getProjectById(id),
     getEmployees(),
@@ -31,5 +31,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     canEdit={canEdit}
     canDelete={canDelete}
     canDelegate={canDelegate}
+    openEdit={query.edit === "1"}
   />;
 }

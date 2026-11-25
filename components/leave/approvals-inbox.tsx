@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { ArrowRight, CalendarCheck, Check, Clock, Home, Plane, X } from "lucide-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfirmAction } from "@/components/ui/confirm-action";
 import { RequestStatusBadge } from "@/components/leave/request-status-badge";
 import { formatDay, formatRange, requestSummary } from "@/components/leave/format";
-import { decideRequestAction, reviewAttendanceAction } from "@/lib/actions/request.actions";
+import { decideRequestAction, reviewAttendanceAction, undoDecisionAction } from "@/lib/actions/request.actions";
 import { ATTENDANCE_STATUS_LABELS, formatDuration, type AttendanceStatusValue } from "@/lib/attendance/rules";
 import type { getInbox } from "@/lib/leave/queries";
 import { cn } from "@/lib/utils";
@@ -24,10 +24,7 @@ type Person = PendingRequest["employee"];
 function PersonCell({ person }: { person: Person }) {
   return (
     <div className="flex min-w-0 items-center gap-3">
-      <Avatar className="h-9 w-9">
-        {person.avatarUrl && <AvatarImage src={person.avatarUrl} alt="" />}
-        <AvatarFallback className="text-xs">{person.name.charAt(0)}</AvatarFallback>
-      </Avatar>
+      <UserAvatar className="h-9 w-9" user={person} textClassName="text-xs" />
       <div className="min-w-0">
         <p className="truncate text-sm font-medium">{person.name}</p>
         <p className="truncate text-xs text-muted-foreground">{person.designation || "—"}</p>
@@ -162,6 +159,22 @@ function FixComparison({ r }: { r: PendingRequest }) {
   );
 }
 
+function UndoButton({ id, who, what, approvedLeave }: { id: string; who: string; what: string; approvedLeave: boolean }) {
+  const [note, setNote] = useState("");
+  return (
+    <ConfirmAction
+      trigger={<Button size="sm" variant="ghost" className="h-7 text-xs">Undo Decision</Button>}
+      title={`Reopen ${who}'s request?`}
+      description={`${what}. It goes back to Pending so it can be decided again${approvedLeave ? ", and the leave days return to their balance" : ""}. ${who} is told why.`}
+      confirmLabel="Reopen Request"
+      pendingLabel="Reopening…"
+      onConfirm={async () => { await undoDecisionAction(id, note); setNote(""); return `${who}'s request is pending again`; }}
+    >
+      <Textarea aria-label="Reason" placeholder="Why are you undoing it? (required)" rows={2} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} />
+    </ConfirmAction>
+  );
+}
+
 // ─── Inbox ───
 
 export function ApprovalsInbox({ inbox }: { inbox: Inbox }) {
@@ -277,7 +290,12 @@ export function ApprovalsInbox({ inbox }: { inbox: Inbox }) {
                     By {r.decidedBy}{r.decidedAt ? ` on ${new Date(r.decidedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ""}{r.decisionNote ? ` · “${r.decisionNote}”` : ""}
                   </p>
                 </div>
-                <RequestStatusBadge status={r.status} />
+                <div className="flex items-center gap-2 lg:justify-end">
+                  {!(r.kind === "ATTENDANCE_FIX" && r.status === "APPROVED") && (
+                    <UndoButton id={r.id} who={r.employee.name} what={`${formatRange(r.startDate, r.endDate)} · ${requestSummary(r)}`} approvedLeave={r.kind === "LEAVE" && r.status === "APPROVED"} />
+                  )}
+                  <RequestStatusBadge status={r.status} />
+                </div>
               </li>
             ))}
           </ul>

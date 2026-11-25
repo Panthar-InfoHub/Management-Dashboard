@@ -1,4 +1,4 @@
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { AttendanceStatusBadge } from "@/components/attendance/status-badge";
 import { DayFlags } from "@/components/attendance/day-flags";
 import { EditDayButton } from "@/components/attendance/edit-day-dialog";
@@ -60,10 +60,7 @@ export function TodayBoard({ board }: { board: Board }) {
                 <tr key={r.employee.id} className="border-t border-border/40">
                   <td className="px-4 py-2.5">
                     <div className="flex items-center gap-3">
-                      <Avatar className="h-7 w-7">
-                        {r.employee.avatarUrl && <AvatarImage src={r.employee.avatarUrl} alt="" />}
-                        <AvatarFallback className="text-[10px]">{r.employee.name.charAt(0)}</AvatarFallback>
-                      </Avatar>
+                      <UserAvatar className="h-7 w-7" user={r.employee} textClassName="text-[10px]" />
                       <div className="min-w-0">
                         <p className="truncate font-medium">{r.employee.name}</p>
                         <p className="truncate text-xs text-muted-foreground">{[r.employee.designation, r.employee.team].filter(Boolean).join(" · ") || "—"}</p>

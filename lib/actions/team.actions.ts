@@ -1,4 +1,5 @@
 "use server";
+import { UserError } from "@/lib/errors";
 
 import { db } from "@/lib/db";
 import { requireAuth, getCurrentEmployee, checkPermission } from "@/lib/auth";
@@ -37,9 +38,9 @@ export async function updateTeamAction(teamId: string, data: {
   const hasGlobalPerm = await checkPermission("team:update");
 
   const existing = await db.team.findUnique({ where: { id: teamId } });
-  if (!existing) throw new Error("Team not found");
+  if (!existing) throw new UserError("Team not found");
   if (!hasGlobalPerm && existing.leadId !== employee.id) {
-    throw new Error("You do not have permission for this action.");
+    throw new UserError("You do not have permission for this action.");
   }
 
   const team = await db.team.update({
@@ -70,9 +71,9 @@ export async function manageTeamMembersAction(teamId: string, memberIds: string[
   const hasGlobalPerm = await checkPermission("team:update");
 
   const existing = await db.team.findUnique({ where: { id: teamId }, include: { memberships: { select: { employeeId: true } } } });
-  if (!existing) throw new Error("Team not found");
+  if (!existing) throw new UserError("Team not found");
   if (!hasGlobalPerm && existing.leadId !== employee.id) {
-    throw new Error("You do not have permission for this action.");
+    throw new UserError("You do not have permission for this action.");
   }
 
   const wanted = [...new Set([...memberIds, existing.leadId])]; // the lead always stays
@@ -107,7 +108,7 @@ export async function deleteTeamAction(teamId: string) {
   const employee = await requireAuth("team:delete");
 
   const existing = await db.team.findUnique({ where: { id: teamId } });
-  if (!existing) throw new Error("Team not found");
+  if (!existing) throw new UserError("Team not found");
 
   try {
     await db.team.delete({
@@ -115,7 +116,7 @@ export async function deleteTeamAction(teamId: string) {
     });
   } catch (error: any) {
     if (error.code === 'P2003') {
-      throw new Error("Cannot delete this team because it still has active projects. Please delete or reassign all projects first.");
+      throw new UserError("Cannot delete this team because it still has active projects. Please delete or reassign all projects first.");
     }
     throw error;
   }

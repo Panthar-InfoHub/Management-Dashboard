@@ -4,15 +4,15 @@
 // rather than an arbitrary palette. Order arrays fix category order for
 // charts instead of relying on DB group-by order.
 
-export const TASK_STATUS_ORDER = ["BACKLOG", "TODO", "IN_PROGRESS", "REVIEW", "TESTING", "DONE"] as const;
+export const TASK_STATUS_ORDER = ["TODO", "IN_PROGRESS", "REVIEW", "TESTING", "DONE", "CANCELLED"] as const;
 
 export const TASK_STATUS_COLORS: Record<string, string> = {
-  BACKLOG: "#6b7280", // gray-500
   TODO: "#64748b", // slate-500
   IN_PROGRESS: "#3b82f6", // blue-500
   REVIEW: "#a855f7", // purple-500
   TESTING: "#f59e0b", // amber-500
   DONE: "#10b981", // emerald-500
+  CANCELLED: "#9ca3af", // gray-400
 };
 
 export const TASK_PRIORITY_ORDER = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;

@@ -8,13 +8,6 @@ import dynamic from "next/dynamic";
 import { AccessProvider } from "@/components/providers/access-provider";
 import { cn } from "@/lib/utils";
 
-// cmdk + dialog code only loads in the browser after first paint; the palette
-// registers its ⌘K listener when the chunk arrives.
-const CommandPalette = dynamic(
-  () => import("@/components/layout/command-palette").then((m) => m.CommandPalette),
-  { ssr: false }
-);
-
 // Local development only; the condition is constant, so production builds drop it.
 const ViewAsBar =
   process.env.NODE_ENV === "development" && process.env.NEXT_PUBLIC_DEV_VIEW_AS === "1"
@@ -39,7 +32,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <main className="flex-1 min-h-0 overflow-y-auto bg-background/50">{children}</main>
           </div>
         </div>
-        <CommandPalette />
         {ViewAsBar && <ViewAsBar />}
       </TooltipProvider>
     </AccessProvider>

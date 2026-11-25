@@ -1,4 +1,5 @@
 "use client";
+import { DatePicker } from "@/components/ui/date-picker";
 
 import { useState, useTransition } from "react";
 import { Trash2 } from "lucide-react";
@@ -58,7 +59,7 @@ export function CalendarTab({ days }: { days: CalendarRow[] }) {
       >
         <div className="space-y-1.5">
           <label htmlFor="cal-date" className="text-xs font-semibold text-muted-foreground">Date</label>
-          <Input id="cal-date" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} disabled={isPending} required />
+          <DatePicker id="cal-date" value={form.date} onChange={(v) => setForm({ ...form, date: v })} disabled={isPending} />
         </div>
         <div className="space-y-1.5">
           <label className="text-xs font-semibold text-muted-foreground">Day Is</label>

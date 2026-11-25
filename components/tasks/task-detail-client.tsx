@@ -1,4 +1,6 @@
 "use client";
+import { Checkbox } from "@/components/ui/checkbox";
+import { DatePicker } from "@/components/ui/date-picker";
 
 import { ConfirmAction } from "@/components/ui/confirm-action";
 
@@ -7,7 +9,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Progress } from "@/components/ui/progress";
@@ -16,14 +18,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Clock, Calendar, ChevronRight, Plus, Link as LinkIcon, ShieldAlert, UserPlus, ChevronDown, ChevronRight as ChevronRightIcon } from "lucide-react";
 import { cn, errorMessage } from "@/lib/utils";
-import { updateTaskStatusAction, updateTaskPriorityAction, createSubtaskAction, setTaskBlockerAction, setTaskAssigneesAction, deleteTaskAction } from "@/lib/actions/task.actions";
+import { updateTaskStatusAction, updateTaskPriorityAction, createSubtaskAction, setTaskBlockerAction, setTaskAssigneesAction, deleteTaskAction, cancelTaskAction, restoreTaskAction, setTaskOwnerAction } from "@/lib/actions/task.actions";
+import { taskKey } from "@/lib/tasks/keys";
+import { DoneNoteDialog } from "@/components/tasks/done-note-dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 
-const statusColors: Record<string, string> = { BACKLOG: "bg-gray-500/10 text-gray-600 border-gray-500/20", TODO: "bg-slate-500/10 text-slate-600 border-slate-500/20", IN_PROGRESS: "bg-blue-500/10 text-blue-600 border-blue-500/20", REVIEW: "bg-purple-500/10 text-purple-600 border-purple-500/20", TESTING: "bg-amber-500/10 text-amber-600 border-amber-500/20", DONE: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" };
+const statusColors: Record<string, string> = { CANCELLED: "bg-gray-500/10 text-gray-500 border-gray-500/20 line-through", TODO: "bg-slate-500/10 text-slate-600 border-slate-500/20", IN_PROGRESS: "bg-blue-500/10 text-blue-600 border-blue-500/20", REVIEW: "bg-purple-500/10 text-purple-600 border-purple-500/20", TESTING: "bg-amber-500/10 text-amber-600 border-amber-500/20", DONE: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" };
+const STATUS_STEPS = ["TODO", "IN_PROGRESS", "REVIEW", "TESTING", "DONE"];
+const STATUS_LABELS: Record<string, string> = { TODO: "To Do", IN_PROGRESS: "In Progress", REVIEW: "Review", TESTING: "Testing", DONE: "Done", CANCELLED: "Cancelled" };
 const priorityColors: Record<string, string> = { CRITICAL: "bg-red-500/10 text-red-600 border-red-500/20", HIGH: "bg-orange-500/10 text-orange-600 border-orange-500/20", MEDIUM: "bg-blue-500/10 text-blue-600 border-blue-500/20", LOW: "bg-gray-500/10 text-gray-600 border-gray-500/20" };
 
 type Person = { id: string; firstName: string; lastName: string; avatarUrl: string | null };
-type SubtaskNode = { id: string; title: string; status: string; priority: string; dueDate: string | Date | null; parentId: string | null; assignees: Person[] };
+type SubtaskNode = { id: string; title: string; status: string; priority: string; dueDate: string | Date | null; parentId: string | null; number?: number | null; ownerId?: string | null; assignees: Person[] };
 
 type TaskPatch = Partial<{ status: string; priority: string }>;
 type SubtaskPatch = { id: string } & Partial<Pick<SubtaskNode, "status" | "assignees">>;
@@ -36,10 +43,7 @@ function AvatarStack({ people, size = "h-5 w-5" }: { people: Person[]; size?: st
   return (
     <div className="flex -space-x-1.5">
       {people.slice(0, 3).map((p) => (
-        <Avatar key={p.id} className={cn(size, "ring-2 ring-background")}>
-          {p.avatarUrl && <AvatarImage src={p.avatarUrl} alt="" />}
-          <AvatarFallback className="text-[8px] bg-secondary text-secondary-foreground">{p.firstName.charAt(0)}</AvatarFallback>
-        </Avatar>
+        <UserAvatar key={p.id} className={cn(size, "ring-2 ring-background")} user={p} textClassName="text-[8px]" />
       ))}
       {people.length > 3 && (
         <span className={cn(size, "rounded-full bg-muted ring-2 ring-background text-[8px] flex items-center justify-center text-muted-foreground")}>+{people.length - 3}</span>
@@ -56,6 +60,7 @@ export function TaskDetailClient({
   canEditDetails = true,
   canEditStatus = true,
   canDelete = false,
+  canCancel = false,
   currentEmployeeId,
 }: {
   initialTask: any;
@@ -65,6 +70,8 @@ export function TaskDetailClient({
   canEditDetails?: boolean;
   canEditStatus?: boolean;
   canDelete?: boolean;
+  /** Owner, creator or project lead. */
+  canCancel?: boolean;
   currentEmployeeId?: string;
 }) {
   const router = useRouter();
@@ -94,9 +101,17 @@ export function TaskDetailClient({
     return map;
   }, [subtasks]);
 
-  const directSubtasks = tasksByParent[task.id] ?? [];
-  const doneSubtasks = directSubtasks.filter((t) => t.status === "DONE").length;
-  const openSubtasks = directSubtasks.length - doneSubtasks;
+  const allSubtasks = tasksByParent[task.id] ?? [];
+  // Cancelled subtasks stay listed but don't count.
+  const directSubtasks = allSubtasks;
+  const countedSubtasks = allSubtasks.filter((t) => t.status !== "CANCELLED");
+  const doneSubtasks = countedSubtasks.filter((t) => t.status === "DONE").length;
+  const openSubtasks = countedSubtasks.length - doneSubtasks;
+  const key = taskKey(task);
+  const isClosed = task.status === "DONE" || task.status === "CANCELLED";
+  const [doneTarget, setDoneTarget] = useState<{ id: string; title: string; isSubtask: boolean } | null>(null);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
   const parentDueDate = task.dueDate ? new Date(task.dueDate).toISOString().slice(0, 10) : undefined;
   const currentEmployee = assignableEmployees.find((e) => e.id === currentEmployeeId)
     ?? task.assignees.find((a: Person) => a.id === currentEmployeeId)
@@ -107,11 +122,15 @@ export function TaskDetailClient({
   };
 
   const handleStatusChange = (newStatus: string) => {
+    if (newStatus === "DONE" && task.status !== "DONE") {
+      setDoneTarget({ id: task.id, title: task.title, isSubtask: false });
+      return;
+    }
     startTransition(async () => {
       patchTask({ status: newStatus });
       try {
         await updateTaskStatusAction(task.id, newStatus);
-        toast.success(`Status changed to ${newStatus.replace("_", " ")}`);
+        toast.success(`Status changed to ${STATUS_LABELS[newStatus]}`);
       } catch (err) {
         toast.error(errorMessage(err, "Status not changed. Try again."));
       }
@@ -142,6 +161,10 @@ export function TaskDetailClient({
   };
 
   const handleSubtaskStatus = (subtask: SubtaskNode, status: string) => {
+    if (status === "DONE" && subtask.status !== "DONE") {
+      setDoneTarget({ id: subtask.id, title: subtask.title, isSubtask: true });
+      return;
+    }
     startTransition(async () => {
       patchSubtask({ id: subtask.id, status });
       try {
@@ -186,6 +209,57 @@ export function TaskDetailClient({
     });
   };
 
+  const confirmDone = (note: string) => {
+    if (!doneTarget) return;
+    const target = doneTarget;
+    startTransition(async () => {
+      if (target.isSubtask) patchSubtask({ id: target.id, status: "DONE" });
+      else patchTask({ status: "DONE" });
+      try {
+        await updateTaskStatusAction(target.id, "DONE", undefined, note);
+        toast.success(target.isSubtask ? "Subtask done" : `${key ?? "Task"} done`);
+        setDoneTarget(null);
+      } catch (err) {
+        toast.error(errorMessage(err, "Not marked done. Try again."));
+      }
+    });
+  };
+
+  const handleCancel = () => {
+    startTransition(async () => {
+      try {
+        await cancelTaskAction(task.id, cancelReason);
+        toast.success(`${key ?? "Task"} cancelled`);
+        setCancelOpen(false);
+        setCancelReason("");
+      } catch (err) {
+        toast.error(errorMessage(err, "Task not cancelled. Try again."));
+      }
+    });
+  };
+
+  const handleRestore = () => {
+    startTransition(async () => {
+      try {
+        await restoreTaskAction(task.id);
+        toast.success(`${key ?? "Task"} restored to To Do`);
+      } catch (err) {
+        toast.error(errorMessage(err, "Task not restored. Try again."));
+      }
+    });
+  };
+
+  const handleMakeOwner = (personId: string) => {
+    startTransition(async () => {
+      try {
+        await setTaskOwnerAction(task.id, personId);
+        toast.success("Owner changed");
+      } catch (err) {
+        toast.error(errorMessage(err, "Owner not changed. Try again."));
+      }
+    });
+  };
+
   const handleDelete = async () => {
     await deleteTaskAction(task.id);
     router.push("/tasks");
@@ -199,10 +273,21 @@ export function TaskDetailClient({
         <div className="flex flex-wrap items-center gap-2 text-xs md:text-sm text-muted-foreground">
           <Link href="/tasks" className="hover:text-foreground transition-colors hidden sm:block">Tasks</Link>
           <ChevronRight className="h-3.5 w-3.5 hidden sm:block" />
-          <Link href={`/projects/${task.project.id}`} className="hover:text-foreground transition-colors truncate max-w-[150px] md:max-w-[200px]">
-            {task.project.name}
-          </Link>
+          {task.project ? (
+            <Link href={`/projects/${task.project.id}`} className="hover:text-foreground transition-colors truncate max-w-[150px] md:max-w-[200px]">
+              {task.project.name}
+            </Link>
+          ) : (
+            <span>General</span>
+          )}
           <ChevronRight className="h-3.5 w-3.5" />
+          {task.parent && (
+            <>
+              <Link href={`/tasks/${task.parent.id}`} className="hover:text-foreground transition-colors truncate max-w-[150px]">{task.parent.title}</Link>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </>
+          )}
+          {key && <span className="font-mono text-xs text-muted-foreground">{key}</span>}
           <span className="text-foreground font-medium truncate max-w-[200px] md:max-w-[300px]">{task.title}</span>
         </div>
         <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto shrink-0">
@@ -222,7 +307,30 @@ export function TaskDetailClient({
                 onConfirm={handleDelete}
               />
             )}
-          {canEditStatus && task.status !== "DONE" && (
+          {canCancel && task.status !== "CANCELLED" && task.status !== "DONE" && (
+            <Dialog open={cancelOpen} onOpenChange={(o) => { if (!isPending) setCancelOpen(o); }}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 shadow-none text-xs flex-1 sm:flex-initial">Cancel Task</Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader><DialogTitle>Cancel This Task?</DialogTitle></DialogHeader>
+                <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); handleCancel(); }}>
+                  <p className="text-xs text-muted-foreground">It leaves the board but stays on record, and can be restored. {openSubtasks > 0 ? `Its ${openSubtasks} open subtask${openSubtasks === 1 ? " is" : "s are"} cancelled too.` : ""}</p>
+                  <Textarea autoFocus aria-label="Reason" value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="Why? e.g. Client dropped this feature." disabled={isPending} />
+                  <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => setCancelOpen(false)} disabled={isPending}>Keep Task</Button>
+                    <Button type="submit" disabled={isPending || cancelReason.trim().length < 3}>{isPending ? "Cancelling…" : "Cancel Task"}</Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          )}
+          {canCancel && task.status === "CANCELLED" && (
+            <Button size="sm" variant="outline" className="h-8 shadow-none text-xs flex-1 sm:flex-initial" onClick={handleRestore} disabled={isPending}>
+              {isPending ? "Restoring…" : "Restore Task"}
+            </Button>
+          )}
+          {canEditStatus && !isClosed && (
             <Button
               size="sm"
               className="h-8 shadow-none text-xs flex-1 sm:flex-initial"
@@ -242,25 +350,40 @@ export function TaskDetailClient({
           {/* Main Content Area */}
           <div className="space-y-8 min-w-0">
             <div>
-              <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-foreground mb-4 break-words">{task.title}</h1>
+              <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-foreground mb-4 break-words">
+                {key && <span className="mr-2 font-mono text-base font-normal text-muted-foreground">{key}</span>}
+                {task.title}
+              </h1>
+              {task.status === "CANCELLED" && (
+                <div className="mb-6 rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
+                  <p className="font-medium">Cancelled{task.cancelledAt ? ` on ${formatDate(task.cancelledAt)}` : ""}</p>
+                  <p className="text-muted-foreground">{task.cancelReason || "No reason given."}</p>
+                </div>
+              )}
+              {task.status === "DONE" && (
+                <div className="mb-6 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm">
+                  <p className="font-medium text-emerald-700 dark:text-emerald-400">Done{task.completedAt ? ` on ${formatDate(task.completedAt)}` : ""}</p>
+                  <p className="whitespace-pre-wrap text-muted-foreground">{task.completionNote || "Done before notes were required."}</p>
+                </div>
+              )}
               <div className="flex flex-wrap items-center gap-2 mb-8">
                 
                 <DropdownMenu>
-                  <DropdownMenuTrigger className="focus:outline-none" disabled={!canEditStatus}>
-                    <div className={cn("flex items-center gap-2 text-sm text-muted-foreground mr-4", !canEditStatus && "opacity-70 cursor-not-allowed")}>
+                  <DropdownMenuTrigger className="focus:outline-none" disabled={!canEditStatus || task.status === "CANCELLED"}>
+                    <div className={cn("flex items-center gap-2 text-sm text-muted-foreground mr-4", (!canEditStatus || task.status === "CANCELLED") && "opacity-70 cursor-not-allowed")}>
                       Status:
                       <Badge variant="outline" className={cn("text-[11px] px-2 py-0.5 rounded-full font-medium shadow-none cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-1", statusColors[task.status])}>
-                        {task.status.replace("_", " ")} {canEditStatus && <ChevronDown className="h-3 w-3" />}
+                        {STATUS_LABELS[task.status] ?? task.status} {canEditStatus && <ChevronDown className="h-3 w-3" />}
                       </Badge>
                     </div>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
                     <DropdownMenuLabel className="text-xs">Change Status</DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    {Object.keys(statusColors).map(s => (
+                    {STATUS_STEPS.map(s => (
                       <DropdownMenuItem key={s} onClick={() => handleStatusChange(s)} className="text-xs cursor-pointer">
                         <div className={cn("w-2 h-2 rounded-full mr-2", statusColors[s].split(" ")[0])} />
-                        {s.replace("_", " ")}
+                        {STATUS_LABELS[s]}
                       </DropdownMenuItem>
                     ))}
                   </DropdownMenuContent>
@@ -354,14 +477,15 @@ export function TaskDetailClient({
               )}
             </div>
 
-            {/* Subtasks */}
+            {/* Subtasks: one level only, so a subtask has none of its own */}
+            {!task.parentId && (
             <div className="pt-6 border-t border-border/40">
               <div className="mb-3 flex items-center justify-between gap-4">
                 <h3 className="text-sm font-medium text-foreground">Subtasks</h3>
-                {directSubtasks.length > 0 && (
+                {countedSubtasks.length > 0 && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{doneSubtasks} of {directSubtasks.length} done</span>
-                    <Progress value={(doneSubtasks / directSubtasks.length) * 100} className="h-1.5 w-20" aria-label="Subtask progress" />
+                    <span>{doneSubtasks} of {countedSubtasks.length} done</span>
+                    <Progress value={(doneSubtasks / countedSubtasks.length) * 100} className="h-1.5 w-20" aria-label="Subtask progress" />
                   </div>
                 )}
               </div>
@@ -387,7 +511,7 @@ export function TaskDetailClient({
                 )}
               </div>
 
-              {canEditStatus && (
+              {canEditStatus && !isClosed && (
                 <Dialog open={isSubtaskDialogOpen} onOpenChange={setIsSubtaskDialogOpen}>
                   <DialogTrigger asChild>
                     <Button variant="outline" size="sm" className="mt-4 w-full justify-start text-muted-foreground border-dashed">
@@ -428,13 +552,14 @@ export function TaskDetailClient({
                         </div>
                         <div className="space-y-2">
                           <label htmlFor="subtask-due" className="text-xs font-medium">Due Date</label>
-                          <Input
+                          <DatePicker
                             id="subtask-due"
-                            type="date"
                             value={subtaskForm.dueDate}
-                            max={parentDueDate}
-                            onChange={e => setSubtaskForm(prev => ({ ...prev, dueDate: e.target.value }))}
+                            max={parentDueDate || undefined}
+                            onChange={(v) => setSubtaskForm(prev => ({ ...prev, dueDate: v }))}
                             disabled={isPending}
+                            placeholder="No due date"
+                            clearable
                           />
                           {parentDueDate && <p className="text-[11px] text-muted-foreground">Parent is due {formatDate(task.dueDate)}.</p>}
                         </div>
@@ -451,12 +576,10 @@ export function TaskDetailClient({
                                 const checked = subtaskForm.assigneeIds.includes(e.id);
                                 return (
                                   <label key={e.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-muted/40">
-                                    <input
-                                      type="checkbox"
-                                      className="h-3.5 w-3.5 accent-foreground"
+                                    <Checkbox
                                       checked={checked}
                                       disabled={isPending}
-                                      onChange={() => setSubtaskForm(prev => ({
+                                      onCheckedChange={() => setSubtaskForm(prev => ({
                                         ...prev,
                                         assigneeIds: checked ? prev.assigneeIds.filter(id => id !== e.id) : [...prev.assigneeIds, e.id],
                                       }))}
@@ -480,6 +603,7 @@ export function TaskDetailClient({
                 </Dialog>
               )}
             </div>
+            )}
 
             <TaskComments
               taskId={task.id}
@@ -498,18 +622,23 @@ export function TaskDetailClient({
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Assignees</h3>
               {task.assignees.length > 0 ? (
                 <div className="space-y-3">
-                  {task.assignees.map((a: any) => (
+                  {[...task.assignees].sort((a: Person, b: Person) => (a.id === task.ownerId ? -1 : b.id === task.ownerId ? 1 : 0)).map((a: Person) => (
                     <div key={a.id} className="flex items-center gap-3 group">
-                      <Avatar className="h-7 w-7">
-                        <AvatarImage src={a.avatarUrl} />
-                        <AvatarFallback className="text-[10px] bg-secondary text-secondary-foreground">{a.firstName.charAt(0)}</AvatarFallback>
-                      </Avatar>
-                      <span className="text-sm font-medium text-foreground group-hover:underline cursor-pointer truncate">{a.firstName} {a.lastName}</span>
+                      <UserAvatar className="h-7 w-7" user={a} textClassName="text-[10px]" />
+                      <span className="text-sm font-medium text-foreground truncate">{a.firstName} {a.lastName}</span>
+                      {a.id === task.ownerId ? (
+                        <Badge variant="outline" className="ml-auto text-[10px] shadow-none">Owner</Badge>
+                      ) : canEditDetails && !isClosed ? (
+                        <Button variant="ghost" size="sm" className="ml-auto h-6 px-2 text-[11px] text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100" onClick={() => handleMakeOwner(a.id)} disabled={isPending}>
+                          Make Owner
+                        </Button>
+                      ) : null}
                     </div>
                   ))}
+                  <p className="text-[11px] text-muted-foreground">The Owner is accountable; everyone else helps.</p>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">Unassigned</p>
+                <p className="text-sm text-muted-foreground">No owner yet</p>
               )}
             </div>
 
@@ -519,29 +648,43 @@ export function TaskDetailClient({
               <div className="space-y-4">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground flex items-center gap-2"><Calendar className="h-3.5 w-3.5" /> Start Date</span>
-                  <span className="font-medium" suppressHydrationWarning>{formatDate(task.startDate)}</span>
+                  <span className="font-medium" suppressHydrationWarning>{task.startDate ? formatDate(task.startDate) : "Not set"}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground flex items-center gap-2"><Clock className="h-3.5 w-3.5" /> Due Date</span>
-                  <span className="font-medium text-foreground" suppressHydrationWarning>{formatDate(task.dueDate)}</span>
+                  <span className="font-medium text-foreground" suppressHydrationWarning>{task.dueDate ? formatDate(task.dueDate) : "No due date"}</span>
                 </div>
               </div>
             </div>
 
             {/* Project Context */}
             <div>
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Project Context</h3>
-              <Link href={`/projects/${task.project.id}`} className="block group">
-                <div className="p-3 rounded-lg border border-border/40 bg-muted/10 hover:bg-muted/30 transition-colors">
-                  <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors truncate">{task.project.name}</p>
-                  <p className="text-[11px] text-muted-foreground mt-1 truncate">Team: {task.project.team?.name || "None"}</p>
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Project</h3>
+              {task.project ? (
+                <Link href={`/projects/${task.project.id}`} className="block group">
+                  <div className="p-3 rounded-lg border border-border/40 bg-muted/10 hover:bg-muted/30 transition-colors">
+                    <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors truncate">{task.project.name}</p>
+                    <p className="text-[11px] text-muted-foreground mt-1 truncate">Team: {task.project.team?.name || "None"}</p>
+                  </div>
+                </Link>
+              ) : (
+                <div className="p-3 rounded-lg border border-border/40 bg-muted/10">
+                  <p className="text-sm font-medium text-foreground">General</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">Not in a project. Seen by its creator, the people assigned, admins and people with task access.</p>
                 </div>
-              </Link>
+              )}
             </div>
 
           </div>
         </div>
       </div>
+      <DoneNoteDialog
+        open={doneTarget !== null}
+        taskTitle={doneTarget?.title}
+        pending={isPending}
+        onConfirm={confirmDone}
+        onCancel={() => setDoneTarget(null)}
+      />
     </div>
   );
 }
@@ -593,7 +736,7 @@ function SubtaskRows({
                     {isExpanded ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRightIcon className="h-3.5 w-3.5 text-muted-foreground" />}
                   </button>
                 )}
-                <Link href={`/tasks/${subtask.id}`} className={cn("text-sm font-medium hover:underline truncate", subtask.status === "DONE" ? "text-muted-foreground line-through" : "text-foreground")}>
+                <Link href={`/tasks/${subtask.id}`} className={cn("text-sm font-medium hover:underline truncate", subtask.status === "DONE" || subtask.status === "CANCELLED" ? "text-muted-foreground line-through" : "text-foreground")}>
                   {subtask.title}
                 </Link>
                 {children.length > 0 && (
@@ -609,16 +752,16 @@ function SubtaskRows({
                 <DropdownMenu>
                   <DropdownMenuTrigger className="focus:outline-none shrink-0" disabled={!canEditStatus}>
                     <Badge variant="outline" className={cn("text-[9px] px-1 py-0 shadow-none cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-0.5", statusColors[subtask.status], !canEditStatus && "opacity-70 cursor-not-allowed")}>
-                      {subtask.status.replace("_", " ")} {canEditStatus && <ChevronDown className="h-2.5 w-2.5" />}
+                      {STATUS_LABELS[subtask.status] ?? subtask.status} {canEditStatus && <ChevronDown className="h-2.5 w-2.5" />}
                     </Badge>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
                     <DropdownMenuLabel className="text-xs">Change Status</DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    {Object.keys(statusColors).map(s => (
+                    {STATUS_STEPS.map(s => (
                       <DropdownMenuItem key={s} onClick={() => onStatus(subtask, s)} className="text-xs cursor-pointer">
                         <div className={cn("w-2 h-2 rounded-full mr-2", statusColors[s].split(" ")[0])} />
-                        {s.replace("_", " ")}
+                        {STATUS_LABELS[s]}
                       </DropdownMenuItem>
                     ))}
                   </DropdownMenuContent>
@@ -628,7 +771,7 @@ function SubtaskRows({
                     <div className={cn("flex items-center gap-1.5 hover:bg-muted/50 p-1 rounded-md transition-colors", canEditDetails ? "cursor-pointer" : "opacity-70 cursor-not-allowed")}>
                       {subtask.assignees.length > 0 ? (
                         <>
-                          <AvatarStack people={subtask.assignees} />
+                          <AvatarStack people={[...subtask.assignees].sort((a, b) => (a.id === subtask.ownerId ? -1 : b.id === subtask.ownerId ? 1 : 0))} />
                           {subtask.assignees.length === 1 && (
                             <span className="text-[11px] text-muted-foreground truncate max-w-[80px] hidden sm:block">{subtask.assignees[0].firstName}</span>
                           )}

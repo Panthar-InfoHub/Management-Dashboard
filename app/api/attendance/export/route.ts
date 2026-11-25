@@ -42,6 +42,7 @@ export async function GET(request: Request) {
   summary.columns = [
     { header: "Name", key: "name", width: 26 },
     { header: "Team", key: "team", width: 18 },
+    { header: "Left On", key: "leftOn", width: 11 },
     { header: "Present", key: "present", width: 9 },
     { header: "WFH", key: "wfh", width: 7 },
     { header: "Late", key: "late", width: 7 },
@@ -88,6 +89,7 @@ export async function GET(request: Request) {
     summary.addRow({
       name: employee.name,
       team: employee.team ?? "",
+      leftOn: employee.leftOn ?? "",
       present: count("PRESENT"), wfh: count("WFH"), late: count("LATE"), half: count("HALF_DAY"),
       leave: count("ON_LEAVE"), absent: count("ABSENT"),
       early: days.filter((d) => d.leftEarly).length,

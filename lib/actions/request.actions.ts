@@ -1,4 +1,5 @@
 "use server";
+import { UserError } from "@/lib/errors";
 
 // Leave, WFH and attendance-fix requests, and their approval. Nobody decides
 // their own request; every decision stores who, when and an optional note.
@@ -15,6 +16,7 @@ import { availableDays, requestDays, MAX_REQUEST_SPAN_DAYS, REQUEST_KIND_LABELS,
 import { canDecideFor, ensureBalances, getCoverage } from "@/lib/leave/queries";
 import { leaveYearOf } from "@/lib/leave/policy";
 import { leadsOf } from "@/lib/teams/membership";
+import { recalculateBalances } from "@/lib/leave/balances";
 
 type SubmitInput = {
   kind: RequestKindValue;
@@ -68,6 +70,22 @@ async function findApprovers(requesterId: string): Promise<string[]> {
   return ids;
 }
 
+/** Days in a range where the person has a clock-in (full-day leave can't cover them). */
+async function workedDays(employeeId: string, fromKey: string, toKey: string) {
+  const rows = await db.attendance.findMany({
+    where: { employeeId, checkInAt: { not: null }, date: { gte: fromDateKey(fromKey), lte: fromDateKey(toKey) } },
+    select: { date: true },
+    orderBy: { date: "asc" },
+  });
+  return rows.map((r) => r.date.toISOString().slice(0, 10));
+}
+
+/** Approved full-day leave on a date, if any. */
+async function fullLeaveOn(employeeId: string, dateKey: string) {
+  const c = (await getCoverage([employeeId], dateKey, dateKey)).get(employeeId)?.get(dateKey);
+  return c?.kind === "LEAVE" && !c.halfDay ? c : null;
+}
+
 async function notify(recipientIds: string[], title: string, message: string, actionUrl: string) {
   if (recipientIds.length === 0) return;
   await db.notification.createMany({
@@ -77,7 +95,7 @@ async function notify(recipientIds: string[], title: string, message: string, ac
 
 async function requireTracked(): Promise<AuthEmployee> {
   const employee = await getCurrentEmployee();
-  if (!tracksAttendance(employee.role)) throw new Error("Super Admins don't use leave or attendance requests.");
+  if (!tracksAttendance(employee.role)) throw new UserError("Super Admins don't use leave or attendance requests.");
   return employee;
 }
 
@@ -89,18 +107,18 @@ export async function submitRequestAction(input: SubmitInput) {
   const today = todayKey(office.timezone);
 
   const reason = input.reason?.trim() ?? "";
-  if (reason.length < 3) throw new Error("Add a short reason.");
-  if (reason.length > 1000) throw new Error("Keep the reason under 1000 characters.");
+  if (reason.length < 3) throw new UserError("Add a short reason.");
+  if (reason.length > 1000) throw new UserError("Keep the reason under 1000 characters.");
 
   const start = input.startDate, end = input.kind === "ATTENDANCE_FIX" ? input.startDate : input.endDate || input.startDate;
   fromDateKey(start); fromDateKey(end);
-  if (end < start) throw new Error("The end date is before the start date.");
+  if (end < start) throw new UserError("The end date is before the start date.");
   const span = eachDateKey(start, end).length;
-  if (span > MAX_REQUEST_SPAN_DAYS) throw new Error(`A request can cover at most ${MAX_REQUEST_SPAN_DAYS} days. Split it into two.`);
+  if (span > MAX_REQUEST_SPAN_DAYS) throw new UserError(`A request can cover at most ${MAX_REQUEST_SPAN_DAYS} days. Split it into two.`);
 
   const days = await dayKindsBetween(office, start, end);
   const halfDay = input.kind === "LEAVE" ? input.halfDay ?? null : null;
-  if (halfDay && start !== end) throw new Error("A half day must be a single date.");
+  if (halfDay && start !== end) throw new UserError("A half day must be a single date.");
 
   let leaveTypeId: string | null = null;
   let fixCheckIn: Date | null = null, fixCheckOut: Date | null = null;
@@ -109,10 +127,16 @@ export async function submitRequestAction(input: SubmitInput) {
 
   if (input.kind === "LEAVE") {
     const type = input.leaveTypeId ? await db.leaveType.findUnique({ where: { id: input.leaveTypeId } }) : null;
-    if (!type || !type.isActive) throw new Error("Choose a leave type.");
+    if (!type || !type.isActive) throw new UserError("Choose a leave type.");
+    if (!halfDay) {
+      const worked = await workedDays(employee.id, start, end);
+      if (worked.length) {
+        throw new UserError(`You clocked in on ${worked.map((d) => rangeLabel(d, d)).join(", ")}, so full-day leave can't cover ${worked.length === 1 ? "that day" : "those days"}. Pick other dates, or ask for a half day.`);
+      }
+    }
     leaveTypeId = type.id;
-    if (leaveYearOf(start) !== leaveYearOf(end)) throw new Error("Leave can't cross into the next year. Split it at 31 December.");
-    if (count === 0) throw new Error("Those dates are all days off or holidays, so there's nothing to take.");
+    if (leaveYearOf(start) !== leaveYearOf(end)) throw new UserError("Leave can't cross into the next year. Split it at 31 December.");
+    if (count === 0) throw new UserError("Those dates are all days off or holidays, so there's nothing to take.");
     if (type.yearlyDays !== null) {
       const year = leaveYearOf(start);
       await ensureBalances(employee.id, year);
@@ -125,22 +149,24 @@ export async function submitRequestAction(input: SubmitInput) {
       ]);
       const left = balance ? availableDays(balance, pending._sum.days ?? 0) : 0;
       if (count > left) {
-        throw new Error(`You have ${left} ${type.name} day${left === 1 ? "" : "s"} left (pending requests included), and this needs ${count}. Choose Unpaid Leave or fewer days.`);
+        throw new UserError(`You have ${left} ${type.name} day${left === 1 ? "" : "s"} left (pending requests included), and this needs ${count}. Choose Unpaid Leave or fewer days.`);
       }
     }
   } else if (input.kind === "WFH") {
-    if (count === 0) throw new Error("Those dates have no office days, so there's nothing to work from home.");
+    if (count === 0) throw new UserError("Those dates have no office days, so there's nothing to work from home.");
   } else if (input.kind === "ATTENDANCE_FIX") {
-    if (start > today) throw new Error("You can only fix today or an earlier day.");
+    if (start > today) throw new UserError("You can only fix today or an earlier day.");
     const oldest = eachDateKey(start, today).length - 1;
-    if (oldest > FIX_LOOKBACK_DAYS) throw new Error(`Attendance can be fixed for the last ${FIX_LOOKBACK_DAYS} days only.`);
-    if (!input.fixCheckIn || !input.fixCheckOut) throw new Error("Enter both the clock-in and clock-out times.");
-    if (parseHHmm(input.fixCheckOut) <= parseHHmm(input.fixCheckIn)) throw new Error("Clock-out must be after clock-in.");
+    if (oldest > FIX_LOOKBACK_DAYS) throw new UserError(`Attendance can be fixed for the last ${FIX_LOOKBACK_DAYS} days only.`);
+    if (!input.fixCheckIn || !input.fixCheckOut) throw new UserError("Enter both the clock-in and clock-out times.");
+    const leaveThatDay = await fullLeaveOn(employee.id, start);
+    if (leaveThatDay) throw new UserError(`${rangeLabel(start, start)} is approved ${leaveThatDay.typeName ?? "leave"}. Cancel the leave first if you worked that day.`);
+    if (parseHHmm(input.fixCheckOut) <= parseHHmm(input.fixCheckIn)) throw new UserError("Clock-out must be after clock-in.");
     workMode = input.workMode === "WFH" ? "WFH" : "OFFICE";
     fixCheckIn = zonedDateTime(start, input.fixCheckIn, office.timezone);
     fixCheckOut = zonedDateTime(start, input.fixCheckOut, office.timezone);
   } else {
-    throw new Error("Unknown request type.");
+    throw new UserError("Unknown request type.");
   }
 
   // No overlapping open requests: leave/WFH block each other; fixes are per date.
@@ -155,7 +181,7 @@ export async function submitRequestAction(input: SubmitInput) {
     select: { kind: true, startDate: true, endDate: true, status: true },
   });
   if (overlap) {
-    throw new Error(`You already have a ${overlap.status.toLowerCase()} ${REQUEST_KIND_LABELS[overlap.kind as RequestKindValue].toLowerCase()} request covering ${rangeLabel(overlap.startDate.toISOString().slice(0, 10), overlap.endDate.toISOString().slice(0, 10))}. Cancel it first.`);
+    throw new UserError(`You already have a ${overlap.status.toLowerCase()} ${REQUEST_KIND_LABELS[overlap.kind as RequestKindValue].toLowerCase()} request covering ${rangeLabel(overlap.startDate.toISOString().slice(0, 10), overlap.endDate.toISOString().slice(0, 10))}. Cancel it first.`);
   }
 
   const request = await db.request.create({
@@ -177,25 +203,20 @@ export async function submitRequestAction(input: SubmitInput) {
 export async function cancelRequestAction(requestId: string) {
   const employee = await getCurrentEmployee();
   const request = await db.request.findUnique({ where: { id: requestId } });
-  if (!request || request.employeeId !== employee.id) throw new Error("Request not found.");
+  if (!request || request.employeeId !== employee.id) throw new UserError("Request not found.");
 
   const office = await getOfficeFor(employee.id);
   const today = todayKey(office.timezone);
   const startKey = request.startDate.toISOString().slice(0, 10);
   const cancellable = request.status === "PENDING" || (request.status === "APPROVED" && startKey > today);
-  if (!cancellable) throw new Error("Only pending requests, or approved ones that haven't started, can be cancelled.");
+  if (!cancellable) throw new UserError("Only pending requests, or approved ones that haven't started, can be cancelled.");
 
   await db.$transaction(async (tx) => {
     const updated = await tx.request.updateMany({ where: { id: requestId, status: request.status }, data: { status: "CANCELLED" } });
-    if (updated.count === 0) throw new Error("This request just changed. Reload and try again.");
-    // Approved leave gives its days back.
-    if (request.status === "APPROVED" && request.kind === "LEAVE" && request.leaveTypeId) {
-      await tx.leaveBalance.updateMany({
-        where: { employeeId: employee.id, leaveTypeId: request.leaveTypeId, year: leaveYearOf(startKey) },
-        data: { used: { decrement: request.days } },
-      });
-    }
+    if (updated.count === 0) throw new UserError("This request just changed. Reload and try again.");
   });
+  // Approved leave gives its days back.
+  if (request.status === "APPROVED" && request.kind === "LEAVE") await recalculateBalances([employee.id], leaveYearOf(startKey));
 
   audit({ actorId: employee.id, entity: "Request", entityId: requestId, action: "cancel", changes: { from: request.status } });
   refresh();
@@ -206,7 +227,7 @@ export async function cancelRequestAction(requestId: string) {
 
 /** Write an approved attendance fix onto the day. */
 async function applyAttendanceFix(request: { employeeId: string; startDate: Date; fixCheckIn: Date | null; fixCheckOut: Date | null; reason: string; workMode: string | null }, actorId: string) {
-  if (!request.fixCheckIn || !request.fixCheckOut) throw new Error("This fix has no times.");
+  if (!request.fixCheckIn || !request.fixCheckOut) throw new UserError("This fix has no times.");
   const office = await getOfficeFor(request.employeeId);
   const dateKey = request.startDate.toISOString().slice(0, 10);
   const coverage = (await getCoverage([request.employeeId], dateKey, dateKey)).get(request.employeeId)?.get(dateKey);
@@ -245,16 +266,26 @@ async function applyAttendanceFix(request: { employeeId: string; startDate: Date
 export async function decideRequestAction(requestId: string, decision: "APPROVE" | "REJECT", note?: string | null) {
   const actor = await getCurrentEmployee();
   const request = await db.request.findUnique({ where: { id: requestId }, include: { leaveType: true } });
-  if (!request) throw new Error("Request not found.");
-  if (request.employeeId === actor.id) throw new Error("You can't decide your own request.");
-  if (!(await canDecideFor(actor, request.employeeId))) throw new Error("You can't decide requests for this person.");
-  if (request.status !== "PENDING") throw new Error(`This request is already ${request.status.toLowerCase()}.`);
+  if (!request) throw new UserError("Request not found.");
+  if (request.employeeId === actor.id) throw new UserError("You can't decide your own request.");
+  if (!(await canDecideFor(actor, request.employeeId))) throw new UserError("You can't decide requests for this person.");
+  if (request.status !== "PENDING") throw new UserError(`This request is already ${request.status.toLowerCase()}.`);
   const decisionNote = note?.trim().slice(0, 500) || null;
   const startKey = request.startDate.toISOString().slice(0, 10);
 
+  const endKey = request.endDate.toISOString().slice(0, 10);
+  if (decision === "APPROVE" && request.kind === "LEAVE" && !request.halfDay) {
+    const worked = await workedDays(request.employeeId, startKey, endKey);
+    if (worked.length) {
+      throw new UserError(`They clocked in on ${worked.map((d) => rangeLabel(d, d)).join(", ")}. Reject this and ask them to change the dates, or set those days to Absent first (Team Day → Edit).`);
+    }
+  }
+  if (decision === "APPROVE" && request.kind === "ATTENDANCE_FIX") {
+    const leave = await fullLeaveOn(request.employeeId, startKey);
+    if (leave) throw new UserError(`That day is approved ${leave.typeName ?? "leave"}. Reject the fix, or cancel the leave first.`);
+  }
   if (decision === "APPROVE" && request.kind === "LEAVE" && request.leaveType?.yearlyDays != null) {
-    const year = leaveYearOf(startKey);
-    await ensureBalances(request.employeeId, year);
+    await ensureBalances(request.employeeId, leaveYearOf(startKey));
   }
 
   await db.$transaction(async (tx) => {
@@ -263,7 +294,7 @@ export async function decideRequestAction(requestId: string, decision: "APPROVE"
       where: { id: requestId, status: "PENDING" },
       data: { status: decision === "APPROVE" ? "APPROVED" : "REJECTED", decidedById: actor.id, decidedAt: new Date(), decisionNote },
     });
-    if (updated.count === 0) throw new Error("Someone else just decided this request.");
+    if (updated.count === 0) throw new UserError("Someone else just decided this request.");
 
     if (decision === "APPROVE" && request.kind === "LEAVE" && request.leaveTypeId && request.leaveType?.yearlyDays != null) {
       const year = leaveYearOf(startKey);
@@ -273,10 +304,10 @@ export async function decideRequestAction(requestId: string, decision: "APPROVE"
         _sum: { days: true },
       });
       const left = balance ? availableDays(balance, otherPending._sum.days ?? 0) : 0;
-      if (request.days > left) throw new Error(`Not enough ${request.leaveType.name} left (${left} days). Reject it, or ask them to choose Unpaid Leave.`);
-      await tx.leaveBalance.update({ where: { id: balance!.id }, data: { used: { increment: request.days } } });
+      if (request.days > left) throw new UserError(`Not enough ${request.leaveType.name} left (${left} days). Reject it, or ask them to choose Unpaid Leave.`);
     }
   });
+  if (decision === "APPROVE" && request.kind === "LEAVE") await recalculateBalances([request.employeeId], leaveYearOf(startKey));
 
   if (decision === "APPROVE" && request.kind === "ATTENDANCE_FIX") {
     await applyAttendanceFix(request, actor.id);
@@ -294,6 +325,46 @@ export async function decideRequestAction(requestId: string, decision: "APPROVE"
   return { success: true };
 }
 
+// ─── Undo a decision (approver) ───
+
+/**
+ * Put a decided leave/WFH request back to Pending, e.g. approved by mistake.
+ * Approved leave returns its days. Attendance fixes can't be undone this way
+ * because they rewrote the day: edit the day instead.
+ */
+export async function undoDecisionAction(requestId: string, note: string) {
+  const actor = await getCurrentEmployee();
+  const request = await db.request.findUnique({ where: { id: requestId } });
+  if (!request) throw new UserError("Request not found.");
+  if (request.employeeId === actor.id) throw new UserError("You can't change a decision on your own request.");
+  if (!(await canDecideFor(actor, request.employeeId))) throw new UserError("You can't change decisions for this person.");
+  if (request.status !== "APPROVED" && request.status !== "REJECTED") throw new UserError("Only approved or rejected requests can be undone.");
+  if (request.kind === "ATTENDANCE_FIX" && request.status === "APPROVED") {
+    throw new UserError("An approved attendance fix already changed the day. Use Team Day → Edit to correct it.");
+  }
+  const reason = note?.trim() ?? "";
+  if (reason.length < 3) throw new UserError("Say why you're undoing it; they'll see this.");
+
+  const updated = await db.request.updateMany({
+    where: { id: requestId, status: request.status },
+    data: { status: "PENDING", decidedById: null, decidedAt: null, decisionNote: `Reopened by ${actor.firstName} ${actor.lastName}: ${reason}`.slice(0, 500) },
+  });
+  if (updated.count === 0) throw new UserError("This request just changed. Reload and try again.");
+
+  const startKey = request.startDate.toISOString().slice(0, 10);
+  if (request.kind === "LEAVE" && request.status === "APPROVED") await recalculateBalances([request.employeeId], leaveYearOf(startKey));
+
+  await notify(
+    [request.employeeId],
+    "Request reopened",
+    `${actor.firstName} ${actor.lastName} reopened your ${REQUEST_KIND_LABELS[request.kind as RequestKindValue].toLowerCase()} request for ${rangeLabel(startKey, request.endDate.toISOString().slice(0, 10))}: ${reason}. It's waiting for a decision again.`,
+    "/leave"
+  );
+  audit({ actorId: actor.id, entity: "Request", entityId: requestId, action: "undo", changes: { from: request.status, reason } });
+  refresh();
+  return { success: true };
+}
+
 // ─── Late half-day review ───
 
 /**
@@ -304,9 +375,9 @@ export async function decideRequestAction(requestId: string, decision: "APPROVE"
 export async function reviewAttendanceAction(attendanceId: string, decision: "KEEP_HALF_DAY" | "MAKE_FULL_DAY", note?: string | null) {
   const actor = await getCurrentEmployee();
   const record = await db.attendance.findUnique({ where: { id: attendanceId }, select: { id: true, employeeId: true, date: true, isLate: true, reviewStatus: true } });
-  if (!record || record.reviewStatus !== "PENDING") throw new Error("This day is no longer waiting for review.");
-  if (record.employeeId === actor.id) throw new Error("You can't review your own attendance.");
-  if (!(await canDecideFor(actor, record.employeeId))) throw new Error("You can't review attendance for this person.");
+  if (!record || record.reviewStatus !== "PENDING") throw new UserError("This day is no longer waiting for review.");
+  if (record.employeeId === actor.id) throw new UserError("You can't review your own attendance.");
+  if (!(await canDecideFor(actor, record.employeeId))) throw new UserError("You can't review attendance for this person.");
 
   const excused = decision === "MAKE_FULL_DAY";
   const updated = await db.attendance.updateMany({
@@ -319,7 +390,7 @@ export async function reviewAttendanceAction(attendanceId: string, decision: "KE
       ...(note?.trim() && { note: note.trim().slice(0, 500) }),
     },
   });
-  if (updated.count === 0) throw new Error("Someone else just reviewed this day.");
+  if (updated.count === 0) throw new UserError("Someone else just reviewed this day.");
 
   await db.attendanceEvent.create({
     data: { attendanceId, employeeId: record.employeeId, type: "REVIEW", at: new Date(), actorId: actor.id, note: excused ? "Made a full day" : "Kept as half day" },
@@ -341,27 +412,27 @@ export async function reviewAttendanceAction(attendanceId: string, decision: "KE
 /** Add or remove days from someone's balance, with a reason (leave:manage). */
 export async function adjustBalanceAction(input: { employeeId: string; leaveTypeId: string; year: number; delta: number; note: string }) {
   const actor = await getCurrentEmployee();
-  if (!(await hasPermission(actor, "leave:manage"))) throw new Error("You don't have permission to adjust leave balances.");
-  if (input.employeeId === actor.id) throw new Error("You can't adjust your own balance. Ask another admin.");
+  if (!(await hasPermission(actor, "leave:manage"))) throw new UserError("You don't have permission to adjust leave balances.");
+  if (input.employeeId === actor.id) throw new UserError("You can't adjust your own balance. Ask another admin.");
 
   const target = await db.employee.findUnique({ where: { id: input.employeeId }, select: { role: true, firstName: true } });
-  if (!target) throw new Error("Employee not found.");
-  if (!tracksAttendance(target.role)) throw new Error("Super Admins don't have leave balances.");
-  if (!canActOnEmployee(actor.role, target.role)) throw new Error("Only Super Admins can change an Admin's balance.");
+  if (!target) throw new UserError("Employee not found.");
+  if (!tracksAttendance(target.role)) throw new UserError("Super Admins don't have leave balances.");
+  if (!canActOnEmployee(actor.role, target.role)) throw new UserError("Only Super Admins can change an Admin's balance.");
 
   const delta = Number(input.delta);
   if (!Number.isFinite(delta) || delta === 0 || !Number.isInteger(delta * 2) || Math.abs(delta) > 365) {
-    throw new Error("Enter days to add or remove, in steps of 0.5 (e.g. 2 or -1.5).");
+    throw new UserError("Enter days to add or remove, in steps of 0.5 (e.g. 2 or -1.5).");
   }
   const note = input.note?.trim() ?? "";
-  if (note.length < 3) throw new Error("Add a short reason for the adjustment.");
+  if (note.length < 3) throw new UserError("Add a short reason for the adjustment.");
 
   await ensureBalances(input.employeeId, input.year);
   const balance = await db.leaveBalance.findUnique({
     where: { employeeId_leaveTypeId_year: { employeeId: input.employeeId, leaveTypeId: input.leaveTypeId, year: input.year } },
     include: { leaveType: { select: { name: true } } },
   });
-  if (!balance) throw new Error("That leave type has no limit, so there's no balance to adjust.");
+  if (!balance) throw new UserError("That leave type has no limit, so there's no balance to adjust.");
 
   await db.leaveBalance.update({ where: { id: balance.id }, data: { adjusted: { increment: delta } } });
   await notify(

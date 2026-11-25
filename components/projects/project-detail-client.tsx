@@ -1,4 +1,7 @@
 "use client";
+import { DatePicker } from "@/components/ui/date-picker";
+import { format } from "date-fns";
+import { errorMessage } from "@/lib/errors";
 
 import { ConfirmAction } from "@/components/ui/confirm-action";
 
@@ -9,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -22,9 +25,11 @@ import { MemberPermissionsDialog } from "./member-permissions-dialog";
 
 const statusColors: Record<string, string> = { ACTIVE: "bg-blue-500/10 text-blue-600 border-blue-500/20", PLANNING: "bg-purple-500/10 text-purple-600 border-purple-500/20", PAUSED: "bg-orange-500/10 text-orange-600 border-orange-500/20", COMPLETED: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20", ARCHIVED: "bg-gray-500/10 text-gray-600 border-gray-500/20" };
 const priorityColors: Record<string, string> = { CRITICAL: "bg-red-500/10 text-red-600 border-red-500/20", HIGH: "bg-orange-500/10 text-orange-600 border-orange-500/20", MEDIUM: "bg-blue-500/10 text-blue-600 border-blue-500/20", LOW: "bg-gray-500/10 text-gray-600 border-gray-500/20" };
-const taskStatusColors: Record<string, string> = { BACKLOG: "bg-gray-500/10 text-gray-600 border-gray-500/20", TODO: "bg-slate-500/10 text-slate-600 border-slate-500/20", IN_PROGRESS: "bg-blue-500/10 text-blue-600 border-blue-500/20", REVIEW: "bg-purple-500/10 text-purple-600 border-purple-500/20", TESTING: "bg-amber-500/10 text-amber-600 border-amber-500/20", DONE: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" };
+const taskStatusColors: Record<string, string> = { CANCELLED: "bg-gray-500/10 text-gray-500 border-gray-500/20 line-through", TODO: "bg-slate-500/10 text-slate-600 border-slate-500/20", IN_PROGRESS: "bg-blue-500/10 text-blue-600 border-blue-500/20", REVIEW: "bg-purple-500/10 text-purple-600 border-purple-500/20", TESTING: "bg-amber-500/10 text-amber-600 border-amber-500/20", DONE: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" };
 
-export function ProjectDetailClient({ project, allEmployees = [], allTeams = [], canEdit = true, canDelete = false, canDelegate = false }: { project: any, allEmployees: any[], allTeams: any[], canEdit?: boolean, canDelete?: boolean, canDelegate?: boolean }) {
+const toKey = (d: string | Date | null | undefined) => (d ? format(new Date(d), "yyyy-MM-dd") : "");
+
+export function ProjectDetailClient({ project, allEmployees = [], allTeams = [], canEdit = true, canDelete = false, canDelegate = false, openEdit = false }: { project: any, allEmployees: any[], allTeams: any[], canEdit?: boolean, canDelete?: boolean, canDelegate?: boolean, openEdit?: boolean }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -50,14 +55,18 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
   const topLevelTasks = project.tasks.filter((t: any) => !t.parentId);
   
   // Edit Project State
-  const [editOpen, setEditOpen] = useState(false);
+  // ?edit=1 (from the projects list) opens Edit Project straight away.
+  const [editOpen, setEditOpen] = useState(() => canEdit && openEdit);
   const [editData, setEditData] = useState({ 
     name: project.name, 
     description: project.description || "", 
     leadId: project.leadId,
     teamId: project.teamId,
     status: project.status,
-    priority: project.priority
+    priority: project.priority,
+    key: project.key ?? "",
+    startDate: toKey(project.startDate),
+    endDate: toKey(project.endDate),
   });
 
   const handleOpenEdit = () => {
@@ -67,7 +76,10 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
       leadId: project.leadId,
       teamId: project.teamId,
       status: project.status,
-      priority: project.priority
+      priority: project.priority,
+      key: project.key ?? "",
+      startDate: toKey(project.startDate),
+      endDate: toKey(project.endDate),
     });
     setEditOpen(true);
   };
@@ -75,9 +87,10 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
   const handleUpdateProject = () => {
     if (!editData.name || !editData.leadId || !editData.teamId) return;
     startTransition(() => {
-      updateProjectAction(project.id, editData).then(() => {
+      updateProjectAction(project.id, { ...editData, startDate: editData.startDate || null, endDate: editData.endDate || null }).then(() => {
+        toast.success(`${editData.name} saved`);
         setEditOpen(false);
-      }).catch((err: any) => toast.error(err.message || "Failed to update project"));
+      }).catch((err) => toast.error(errorMessage(err, "Failed to update project")));
     });
   };
 
@@ -106,7 +119,7 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
       const finalMemberIds = Array.from(new Set([...selectedMemberIds, project.leadId]));
       manageProjectMembersAction(project.id, finalMemberIds).then(() => {
         setManageOpen(false);
-      }).catch((err: any) => toast.error(err.message || "Failed to manage members"));
+      }).catch((err) => toast.error(errorMessage(err, "Failed to manage members")));
     });
   };
 
@@ -121,14 +134,14 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
   const handleQuickStatusChange = (newStatus: string) => {
     if (newStatus === project.status) return;
     startTransition(() => {
-      updateProjectStatusAction(project.id, newStatus).catch((err: any) => toast.error(err.message || "Failed to update status"));
+      updateProjectStatusAction(project.id, newStatus).catch((err) => toast.error(errorMessage(err, "Failed to update status")));
     });
   };
 
   const handleQuickPriorityChange = (newPriority: string) => {
     if (newPriority === project.priority) return;
     startTransition(() => {
-      updateProjectPriorityAction(project.id, newPriority).catch((err: any) => toast.error(err.message || "Failed to update priority"));
+      updateProjectPriorityAction(project.id, newPriority).catch((err) => toast.error(errorMessage(err, "Failed to update priority")));
     });
   };
 
@@ -306,10 +319,7 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
                                 </div>
                                 <div className="flex -space-x-2 shrink-0">
                                   {task.assignees?.map((a: any) => (
-                                    <Avatar key={a.id} className="h-7 w-7 border-2 border-background">
-                                      <AvatarImage src={a.avatarUrl} />
-                                      <AvatarFallback className="text-[9px] bg-primary/10">{a.firstName.charAt(0)}</AvatarFallback>
-                                    </Avatar>
+                                    <UserAvatar key={a.id} className="h-7 w-7 border-2 border-background" user={a} textClassName="text-[9px]" />
                                   ))}
                                 </div>
                               </div>
@@ -347,10 +357,7 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
                 <div>
                   <span className="text-xs text-muted-foreground mb-2 block">Project Lead</span>
                   <div className="flex items-center gap-3 bg-muted/20 border border-border/40 rounded-lg p-3">
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage src={project.lead.avatarUrl} />
-                      <AvatarFallback className="bg-primary/10 text-xs">{project.lead.firstName.charAt(0)}</AvatarFallback>
-                    </Avatar>
+                    <UserAvatar className="h-8 w-8" user={project.lead} textClassName="text-xs" />
                     <div>
                       <p className="text-sm font-medium leading-none text-foreground">{project.lead.firstName} {project.lead.lastName}</p>
                     </div>
@@ -380,7 +387,7 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground flex items-center gap-2"><Flag className="h-3.5 w-3.5" /> Deadline</span>
-                  <span className="font-medium text-xs bg-background border border-border/50 px-2 py-0.5 rounded">{project.endDate ? new Date(project.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}</span>
+                  <span className="font-medium text-xs bg-background border border-border/50 px-2 py-0.5 rounded">{project.endDate ? new Date(project.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "No deadline"}</span>
                 </div>
               </div>
             </div>
@@ -397,12 +404,7 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
                   <div className="divide-y divide-border/40 overflow-y-auto max-h-[300px]">
                     {project.members.map((m: any) => (
                       <div key={m.id} className="flex items-center gap-3 p-3 hover:bg-muted/30 transition-colors group">
-                        <Avatar className="h-8 w-8">
-                          <AvatarImage src={m.employee.avatarUrl} />
-                          <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
-                            {m.employee.firstName.charAt(0)}
-                          </AvatarFallback>
-                        </Avatar>
+                        <UserAvatar className="h-8 w-8" user={m.employee} textClassName="text-[10px]" />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-foreground truncate">{m.employee.firstName} {m.employee.lastName}</p>
                           {m.employeeId === project.leadId && (
@@ -445,6 +447,23 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
             <div className="space-y-1.5 flex flex-col">
               <label className="text-xs font-semibold text-muted-foreground">Project Name</label>
               <Input value={editData.name} onChange={e => setEditData({ ...editData, name: e.target.value })} />
+            </div>
+
+            <div className="space-y-1.5 flex flex-col">
+              <label htmlFor="edit-project-key" className="text-xs font-semibold text-muted-foreground">Task ID Key</label>
+              <Input id="edit-project-key" className="w-32 font-mono uppercase" value={editData.key} onChange={e => setEditData({ ...editData, key: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6) })} />
+              {editData.key !== (project.key ?? "") && <p className="text-[11px] text-amber-600">Every task ID in this project changes to {editData.key || "…"}-number.</p>}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5 flex flex-col">
+                <label htmlFor="edit-project-start" className="text-xs font-semibold text-muted-foreground">Start Date</label>
+                <DatePicker id="edit-project-start" value={editData.startDate} max={editData.endDate || undefined} onChange={(v) => setEditData({ ...editData, startDate: v })} placeholder="Not set" clearable />
+              </div>
+              <div className="space-y-1.5 flex flex-col">
+                <label htmlFor="edit-project-end" className="text-xs font-semibold text-muted-foreground">Deadline</label>
+                <DatePicker id="edit-project-end" value={editData.endDate} min={editData.startDate || undefined} onChange={(v) => setEditData({ ...editData, endDate: v })} placeholder="No deadline" clearable />
+              </div>
             </div>
             
             <div className="space-y-1.5 flex flex-col">
@@ -537,10 +556,7 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
                   )}>
                     {isSelected && <Check className="h-3 w-3" />}
                   </div>
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src={emp.avatarUrl} />
-                    <AvatarFallback className="text-xs">{emp.firstName.charAt(0)}</AvatarFallback>
-                  </Avatar>
+                  <UserAvatar className="h-8 w-8" user={emp} textClassName="text-xs" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{emp.firstName} {emp.lastName}</p>
                     <p className="text-[10px] text-muted-foreground truncate">{emp.designation || emp.email}</p>

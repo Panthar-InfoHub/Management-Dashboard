@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { Radar, AlertCircle, CheckCircle2 } from "lucide-react";
 import { TASK_PRIORITY_COLORS, PROJECT_STATUS_COLORS, formatEnumLabel } from "@/lib/dashboard-colors";
 import { format, isToday, isTomorrow, isPast, endOfDay } from "date-fns";
@@ -11,7 +11,7 @@ interface RadarTask {
   priority: string;
   dueDate: Date | string | null;
   isOverdue: boolean;
-  project: { id: string; name: string };
+  project: { id: string; name: string } | null;
   assignees: Array<{ id: string; firstName: string; lastName: string; avatarUrl: string | null }>;
 }
 
@@ -115,7 +115,7 @@ export function PriorityPanels({
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-medium text-foreground">{task.title}</p>
                     <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
-                      <span>{task.project.name}</span>
+                      <span>{task.project?.name ?? "General"}</span>
                       {taskDate && (
                         <>
                           <span className="mx-1">•</span>
@@ -129,10 +129,7 @@ export function PriorityPanels({
                 {isAdmin && task.assignees.length > 0 && (
                   <div className="flex -space-x-1.5 shrink-0">
                     {task.assignees.slice(0, 2).map((a) => (
-                      <Avatar key={a.id} className="h-5 w-5 rounded-full ring-2 ring-background">
-                        <AvatarImage src={a.avatarUrl ?? undefined} />
-                        <AvatarFallback className="text-[8px]">{a.firstName.charAt(0)}</AvatarFallback>
-                      </Avatar>
+                      <UserAvatar key={a.id} className="h-5 w-5 rounded-full ring-2 ring-background" user={a} textClassName="text-[8px]" />
                     ))}
                   </div>
                 )}

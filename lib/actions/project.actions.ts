@@ -1,4 +1,6 @@
 "use server";
+import { UserError } from "@/lib/errors";
+import { normaliseProjectKey, suggestProjectKey } from "@/lib/tasks/keys";
 
 import { db } from "@/lib/db";
 import { requireAuth, getCurrentEmployee, checkPermission } from "@/lib/auth";
@@ -13,13 +15,13 @@ const VALID_PRIORITIES: TaskPriority[] = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
 
 function assertValidProjectStatus(value: unknown): asserts value is ProjectStatus {
   if (!VALID_PROJECT_STATUSES.includes(value as ProjectStatus)) {
-    throw new Error(`Invalid project status: ${String(value)}`);
+    throw new UserError(`Invalid project status: ${String(value)}`);
   }
 }
 
 function assertValidPriority(value: unknown): asserts value is TaskPriority {
   if (!VALID_PRIORITIES.includes(value as TaskPriority)) {
-    throw new Error(`Invalid priority: ${String(value)}`);
+    throw new UserError(`Invalid priority: ${String(value)}`);
   }
 }
 
@@ -32,9 +34,9 @@ export async function updateProjectStatusAction(projectId: string, newStatus: st
   const hasGlobalPerm = await checkPermission("project:update");
 
   const existing = await db.project.findUnique({ where: { id: projectId } });
-  if (!existing) throw new Error("Project not found");
+  if (!existing) throw new UserError("Project not found");
   if (!hasGlobalPerm && existing.leadId !== employee.id) {
-    throw new Error("You do not have permission for this action.");
+    throw new UserError("You do not have permission for this action.");
   }
 
   const project = await db.project.update({
@@ -57,9 +59,9 @@ export async function updateProjectPriorityAction(projectId: string, newPriority
   const hasGlobalPerm = await checkPermission("project:update");
 
   const existing = await db.project.findUnique({ where: { id: projectId } });
-  if (!existing) throw new Error("Project not found");
+  if (!existing) throw new UserError("Project not found");
   if (!hasGlobalPerm && existing.leadId !== employee.id) {
-    throw new Error("You do not have permission for this action.");
+    throw new UserError("You do not have permission for this action.");
   }
 
   const project = await db.project.update({
@@ -74,6 +76,24 @@ export async function updateProjectPriorityAction(projectId: string, newPriority
   return { success: true, project };
 }
 
+
+/** The key to save: what was typed (must be free), or one suggested from the name. */
+async function resolveProjectKey(typed: string | undefined, name: string, projectId?: string): Promise<string> {
+  if (typed?.trim()) {
+    const key = normaliseProjectKey(typed);
+    if (!key) throw new UserError("Project key must be 2–6 letters or digits, starting with a letter, e.g. JNV.");
+    const taken = await db.project.findFirst({ where: { key, ...(projectId ? { id: { not: projectId } } : {}) }, select: { name: true } });
+    if (taken) throw new UserError(`Key ${key} is used by ${taken.name}. Choose another.`);
+    return key;
+  }
+  const base = suggestProjectKey(name);
+  for (let i = 1; ; i++) {
+    const key = i === 1 ? base : `${base}${i}`;
+    const taken = await db.project.findFirst({ where: { key, ...(projectId ? { id: { not: projectId } } : {}) }, select: { id: true } });
+    if (!taken) return key;
+  }
+}
+
 export async function createProjectAction(data: {
   name: string;
   description?: string;
@@ -84,12 +104,14 @@ export async function createProjectAction(data: {
   startDate?: Date;
   endDate?: Date;
   addTeamMembers?: boolean;
+  /** Short code for task IDs; suggested from the name when empty. */
+  key?: string;
 }) {
   const employee = await requireAuth("project:create");
 
-  if (!data.name?.trim()) throw new Error("Project name is required.");
-  if (!data.leadId?.trim()) throw new Error("Project lead is required.");
-  if (!data.teamId?.trim()) throw new Error("Team is required.");
+  if (!data.name?.trim()) throw new UserError("Project name is required.");
+  if (!data.leadId?.trim()) throw new UserError("Project lead is required.");
+  if (!data.teamId?.trim()) throw new UserError("Team is required.");
   assertValidProjectStatus(data.status);
   assertValidPriority(data.priority);
 
@@ -112,8 +134,10 @@ export async function createProjectAction(data: {
     }
   }
 
+  const key = await resolveProjectKey(data.key, data.name);
   const project = await db.project.create({
     data: {
+      key,
       name: data.name.trim(),
       description: data.description,
       leadId: data.leadId,
@@ -142,23 +166,38 @@ export async function updateProjectAction(projectId: string, data: {
   teamId: string;
   status: string;
   priority: string;
+  /** Changing it renames every task ID in the project. */
+  key?: string;
+  /** "YYYY-MM-DD"; null clears it. Both are optional: a project can run without a deadline. */
+  startDate?: string | null;
+  endDate?: string | null;
 }) {
   const employee = await getCurrentEmployee();
-  const hasGlobalPerm = await checkPermission("project:update");
+  // For this project: admins, its lead, its team's lead and anyone granted it.
+  const hasGlobalPerm = await checkPermission("project:update", projectId);
 
-  if (!data.name?.trim()) throw new Error("Project name is required.");
+  if (!data.name?.trim()) throw new UserError("Project name is required.");
   assertValidProjectStatus(data.status);
   assertValidPriority(data.priority);
 
   const existing = await db.project.findUnique({ where: { id: projectId } });
-  if (!existing) throw new Error("Project not found");
+  if (!existing) throw new UserError("Project not found");
   if (!hasGlobalPerm && existing.leadId !== employee.id) {
-    throw new Error("You do not have permission for this action.");
+    throw new UserError("You do not have permission for this action.");
   }
 
+  const dayStart = (v: string | null | undefined) => (v ? new Date(`${v}T00:00:00`) : null);
+  const startDate = data.startDate === undefined ? existing.startDate : dayStart(data.startDate);
+  const endDate = data.endDate === undefined ? existing.endDate : (data.endDate ? new Date(`${data.endDate}T23:59:59.999`) : null);
+  if (startDate && endDate && endDate < startDate) throw new UserError("The deadline is before the start date.");
+
+  const key = data.key?.trim() || !existing.key ? await resolveProjectKey(data.key, data.name, projectId) : existing.key;
   const project = await db.project.update({
     where: { id: projectId },
     data: {
+      key,
+      startDate,
+      endDate,
       name: data.name.trim(),
       description: data.description,
       leadId: data.leadId,
@@ -178,15 +217,15 @@ export async function manageProjectMembersAction(projectId: string, memberIds: s
   const employee = await getCurrentEmployee();
   const hasGlobalPerm = await checkPermission("project:update");
 
-  if (!Array.isArray(memberIds)) throw new Error("Member IDs must be an array.");
+  if (!Array.isArray(memberIds)) throw new UserError("Member IDs must be an array.");
 
   const existing = await db.project.findUnique({ 
     where: { id: projectId },
     include: { members: true }
   });
-  if (!existing) throw new Error("Project not found");
+  if (!existing) throw new UserError("Project not found");
   if (!hasGlobalPerm && existing.leadId !== employee.id) {
-    throw new Error("You do not have permission for this action.");
+    throw new UserError("You do not have permission for this action.");
   }
 
   // Sync ProjectMember relation (join table)
@@ -223,7 +262,7 @@ export async function deleteProjectAction(projectId: string) {
   const employee = await requireAuth("project:delete");
 
   const existing = await db.project.findUnique({ where: { id: projectId } });
-  if (!existing) throw new Error("Project not found");
+  if (!existing) throw new UserError("Project not found");
 
   await db.project.delete({
     where: { id: projectId }

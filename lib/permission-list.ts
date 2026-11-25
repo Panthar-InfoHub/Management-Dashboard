@@ -53,6 +53,12 @@ export const PERMISSION_GROUPS = [
       { id: "leave:manage", label: "Edit leave types, balances and holidays" },
     ],
   },
+  {
+    label: "Company",
+    items: [
+      { id: "announcement:manage", label: "Post and edit announcements" },
+    ],
+  },
 ] as const;
 
 export type Permission = (typeof PERMISSION_GROUPS)[number]["items"][number]["id"];

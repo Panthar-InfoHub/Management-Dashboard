@@ -1,9 +1,9 @@
 "use client";
+import { TimePicker } from "@/components/ui/time-picker";
 
 import { useState } from "react";
 import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmAction } from "@/components/ui/confirm-action";
@@ -62,11 +62,11 @@ export function EditDayButton({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label htmlFor={`in-${employeeId}`} className="text-xs font-semibold text-muted-foreground">Clock-In (optional)</label>
-              <Input id={`in-${employeeId}`} type="time" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} />
+              <TimePicker id={`in-${employeeId}`} value={checkIn} onChange={setCheckIn} placeholder="Not set" />
             </div>
             <div className="space-y-1.5">
               <label htmlFor={`out-${employeeId}`} className="text-xs font-semibold text-muted-foreground">Clock-Out (optional)</label>
-              <Input id={`out-${employeeId}`} type="time" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} />
+              <TimePicker id={`out-${employeeId}`} value={checkOut} onChange={setCheckOut} placeholder="Not set" />
             </div>
           </div>
         )}

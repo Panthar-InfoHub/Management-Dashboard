@@ -7,14 +7,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { Plus, Filter, Search, ArrowUpRight, Calendar, DollarSign, FolderKanban, X } from "lucide-react";
+import { Plus, Filter, Search, ArrowUpRight, Calendar, DollarSign, FolderKanban, X, Pencil } from "lucide-react";
 import { updateProjectStatusAction } from "@/lib/actions/project.actions";
 import { format, isPast, isToday, isTomorrow, endOfDay } from "date-fns";
 
@@ -23,7 +23,8 @@ const statusColors: Record<string, string> = { ACTIVE: "bg-blue-500/10 text-blue
 const priorityColors: Record<string, string> = { CRITICAL: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20 hover:bg-red-500/20", HIGH: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20 hover:bg-orange-500/20", MEDIUM: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20", LOW: "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20 hover:bg-gray-500/20" };
 
 
-export function ProjectsClient({ initialProjects, canCreate }: { initialProjects: any[], canCreate: boolean }) {
+export function ProjectsClient({ initialProjects, canCreate, editableIds = [] }: { initialProjects: any[], canCreate: boolean, editableIds?: string[] }) {
+  const editable = new Set(editableIds);
   const [projectList, setProjectList] = useState(initialProjects);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -176,7 +177,13 @@ export function ProjectsClient({ initialProjects, canCreate }: { initialProjects
                         <CardTitle className="text-sm font-semibold leading-tight">{project.name}</CardTitle>
                         <p className="text-xs text-muted-foreground line-clamp-2">{project.description || "No description"}</p>
                       </div>
-                      <ArrowUpRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                      {editable.has(project.id) ? (
+                        <Button asChild variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs text-muted-foreground" onClick={(e) => e.stopPropagation()}>
+                          <Link href={`/projects/${project.id}?edit=1`} aria-label={`Edit ${project.name}`}><Pencil className="h-3.5 w-3.5" /> Edit</Link>
+                        </Button>
+                      ) : (
+                        <ArrowUpRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                      )}
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
@@ -220,10 +227,7 @@ export function ProjectsClient({ initialProjects, canCreate }: { initialProjects
                     <div className="flex items-center justify-between pt-1 border-t border-border/50">
                       <div className="flex -space-x-1.5">
                         {membersList.slice(0, 3).map((m: any) => (
-                          <Avatar key={m.id} className="h-5 w-5 border-2 border-card">
-                            <AvatarImage src={m.avatarUrl} />
-                            <AvatarFallback className="text-[8px] bg-primary/10">{m.firstName.charAt(0)}</AvatarFallback>
-                          </Avatar>
+                          <UserAvatar key={m.id} className="h-5 w-5 border-2 border-card" user={m} textClassName="text-[8px]" />
                         ))}
                         {membersList.length > 3 && (
                           <div className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-card bg-muted text-[8px]">+{membersList.length - 3}</div>

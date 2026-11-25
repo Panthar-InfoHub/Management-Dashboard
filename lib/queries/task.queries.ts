@@ -1,16 +1,38 @@
+import { UserError } from "@/lib/errors";
 import { db } from "@/lib/db";
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
+import { parseTaskKey } from "@/lib/tasks/keys";
 
-export async function getKanbanTasks(filters?: { team?: string, project?: string, assignee?: string, search?: string }, skip = 0, take = 100) {
+export type TaskFilters = {
+  team?: string;
+  project?: string;
+  assignee?: string;
+  search?: string;
+  /** "1": show subtasks as their own cards too. */
+  subtasks?: string;
+  /** "1": include cancelled tasks. */
+  cancelled?: string;
+};
+
+/** Project filter value for General tasks (no project). */
+export const GENERAL_FILTER = "GENERAL";
+
+const personSelect = { id: true, firstName: true, lastName: true, avatarUrl: true } as const;
+
+export async function getKanbanTasks(filters?: TaskFilters, skip = 0, take = 100) {
   const employee = await getCurrentEmployee();
 
   const canViewAll = await checkPermission("task:update");
   
   // For the Kanban board, fetch tasks the user has access to. Admins see all tasks.
+  // Admins and people with task:update see everything. Others see their
+  // projects' tasks, and tasks they're assigned to or created (this is how
+  // General tasks stay private to the people on them).
   const accessClause = canViewAll ? {} : {
     OR: [
       { project: { members: { some: { employeeId: employee.id } } } },
-      { assignees: { some: { id: employee.id } } }
+      { assignees: { some: { id: employee.id } } },
+      { creatorId: employee.id },
     ]
   };
 
@@ -21,7 +43,7 @@ export async function getKanbanTasks(filters?: { team?: string, project?: string
     AND.push({ project: { teamId: filters.team } });
   }
   if (filters?.project && filters.project !== "ALL") {
-    AND.push({ projectId: filters.project });
+    AND.push({ projectId: filters.project === GENERAL_FILTER ? null : filters.project });
   }
   if (filters?.assignee && filters.assignee !== "ALL") {
     if (filters.assignee === "UNASSIGNED") {
@@ -31,8 +53,15 @@ export async function getKanbanTasks(filters?: { team?: string, project?: string
     }
   }
   if (filters?.search) {
-    AND.push({ title: { contains: filters.search, mode: "insensitive" } });
+    // "JNV-24" finds that task; anything else searches titles.
+    const key = parseTaskKey(filters.search);
+    AND.push(key
+      ? { number: key.number, project: { key: key.key } }
+      : { title: { contains: filters.search, mode: "insensitive" } });
   }
+  // The board shows main tasks; subtasks live on their task unless asked for.
+  if (filters?.subtasks !== "1" && !filters?.search) AND.push({ parentId: null });
+  if (filters?.cancelled !== "1") AND.push({ status: { not: "CANCELLED" } });
 
   const whereClause = AND.length > 0 ? { AND } : {};
 
@@ -41,24 +70,19 @@ export async function getKanbanTasks(filters?: { team?: string, project?: string
     skip,
     take,
     include: {
-      assignees: {
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          avatarUrl: true,
-        }
-      },
+      assignees: { select: personSelect },
+      owner: { select: personSelect },
       project: {
         select: {
           id: true,
           name: true,
+          key: true,
           team: { select: { id: true, name: true } }
         }
       },
-      // Subtask progress for the card ("2/5"): total count + ids of done ones.
-      _count: { select: { subtasks: true } },
-      subtasks: { where: { status: "DONE" }, select: { id: true } },
+      parent: { select: { id: true, title: true, number: true } },
+      // Subtask progress for the card ("2/5"): open + done ones, cancelled don't count.
+      subtasks: { where: { status: { not: "CANCELLED" } }, select: { id: true, status: true } },
     },
     orderBy: [
       { order: "asc" },
@@ -90,12 +114,14 @@ export async function getTaskById(taskId: string, callerEmployee?: any, canUpdat
       assignees: {
         select: { id: true, firstName: true, lastName: true, avatarUrl: true }
       },
+      owner: { select: personSelect },
+      parent: { select: { id: true, title: true, number: true } },
       creator: {
         select: { id: true, firstName: true, lastName: true, avatarUrl: true }
       },
       subtasks: {
         select: {
-          id: true, title: true, status: true, priority: true, dueDate: true, parentId: true,
+          id: true, title: true, status: true, priority: true, dueDate: true, parentId: true, number: true, ownerId: true,
           assignees: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
         },
         orderBy: { createdAt: "asc" },
@@ -124,7 +150,7 @@ export async function getTaskById(taskId: string, callerEmployee?: any, canUpdat
     const isCreator = task.creatorId === employee.id;
     
     if (!isAssignee && !isProjectMember && !isCreator) {
-      throw new Error("FORBIDDEN: Requires higher permission level");
+      throw new UserError("FORBIDDEN: Requires higher permission level");
     }
   }
 
@@ -160,14 +186,42 @@ export async function getTaskFilterDropdowns() {
   return { projects, teams, employees };
 }
 
-/** Every nested subtask in a project, for rendering a task's subtask tree. */
-export async function getProjectSubtaskTree(projectId: string) {
+/** A task's subtasks (one level). */
+export async function getSubtasks(taskId: string) {
   return db.task.findMany({
-    where: { projectId, parentId: { not: null } },
+    where: { parentId: taskId },
     select: {
-      id: true, title: true, status: true, priority: true, dueDate: true, parentId: true,
+      id: true, title: true, status: true, priority: true, dueDate: true, parentId: true, number: true, ownerId: true,
       assignees: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
     },
     orderBy: { createdAt: "asc" },
   });
+}
+
+const myTaskSelect = {
+  id: true, title: true, status: true, priority: true, dueDate: true, number: true, projectId: true, ownerId: true,
+  project: { select: { id: true, name: true, key: true } },
+  parent: { select: { id: true, title: true } },
+  owner: { select: personSelect },
+} as const;
+
+/** Open tasks and subtasks assigned to you, and tasks waiting for your review as a lead. */
+export async function getMyTasks() {
+  const me = await getCurrentEmployee();
+  const open = { notIn: ["DONE", "CANCELLED"] as ("DONE" | "CANCELLED")[] };
+  const [assigned, toReview] = await Promise.all([
+    db.task.findMany({
+      where: { assignees: { some: { id: me.id } }, status: open },
+      select: myTaskSelect,
+      orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { updatedAt: "desc" }],
+      take: 300,
+    }),
+    db.task.findMany({
+      where: { status: "REVIEW", project: { OR: [{ leadId: me.id }, { team: { leadId: me.id } }] } },
+      select: myTaskSelect,
+      orderBy: { updatedAt: "asc" },
+      take: 100,
+    }),
+  ]);
+  return { meId: me.id, assigned, toReview };
 }

@@ -1,4 +1,5 @@
 "use server";
+import { UserError } from "@/lib/errors";
 
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
@@ -22,7 +23,7 @@ export async function getMyAccessAction() {
 // ── Local development only ──
 
 export async function listViewAsOptionsAction() {
-  if (!VIEW_AS_ENABLED) throw new Error("View as is off.");
+  if (!VIEW_AS_ENABLED) throw new UserError("View as is off.");
   await getCurrentEmployee(); // must be signed in
   return db.employee.findMany({
     where: { status: "ACTIVE" },
@@ -32,7 +33,7 @@ export async function listViewAsOptionsAction() {
 }
 
 export async function setViewAsAction(employeeId: string | null) {
-  if (!VIEW_AS_ENABLED) throw new Error("View as is off.");
+  if (!VIEW_AS_ENABLED) throw new UserError("View as is off.");
   await getCurrentEmployee();
   const jar = await cookies();
   if (employeeId) jar.set(VIEW_AS_COOKIE, employeeId, { httpOnly: true, sameSite: "lax", path: "/" });

@@ -1,4 +1,5 @@
 "use client";
+import { Checkbox } from "@/components/ui/checkbox";
 
 /** Tick any number of teams (or none). */
 export function TeamPicker({
@@ -23,13 +24,7 @@ export function TeamPicker({
         const locked = lockedIds.includes(t.id);
         return (
           <label key={t.id} className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-muted/40">
-            <input
-              type="checkbox"
-              className="h-3.5 w-3.5 accent-foreground"
-              checked={checked}
-              disabled={disabled || locked}
-              onChange={() => onChange(checked ? value.filter((id) => id !== t.id) : [...value, t.id])}
-            />
+            <Checkbox checked={checked} disabled={disabled || locked} onCheckedChange={() => onChange(checked ? value.filter((id) => id !== t.id) : [...value, t.id])} />
             <span className="truncate">{t.name}</span>
             {locked && <span className="ml-auto text-[10px] text-muted-foreground">leads this team</span>}
           </label>

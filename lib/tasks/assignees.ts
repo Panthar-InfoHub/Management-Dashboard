@@ -1,13 +1,35 @@
+import { UserError } from "@/lib/errors";
 // Who may be assigned work on a project: its members, its lead, and the
 // members and lead of the team that owns it. Deactivated employees are excluded.
 // Internal helper for Server Actions and pages; it does no auth checks itself.
 import { cache } from "react";
 import { db } from "@/lib/db";
+import { getCurrentEmployee } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 
 const assignableSelect = { id: true, firstName: true, lastName: true, avatarUrl: true } as const;
 export type AssignableEmployee = { id: string; firstName: string; lastName: string; avatarUrl: string | null };
 
-export const getAssignableEmployees = cache(async (projectId: string): Promise<AssignableEmployee[]> => {
+/**
+ * General tasks (no project): with task:assign anyone active can be assigned;
+ * otherwise yourself and the people in teams you lead.
+ */
+export const getGeneralAssignable = cache(async (): Promise<AssignableEmployee[]> => {
+  const me = await getCurrentEmployee();
+  const active = { status: { not: "INACTIVE" as const } };
+  const everyone = await hasPermission(me, "task:assign");
+  const people = await db.employee.findMany({
+    where: everyone
+      ? active
+      : { ...active, OR: [{ id: me.id }, { teamMemberships: { some: { team: { leadId: me.id } } } }] },
+    select: assignableSelect,
+    orderBy: { firstName: "asc" },
+  });
+  return people;
+});
+
+export const getAssignableEmployees = cache(async (projectId: string | null): Promise<AssignableEmployee[]> => {
+  if (!projectId) return getGeneralAssignable();
   const active = { status: { not: "INACTIVE" as const } };
   const project = await db.project.findUnique({
     where: { id: projectId },
@@ -42,7 +64,7 @@ export const getAssignableEmployees = cache(async (projectId: string): Promise<A
  * Ids in `alreadyAssigned` are allowed through, so editing a task never fails
  * because someone assigned earlier has since left the project.
  */
-export async function assertAssignable(projectId: string, assigneeIds: string[], alreadyAssigned: string[] = []) {
+export async function assertAssignable(projectId: string | null, assigneeIds: string[], alreadyAssigned: string[] = []) {
   const newIds = assigneeIds.filter((id) => !alreadyAssigned.includes(id));
   if (newIds.length === 0) return;
 
@@ -51,7 +73,9 @@ export async function assertAssignable(projectId: string, assigneeIds: string[],
   if (rejected.length > 0) {
     const people = await db.employee.findMany({ where: { id: { in: rejected } }, select: { firstName: true, lastName: true } });
     const names = people.map((p) => `${p.firstName} ${p.lastName}`).join(", ") || "Some people";
-    throw new Error(`${names} can't be assigned. Only members of this project or its team can be assigned. Add them to the project first.`);
+    throw new UserError(projectId
+      ? `${names} can't be assigned. Only members of this project or its team can be assigned. Add them to the project first.`
+      : `${names} can't be assigned to a General task by you. You can assign yourself and people in teams you lead.`);
   }
 }
 

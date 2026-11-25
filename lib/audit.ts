@@ -14,6 +14,8 @@ export type AuditEntity =
   | "LeaveType"
   | "Request"
   | "LeaveBalance"
+  | "Announcement"
+  | "AuditLog"
   | "Attendance"
   | "EmployeePermission"
   | "Comment";

@@ -1,4 +1,5 @@
 "use client";
+import { DatePicker } from "@/components/ui/date-picker";
 
 import { useState, useTransition } from "react";
 import { ArrowUpRight, Loader2 } from "lucide-react";
@@ -115,7 +116,7 @@ export function PromoteDialog({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <label htmlFor="pr-date" className="text-xs font-semibold text-muted-foreground">Takes Effect</label>
-              <Input id="pr-date" type="date" value={form.startDate} onChange={(e) => set({ startDate: e.target.value })} disabled={isPending} />
+              <DatePicker id="pr-date" value={form.startDate} onChange={(v) => set({ startDate: v })} disabled={isPending} />
             </div>
             <div className="space-y-1.5">
               <label htmlFor="pr-reason" className="text-xs font-semibold text-muted-foreground">Reason</label>

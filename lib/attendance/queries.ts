@@ -1,3 +1,4 @@
+import { UserError } from "@/lib/errors";
 // Attendance reads. Live data, never cached; office and calendar settings come
 // from the cached readers in ./settings.
 import { cache } from "react";
@@ -19,7 +20,7 @@ export const getOfficeFor = cache(async (employeeId: string): Promise<OfficeSett
     db.employee.findUnique({ where: { id: employeeId }, select: { officeId: true } }),
   ]);
   const office = offices.find((o) => o.id === employee?.officeId) ?? offices.find((o) => o.isDefault) ?? offices[0];
-  if (!office) throw new Error("No office is set up. Ask an admin to add one in Settings → Office.");
+  if (!office) throw new UserError("No office is set up. Ask an admin to add one in Settings → Office.");
   return office;
 });
 
@@ -134,7 +135,7 @@ export async function getMyToday(employee: AuthEmployee) {
 
 /** One person's month, every day filled in. `monthKey` is "YYYY-MM". */
 export async function getMonth(employeeId: string, monthKey: string) {
-  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(monthKey)) throw new Error("Invalid month.");
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(monthKey)) throw new UserError("Invalid month.");
   const office = await getOfficeFor(employeeId);
   const [year, month] = monthKey.split("-").map(Number);
   const first = `${monthKey}-01`;
@@ -189,14 +190,22 @@ export async function getAttendanceScope(viewer: AuthEmployee) {
 
 type Scope = NonNullable<Awaited<ReturnType<typeof getAttendanceScope>>>;
 
-async function scopedPeople(scope: Scope, teamId?: string | null) {
+/**
+ * People shown for a range: everyone active, plus anyone who left during or
+ * after the range starts (so a leaver's last month still shows and exports).
+ */
+async function scopedPeople(scope: Scope, teamId: string | null | undefined, fromKey: string) {
   const teamFilter = teamId && (scope.all || scope.teams.some((t) => t.id === teamId))
     ? inAnyTeam([teamId])
     : scope.all ? {} : inAnyTeam(scope.teams.map((t) => t.id));
   return db.employee.findMany({
-    where: { status: "ACTIVE", role: { not: "SUPER_ADMIN" }, ...teamFilter },
+    where: {
+      role: { not: "SUPER_ADMIN" },
+      OR: [{ status: "ACTIVE" }, { exitDate: { gte: fromDateKey(fromKey) } }],
+      ...teamFilter,
+    },
     orderBy: { firstName: "asc" },
-    select: { id: true, firstName: true, lastName: true, avatarUrl: true, designation: true, officeId: true, joinDate: true, teamMemberships: { select: { team: { select: { name: true } } }, orderBy: { joinedAt: "asc" } } },
+    select: { id: true, firstName: true, lastName: true, avatarUrl: true, designation: true, officeId: true, joinDate: true, exitDate: true, teamMemberships: { select: { team: { select: { name: true } } }, orderBy: { joinedAt: "asc" } } },
   });
 }
 
@@ -207,7 +216,7 @@ async function scopedPeople(scope: Scope, teamId?: string | null) {
 async function groupDays(people: Awaited<ReturnType<typeof scopedPeople>>, fromKey: string, toKey: string) {
   const offices = await getOffices();
   const defaultOffice = offices.find((o) => o.isDefault) ?? offices[0];
-  if (!defaultOffice) throw new Error("No office is set up. Ask an admin to add one in Settings → Office.");
+  if (!defaultOffice) throw new UserError("No office is set up. Ask an admin to add one in Settings → Office.");
   const today = todayKey(defaultOffice.timezone);
 
   const [rows, coverage, kindsByOffice] = await Promise.all([
@@ -229,6 +238,7 @@ async function groupDays(people: Awaited<ReturnType<typeof scopedPeople>>, fromK
       const office = offices.find((o) => o.id === p.officeId) ?? defaultOffice;
       const cover = coverage.get(p.id);
       const startKey = trackedFrom(toDateKey(p.joinDate));
+      const lastKey = p.exitDate ? toDateKey(p.exitDate) : null; // after this they'd left
       const days = dateKeys.map((dateKey) => {
         const c = cover?.get(dateKey);
         const dayKind = withCoverage(dayKindFor(dateKey, office.weekPattern as WeekPattern, overrides.get(office.id) ?? new Map()), c);
@@ -241,11 +251,11 @@ async function groupDays(people: Awaited<ReturnType<typeof scopedPeople>>, fromK
           leave: c?.kind === "LEAVE" ? { typeName: c.typeName, halfDay: c.halfDay } : null,
           ...(row
             ? presentRow(row as AttendanceRow, office.timezone, today)
-            : { status: emptyStatus(dayKind, c, isPast, dateKey < startKey), ...EMPTY_ROW }),
+            : { status: emptyStatus(dayKind, c, isPast, dateKey < startKey || (!!lastKey && dateKey > lastKey)), ...EMPTY_ROW }),
         };
       });
       return {
-        employee: { id: p.id, name: `${p.firstName} ${p.lastName}`, avatarUrl: p.avatarUrl, designation: p.designation, team: p.teamMemberships.map((m) => m.team.name).join(", ") || null },
+        employee: { id: p.id, leftOn: lastKey, name: `${p.firstName} ${p.lastName}`, avatarUrl: p.avatarUrl, designation: p.designation, team: p.teamMemberships.map((m) => m.team.name).join(", ") || null },
         days,
       };
     }),
@@ -256,10 +266,10 @@ async function groupDays(people: Awaited<ReturnType<typeof scopedPeople>>, fromK
 export async function getTodayBoard(viewer: AuthEmployee, dateKey?: string) {
   const scope = await getAttendanceScope(viewer);
   if (!scope) return null;
-  const people = await scopedPeople(scope);
   const offices = await getOffices();
   const today = todayKey((offices.find((o) => o.isDefault) ?? offices[0])?.timezone ?? "Asia/Kolkata");
   const day = dateKey && /^\d{4}-\d{2}-\d{2}$/.test(dateKey) && dateKey <= today ? dateKey : today;
+  const people = await scopedPeople(scope, null, day);
   const group = await groupDays(people, day, day);
 
   return {
@@ -274,14 +284,14 @@ export async function getTodayBoard(viewer: AuthEmployee, dateKey?: string) {
 
 /** A month for a group: people × days. `monthKey` is "YYYY-MM". */
 export async function getTeamMonth(viewer: AuthEmployee, monthKey: string, teamId?: string | null) {
-  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(monthKey)) throw new Error("Invalid month.");
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(monthKey)) throw new UserError("Invalid month.");
   const scope = await getAttendanceScope(viewer);
   if (!scope) return null;
   const [year, month] = monthKey.split("-").map(Number);
   const first = `${monthKey}-01`;
   const last = toDateKey(new Date(Date.UTC(year, month, 0)));
   const [people, teams] = await Promise.all([
-    scopedPeople(scope, teamId),
+    scopedPeople(scope, teamId, first),
     scope.all ? db.team.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }) : Promise.resolve(scope.teams),
   ]);
   const group = await groupDays(people, first, last);

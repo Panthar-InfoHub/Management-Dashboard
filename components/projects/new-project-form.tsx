@@ -1,4 +1,5 @@
 "use client";
+import { errorMessage } from "@/lib/errors";
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -16,6 +17,8 @@ import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { createProjectAction } from "@/lib/actions/project.actions";
+import { suggestProjectKey } from "@/lib/tasks/keys";
+import { DatePicker } from "@/components/ui/date-picker";
 
 export function NewProjectForm({ 
   employees,
@@ -35,10 +38,14 @@ export function NewProjectForm({
     priority: any;
     lead: string;
     team: string;
-    startDate: Date | undefined;
-    endDate: Date | undefined;
+    /** "YYYY-MM-DD" or "": both optional. */
+    startDate: string;
+    endDate: string;
     addTeamMembers: boolean;
+    /** "" until typed: then it follows the name. */
+    key: string;
   }>({ 
+    key: "",
     name: "", 
     description: "",
     goals: "",
@@ -46,12 +53,8 @@ export function NewProjectForm({
     priority: "MEDIUM",
     lead: employees[0]?.id || "",
     team: teams[0]?.id || "",
-    startDate: new Date(),
-    endDate: (() => {
-      const d = new Date(Date.now() + 30 * 86400000);
-      d.setHours(23, 59, 59, 999);
-      return d;
-    })(),
+    startDate: "",
+    endDate: "",
     addTeamMembers: false
   });
 
@@ -66,13 +69,14 @@ export function NewProjectForm({
         priority: newProject.priority,
         leadId: newProject.lead,
         teamId: newProject.team,
-        startDate: newProject.startDate,
-        endDate: newProject.endDate,
-        addTeamMembers: newProject.addTeamMembers
+        startDate: newProject.startDate ? new Date(`${newProject.startDate}T00:00:00`) : undefined,
+        endDate: newProject.endDate ? new Date(`${newProject.endDate}T23:59:59.999`) : undefined,
+        addTeamMembers: newProject.addTeamMembers,
+        key: newProject.key || suggestProjectKey(newProject.name),
       }).then(() => {
         router.push("/projects");
       }).catch((err: any) => {
-        toast.error(err.message || "Failed to create project");
+        toast.error(errorMessage(err, "Failed to create project"));
       });
     });
   };
@@ -120,6 +124,20 @@ export function NewProjectForm({
                   className="text-base sm:text-lg font-medium"
                   autoFocus
                 />
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="project-key" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Task ID Key</label>
+                <Input
+                  id="project-key"
+                  value={newProject.key || (newProject.name ? suggestProjectKey(newProject.name) : "")}
+                  onChange={e => setNewProject({ ...newProject, key: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6) })}
+                  placeholder="e.g. JNV"
+                  className="w-32 font-mono uppercase"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Tasks get IDs like <span className="font-mono">{(newProject.key || suggestProjectKey(newProject.name || "Project"))}-1</span>. 2–6 letters or digits.
+                </p>
               </div>
               
               <div className="space-y-2">
@@ -207,61 +225,14 @@ export function NewProjectForm({
               <div className="h-px w-full bg-border/50 my-2" />
 
               <div className="space-y-1.5 flex flex-col">
-                <label className="text-xs font-semibold text-muted-foreground">Start Date</label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant={"outline"}
-                      className={cn(
-                        "w-full justify-start text-left font-normal bg-background",
-                        !newProject.startDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {newProject.startDate ? format(newProject.startDate, "PPP") : <span>Pick a date</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={newProject.startDate}
-                      onSelect={(d: any) => setNewProject({ ...newProject, startDate: d })}
-                    />
-                  </PopoverContent>
-                </Popover>
+                <label htmlFor="project-start" className="text-xs font-semibold text-muted-foreground">Start Date (optional)</label>
+                <DatePicker id="project-start" value={newProject.startDate} max={newProject.endDate || undefined} onChange={(v) => setNewProject({ ...newProject, startDate: v })} placeholder="Not set" clearable className="bg-background" />
               </div>
-              
+
               <div className="space-y-1.5 flex flex-col">
-                <label className="text-xs font-semibold text-muted-foreground">Target End</label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant={"outline"}
-                      className={cn(
-                        "w-full justify-start text-left font-normal bg-background",
-                        !newProject.endDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {newProject.endDate ? format(newProject.endDate, "PPP") : <span>Pick a date</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={newProject.endDate}
-                      onSelect={(d: any) => {
-                        if (d) {
-                          const end = new Date(d);
-                          end.setHours(23, 59, 59, 999);
-                          setNewProject({ ...newProject, endDate: end });
-                        } else {
-                          setNewProject({ ...newProject, endDate: undefined });
-                        }
-                      }}
-                    />
-                  </PopoverContent>
-                </Popover>
+                <label htmlFor="project-end" className="text-xs font-semibold text-muted-foreground">Deadline (optional)</label>
+                <DatePicker id="project-end" value={newProject.endDate} min={newProject.startDate || undefined} onChange={(v) => setNewProject({ ...newProject, endDate: v })} placeholder="No deadline" clearable className="bg-background" />
+                <p className="text-[11px] text-muted-foreground">Leave it empty if it isn&apos;t clear yet. You can add it later in Edit Project.</p>
               </div>
             </CardContent>
           </Card>

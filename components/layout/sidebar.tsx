@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useAccess } from "@/hooks/use-access";
 import { cn } from "@/lib/utils";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -14,7 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   LayoutDashboard, FolderKanban, Users, UserCircle,
-  FileText, Bell, Settings, ClipboardCheck, Search, CalendarClock, Plane, Inbox,
+  FileText, Bell, Settings, ClipboardCheck, ListTodo, CalendarClock, Plane, Inbox, ScrollText, Megaphone,
   PanelLeftClose, PanelLeft,
 } from "lucide-react";
 
@@ -22,6 +22,8 @@ type NavItem = { label: string; href: string; icon: any; badge?: string };
 
 const navItems: NavItem[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
+  { label: "Announcements", href: "/announcements", icon: Megaphone },
+  { label: "My Tasks", href: "/tasks/my", icon: ListTodo },
   { label: "Tasks", href: "/tasks", icon: ClipboardCheck },
   { label: "Projects", href: "/projects", icon: FolderKanban },
   { label: "Teams", href: "/teams", icon: Users },
@@ -34,6 +36,7 @@ const navItems: NavItem[] = [
 
 const bottomItems: NavItem[] = [
   { label: "Notifications", href: "/notifications", icon: Bell },
+  { label: "Audit Log", href: "/audit", icon: ScrollText },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 
@@ -42,7 +45,7 @@ function Divider() {
   return <div className="my-2 h-px bg-border w-[calc(100%-16px)] mx-auto" />;
 }
 
-type NavListsProps = { collapsed: boolean; canViewRecords: boolean; canOpenSettings: boolean; canApprove: boolean; onNavigate?: () => void };
+type NavListsProps = { collapsed: boolean; canViewRecords: boolean; canOpenSettings: boolean; canApprove: boolean; isAdmin: boolean; onNavigate?: () => void };
 
 // usePathname() is request data on dynamic routes, so it lives in its own
 // component behind <Suspense>. The fallback renders the same links without the
@@ -54,7 +57,10 @@ function ActiveNavLists(props: NavListsProps) {
 
 function isActivePath(pathname: string | null, href: string) {
   if (!pathname) return false;
-  return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
+  if (href === "/") return pathname === "/";
+  // "Tasks" isn't also highlighted on its own "My Tasks" page.
+  if (href === "/tasks" && pathname.startsWith("/tasks/my")) return false;
+  return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 function NavItemLink({ item, active, collapsed, onNavigate }: { item: NavItem; active: boolean; collapsed: boolean; onNavigate?: () => void }) {
@@ -94,7 +100,7 @@ function NavItemLink({ item, active, collapsed, onNavigate }: { item: NavItem; a
   );
 }
 
-function NavLists({ pathname, collapsed, canViewRecords, canOpenSettings, canApprove, onNavigate }: NavListsProps & { pathname: string | null }) {
+function NavLists({ pathname, collapsed, canViewRecords, canOpenSettings, canApprove, isAdmin, onNavigate }: NavListsProps & { pathname: string | null }) {
   return (
     <>
       <ScrollArea className="flex-1 px-2 py-1">
@@ -108,7 +114,7 @@ function NavLists({ pathname, collapsed, canViewRecords, canOpenSettings, canApp
       <Divider />
 
       <div className="px-2 py-1">
-        {bottomItems.filter((item) => canOpenSettings || item.label !== "Settings").map((item) => (
+        {bottomItems.filter((item) => (canOpenSettings || item.label !== "Settings") && (isAdmin || item.label !== "Audit Log")).map((item) => (
           <NavItemLink key={item.href} item={item} active={isActivePath(pathname, item.href)} collapsed={collapsed} onNavigate={onNavigate} />
         ))}
       </div>
@@ -167,21 +173,8 @@ export function Sidebar({ collapsed, setCollapsed, isMobile, onNavigate }: { col
         </div>
       )}
 
-      {/* Search */}
-      {!collapsed && (
-        <div className="px-3 py-3">
-          <button 
-            onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}
-            className="flex w-full items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent transition-colors"
-          >
-            <Search className="h-3.5 w-3.5" />
-            <span>Search…</span>
-          </button>
-        </div>
-      )}
-
-      <Suspense fallback={<NavLists pathname={null} collapsed={collapsed} canViewRecords={canViewRecords} canOpenSettings={canOpenSettings} canApprove={canApprove} onNavigate={onNavigate} />}>
-        <ActiveNavLists collapsed={collapsed} canViewRecords={canViewRecords} canOpenSettings={canOpenSettings} canApprove={canApprove} onNavigate={onNavigate} />
+      <Suspense fallback={<NavLists pathname={null} collapsed={collapsed} canViewRecords={canViewRecords} canOpenSettings={canOpenSettings} canApprove={canApprove} isAdmin={access.isAdmin} onNavigate={onNavigate} />}>
+        <ActiveNavLists collapsed={collapsed} canViewRecords={canViewRecords} canOpenSettings={canOpenSettings} canApprove={canApprove} isAdmin={access.isAdmin} onNavigate={onNavigate} />
       </Suspense>
 
       <Divider />
@@ -200,15 +193,7 @@ export function Sidebar({ collapsed, setCollapsed, isMobile, onNavigate }: { col
           </>
         ) : (
           <>
-            <Avatar className="h-8 w-8 rounded-md">
-              {user?.imageUrl ? (
-                <AvatarImage src={user.imageUrl} alt={user.fullName ?? ""} />
-              ) : (
-                <AvatarFallback className="bg-primary/10 text-xs font-medium text-primary rounded-md border border-primary/20">
-                  {user?.firstName?.charAt(0) || "U"}
-                </AvatarFallback>
-              )}
-            </Avatar>
+            <UserAvatar className="h-8 w-8" user={{ name: user?.fullName || user?.firstName || "", avatarUrl: user?.hasImage ? user.imageUrl : null }} />
             {!collapsed && (
               <div className="flex flex-1 flex-col overflow-hidden">
                 <span className="truncate text-xs font-medium text-foreground">{user?.fullName || "User"}</span>

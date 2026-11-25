@@ -1,4 +1,6 @@
 "use client";
+import { DatePicker } from "@/components/ui/date-picker";
+import { errorMessage } from "@/lib/errors";
 
 import { PromoteDialog } from "@/components/employees/promote-dialog";
 import { OffboardDialog } from "@/components/employees/offboard-dialog";
@@ -12,7 +14,7 @@ import { ACCESS_ROLES, EMPLOYMENT_TYPE_LABELS, ROLE_LABELS, type AccessRole, typ
 import { EmployeeAccessPanel, type PresetOption } from "@/components/employees/employee-access-panel";
 
 import { useState, useTransition } from "react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -74,7 +76,7 @@ export function EmployeeProfileClient({
       updateEmployeeAction(employee.id, canAssignRoles ? editingEmp : rest).then(() => {
         setEditOpen(false);
         toast.success("Profile updated");
-      }).catch((e: any) => toast.error(e.message));
+      }).catch((e) => toast.error(errorMessage(e)));
     });
   };
 
@@ -84,7 +86,7 @@ export function EmployeeProfileClient({
     startTransition(() => {
       reserveEmployeeSequenceAction(type).then((seq) => {
         setReservedSeq(seq);
-      }).catch((e: any) => toast.error(e.message));
+      }).catch((e) => toast.error(errorMessage(e)));
     });
   };
 
@@ -99,7 +101,7 @@ export function EmployeeProfileClient({
         setCodeType(null);
         setReservedSeq(null);
         toast.success("Code generated!");
-      }).catch((e: any) => toast.error(e.message));
+      }).catch((e) => toast.error(errorMessage(e)));
     });
   };
 
@@ -114,10 +116,7 @@ export function EmployeeProfileClient({
       <div className="relative">
         <div className="h-40 bg-gradient-to-r from-muted/50 to-muted/20 rounded-xl border border-border/40 relative">
           <div className="absolute -bottom-12 left-8">
-            <Avatar className="h-28 w-28 border-4 border-background bg-background shadow-sm">
-              <AvatarImage src={employee.avatarUrl} />
-              <AvatarFallback className="text-3xl">{employee.firstName[0]}{employee.lastName[0]}</AvatarFallback>
-            </Avatar>
+            <UserAvatar className="h-28 w-28 border-4 border-background bg-background shadow-sm" user={employee} textClassName="text-3xl" />
             {employee.status === "ACTIVE" && (
               <span className="absolute bottom-2 right-2 block h-5 w-5 rounded-full bg-emerald-500 ring-4 ring-background" />
             )}
@@ -286,7 +285,7 @@ export function EmployeeProfileClient({
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-muted-foreground">Date of Joining</label>
-              <Input type="date" value={editingEmp.joinDate} onChange={e => setEditingEmp({...editingEmp, joinDate: e.target.value})} />
+              <DatePicker value={editingEmp.joinDate} onChange={(v) => setEditingEmp({ ...editingEmp, joinDate: v })} aria-label="Date of joining" />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-muted-foreground">Employment Type</label>

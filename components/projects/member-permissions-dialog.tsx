@@ -1,4 +1,5 @@
 "use client";
+import { errorMessage } from "@/lib/errors";
 
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
@@ -42,11 +43,11 @@ export function MemberPermissionsDialog({
       if (activePermIds.includes(permission)) {
         revokePermissionAction({ employeeId: member.employeeId, permission, projectId })
           .then(() => toast.success(`Revoked ${permission}`))
-          .catch((e: any) => toast.error(e.message));
+          .catch((e) => toast.error(errorMessage(e)));
       } else {
         grantPermissionAction({ employeeId: member.employeeId, permission, projectId })
           .then(() => toast.success(`Granted ${permission}`))
-          .catch((e: any) => toast.error(e.message));
+          .catch((e) => toast.error(errorMessage(e)));
       }
     });
   };

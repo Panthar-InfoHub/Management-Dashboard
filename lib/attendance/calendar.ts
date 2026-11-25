@@ -1,3 +1,4 @@
+import { UserError } from "@/lib/errors";
 // Pure date rules. No database, no "now": callers pass everything in, so these
 // are easy to test and identical on server and client.
 
@@ -20,9 +21,9 @@ export function toDateKey(date: Date): string {
 
 /** Calendar day "YYYY-MM-DD" → Date at UTC midnight, the form `@db.Date` columns use. */
 export function fromDateKey(key: string): Date {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) throw new Error(`Invalid date: ${key}`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) throw new UserError(`Invalid date: ${key}`);
   const date = new Date(`${key}T00:00:00.000Z`);
-  if (isNaN(date.getTime()) || toDateKey(date) !== key) throw new Error(`Invalid date: ${key}`);
+  if (isNaN(date.getTime()) || toDateKey(date) !== key) throw new UserError(`Invalid date: ${key}`);
   return date;
 }
 
@@ -41,7 +42,7 @@ export function minutesOfDay(timeZone: string, at: Date): number {
 
 export function parseHHmm(value: string): number {
   const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
-  if (!match) throw new Error(`Invalid time "${value}". Use HH:mm, e.g. 11:00.`);
+  if (!match) throw new UserError(`Invalid time "${value}". Use HH:mm, e.g. 11:00.`);
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
