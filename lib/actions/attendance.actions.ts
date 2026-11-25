@@ -15,6 +15,7 @@ import {
   MAX_LOCATION_ACCURACY_M, type GeoPoint,
 } from "@/lib/attendance/rules";
 import { dayKindOn, findOpenSession, getOfficeFor } from "@/lib/attendance/queries";
+import { getCoverage } from "@/lib/leave/queries";
 import type { OfficeSettings } from "@/lib/attendance/settings";
 
 function cleanPoint(point: GeoPoint | null | undefined): GeoPoint | null {
@@ -83,7 +84,16 @@ export async function clockInAction(input: { location?: GeoPoint | null }) {
     closedMissed = dayLabel(open.date);
   }
 
-  const dayKind = await dayKindOn(office, dateKey);
+  // Approved leave or WFH for today changes what the day is for this person.
+  const [baseKind, coverage] = await Promise.all([
+    dayKindOn(office, dateKey),
+    getCoverage([employee.id], dateKey, dateKey).then((m) => m.get(employee.id)?.get(dateKey) ?? null),
+  ]);
+  if (coverage?.kind === "LEAVE" && !coverage.halfDay) {
+    throw new Error(`You're on ${coverage.typeName ?? "leave"} today. Cancel the leave first if you're working.`);
+  }
+  const halfDayLeave = coverage?.kind === "LEAVE" && !!coverage.halfDay;
+  const dayKind = coverage?.kind === "WFH" && baseKind === "OFFICE" ? "WFH" : baseKind;
   const location = locationFor(dayKind, cleanPoint(input.location), office);
 
   // 2. Clocked out earlier today and back again: reopen the day.
@@ -111,12 +121,15 @@ export async function clockInAction(input: { location?: GeoPoint | null }) {
   }
 
   // 3. First clock-in of the day.
-  const outcome = statusForCheckIn({
-    dayKind,
-    minutesNow: minutesOfDay(office.timezone, now),
-    lateAfterMinutes: parseHHmm(office.lateAfter),
-    lateOutcome: office.lateOutcome,
-  });
+  // A half-day leave is a half day already: no late rule, nothing to review.
+  const outcome = halfDayLeave
+    ? { status: "HALF_DAY" as const, isLate: false, needsReview: false }
+    : statusForCheckIn({
+        dayKind,
+        minutesNow: minutesOfDay(office.timezone, now),
+        lateAfterMinutes: parseHHmm(office.lateAfter),
+        lateOutcome: office.lateOutcome,
+      });
   const data = {
     officeId: office.id,
     status: outcome.status,
@@ -173,7 +186,9 @@ export async function clockOutAction(input: { location?: GeoPoint | null }) {
   const point = cleanPoint(input.location);
   const location = point ? { lat: point.lat, lng: point.lng, accuracy: point.accuracy ?? null } : undefined;
   const minutes = workedMinutes(open.checkInAt, now);
-  const flags = checkoutFlags({
+  const coverage = (await getCoverage([employee.id], today, today)).get(employee.id)?.get(today) ?? null;
+  const halfDayLeave = coverage?.kind === "LEAVE" && !!coverage.halfDay;
+  const rawFlags = checkoutFlags({
     dayKind: open.dayKind,
     checkInMinutes: minutesOfDay(office.timezone, open.checkInAt),
     checkOutMinutes: minutesOfDay(office.timezone, now),
@@ -181,10 +196,12 @@ export async function clockOutAction(input: { location?: GeoPoint | null }) {
     workEndMinutes: parseHHmm(office.workEnd),
     workMinutes: minutes,
   });
+  // Leaving at mid-day is expected on a half-day leave.
+  const flags = halfDayLeave ? { ...rawFlags, leftEarly: false, earlyMinutes: null } : rawFlags;
 
   // Re-evaluate with the hours worked (optional short-day rule), unless an
   // approver already decided this day.
-  const decided = open.reviewStatus === "APPROVED" || open.reviewStatus === "REJECTED";
+  const decided = halfDayLeave || open.reviewStatus === "APPROVED" || open.reviewStatus === "REJECTED";
   const outcome = decided
     ? null
     : statusForDay({

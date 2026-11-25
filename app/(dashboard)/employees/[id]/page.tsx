@@ -4,7 +4,10 @@ import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { notFound, redirect } from "next/navigation";
 import { EmployeeProfileClient } from "@/components/employees/employee-profile-client";
 import { db } from "@/lib/db";
-import { canActOnEmployee, canAssignRoles, canManageAccess } from "@/lib/access";
+import { canActOnEmployee, canAssignRoles, canManageAccess, tracksAttendance } from "@/lib/access";
+import { getBalances } from "@/lib/leave/queries";
+import { todayKey } from "@/lib/attendance/calendar";
+import { LeaveBalancePanel } from "@/components/employees/leave-balance-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -49,11 +52,12 @@ function ProfileLoading() {
 }
 
 async function EmployeeProfileDataAsync({ id }: { id: string }) {
-  const [currentEmployee, canView, canUpdate, canOffboard] = await Promise.all([
+  const [currentEmployee, canView, canUpdate, canOffboard, canManageLeave] = await Promise.all([
     getCurrentEmployee(),
     checkPermission("employee:view-all"),
     checkPermission("employee:update"),
     checkPermission("employee:offboard"),
+    checkPermission("leave:manage"),
   ]);
 
   if (!canView) {
@@ -78,7 +82,15 @@ async function EmployeeProfileDataAsync({ id }: { id: string }) {
       }))
     : null;
 
+  // HR view of the leave balance (not for Super Admins, who aren't tracked, or yourself).
+  const leaveYear = Number(todayKey("Asia/Kolkata").slice(0, 4));
+  const leaveBalances =
+    canManageLeave && tracksAttendance(employee.role) && employee.id !== currentEmployee.id && mayActOn
+      ? await getBalances(employee.id, leaveYear)
+      : null;
+
   return (
+    <>
     <EmployeeProfileClient
       employee={JSON.parse(JSON.stringify(employee))}
       canEdit={canUpdate && mayActOn}
@@ -86,5 +98,11 @@ async function EmployeeProfileDataAsync({ id }: { id: string }) {
       canOffboard={canOffboard && mayActOn && employee.id !== currentEmployee.id}
       access={access}
     />
+    {leaveBalances && (
+      <div className="px-2 pb-20">
+        <LeaveBalancePanel employeeId={employee.id} employeeName={employee.firstName} year={leaveYear} balances={leaveBalances} />
+      </div>
+    )}
+    </>
   );
 }

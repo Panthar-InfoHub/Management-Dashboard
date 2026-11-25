@@ -1,5 +1,7 @@
 "use client";
 
+import { ConfirmAction } from "@/components/ui/confirm-action";
+
 import { useMemo, useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -185,14 +187,9 @@ export function TaskDetailClient({
   };
 
   const handleDelete = async () => {
-    if (!confirm("Delete this task? This can't be undone.")) return;
-    try {
-      await deleteTaskAction(task.id);
-      toast.success("Task deleted");
-      router.push("/tasks");
-    } catch (err) {
-      toast.error(errorMessage(err, "Task not deleted. Try again."));
-    }
+    await deleteTaskAction(task.id);
+    router.push("/tasks");
+    return "Task deleted";
   };
 
   return (
@@ -215,9 +212,15 @@ export function TaskDetailClient({
             </Button>
           )}
             {canDelete && (
-              <Button variant="destructive" size="sm" className="h-8 shadow-none text-xs flex-1 sm:flex-initial" onClick={handleDelete}>
-                Delete
-              </Button>
+              <ConfirmAction
+                trigger={<Button variant="destructive" size="sm" className="h-8 shadow-none text-xs flex-1 sm:flex-initial">Delete</Button>}
+                title="Delete this task?"
+                description={directSubtasks.length > 0 ? `Its ${directSubtasks.length} subtask${directSubtasks.length === 1 ? " is" : "s are"} deleted too. This can't be undone.` : "This can't be undone."}
+                confirmLabel="Delete Task"
+                pendingLabel="Deleting…"
+                destructive
+                onConfirm={handleDelete}
+              />
             )}
           {canEditStatus && task.status !== "DONE" && (
             <Button

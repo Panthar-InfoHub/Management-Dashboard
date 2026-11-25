@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { LocateFixed } from "lucide-react";
+import { MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,11 +12,13 @@ import type { OfficeSettings } from "@/lib/attendance/settings";
 import { errorMessage } from "@/lib/utils";
 import dynamic from "next/dynamic";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import type { PickedPlace } from "@/components/settings/office-map";
 
-// Leaflet touches `window`, so the map renders in the browser only.
+// Leaflet touches `window`; the map loads only when the picker opens.
 const OfficeMap = dynamic(() => import("@/components/settings/office-map"), {
   ssr: false,
-  loading: () => <Skeleton className="h-[320px] w-full rounded-lg" />,
+  loading: () => <Skeleton className="h-[470px] w-full rounded-lg" />,
 });
 
 const WEEK_OPTIONS: { value: DayKindValue; label: string }[] = [
@@ -41,13 +43,20 @@ export function OfficeTab({ office }: { office: OfficeSettings }) {
     weekPattern: office.weekPattern as DayKindValue[],
   });
 
-  const useMyLocation = () => {
-    if (!("geolocation" in navigator)) return toast.error("This browser can't share location.");
-    navigator.geolocation.getCurrentPosition(
-      (pos) => setForm((f) => ({ ...f, latitude: pos.coords.latitude.toFixed(6), longitude: pos.coords.longitude.toFixed(6) })),
-      () => toast.error("Location not shared. Allow location access and try again."),
-      { enableHighAccuracy: true, timeout: 10_000 }
-    );
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [picked, setPicked] = useState<PickedPlace | null>(null);
+
+  const applyPicked = () => {
+    if (picked) {
+      setForm((f) => ({
+        ...f,
+        latitude: String(picked.lat),
+        longitude: String(picked.lng),
+        // A searched place also fills the address, if it was empty.
+        address: picked.label && !f.address.trim() ? picked.label : f.address,
+      }));
+    }
+    setPickerOpen(false);
   };
 
   const save = () => {
@@ -84,15 +93,21 @@ export function OfficeTab({ office }: { office: OfficeSettings }) {
       <section className="space-y-4">
         <div>
           <h3 className="text-sm font-medium">Location</h3>
-          <p className="text-xs text-muted-foreground">Click the map or drag the pin to set the office. Clock-in on an office day must be inside the circle.</p>
+          <p className="text-xs text-muted-foreground">Clock-in on an office day must be within the radius of this point.</p>
         </div>
-        <OfficeMap
-          lat={Number(form.latitude)}
-          lng={Number(form.longitude)}
-          radiusMeters={Number(form.radiusMeters)}
-          onChange={(p) => setForm((f) => ({ ...f, latitude: String(p.lat), longitude: String(p.lng) }))}
-        />
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-3 rounded-lg border border-border/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            <div className="min-w-0">
+              <p className="truncate text-sm">{form.address || "No address yet"}</p>
+              <p className="font-mono text-xs text-muted-foreground tabular-nums">{Number(form.latitude).toFixed(6)}, {Number(form.longitude).toFixed(6)} · {form.radiusMeters} m radius</p>
+            </div>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={() => { setPicked(null); setPickerOpen(true); }} disabled={isPending}>
+            Change Location on Map
+          </Button>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
           <div className="space-y-1.5">
             <label htmlFor="office-name" className="text-xs font-semibold text-muted-foreground">Office Name</label>
             <Input id="office-name" {...field("name")} />
@@ -102,23 +117,27 @@ export function OfficeTab({ office }: { office: OfficeSettings }) {
             <Input id="office-address" {...field("address")} />
           </div>
           <div className="space-y-1.5">
-            <label htmlFor="office-lat" className="text-xs font-semibold text-muted-foreground">Latitude</label>
-            <Input id="office-lat" inputMode="decimal" className="font-mono" {...field("latitude")} />
-          </div>
-          <div className="space-y-1.5">
-            <label htmlFor="office-lng" className="text-xs font-semibold text-muted-foreground">Longitude</label>
-            <Input id="office-lng" inputMode="decimal" className="font-mono" {...field("longitude")} />
-          </div>
-          <div className="space-y-1.5">
             <label htmlFor="office-radius" className="text-xs font-semibold text-muted-foreground">Radius (metres)</label>
             <Input id="office-radius" type="number" min={20} max={5000} {...field("radiusMeters")} />
           </div>
-          <div className="flex items-end">
-            <Button type="button" variant="outline" size="sm" className="gap-2" onClick={useMyLocation} disabled={isPending}>
-              <LocateFixed className="h-3.5 w-3.5" /> Use My Location
-            </Button>
-          </div>
         </div>
+
+        <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
+          <DialogContent className="sm:max-w-3xl">
+            <DialogHeader><DialogTitle>Office Location</DialogTitle></DialogHeader>
+            {pickerOpen && (
+              <OfficeMap
+                initial={{ lat: Number(form.latitude), lng: Number(form.longitude) }}
+                radiusMeters={Number(form.radiusMeters)}
+                onChange={setPicked}
+              />
+            )}
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={() => setPickerOpen(false)}>Cancel</Button>
+              <Button type="button" onClick={applyPicked} disabled={!picked}>Use This Location</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </section>
 
       <section className="space-y-4">

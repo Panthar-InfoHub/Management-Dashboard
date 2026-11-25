@@ -1,5 +1,7 @@
 "use client";
 
+import { ConfirmAction } from "@/components/ui/confirm-action";
+
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -60,14 +62,10 @@ export function TeamDetailClient({ team, allEmployees = [], tasks = [], canEdit 
     });
   };
 
-  const handleDeleteTeam = () => {
-    if (!confirm("Are you sure you want to delete this team? This action cannot be undone.")) return;
-    startTransition(() => {
-      deleteTeamAction(team.id).then(() => {
-        toast.success("Team deleted successfully");
-        router.push("/teams");
-      }).catch((err: any) => toast.error(err.message || "Failed to delete team"));
-    });
+  const handleDeleteTeam = async () => {
+    await deleteTeamAction(team.id);
+    router.push("/teams");
+    return `Team ${team.name} deleted`;
   };
 
   const toggleMember = (id: string) => {
@@ -96,9 +94,15 @@ export function TeamDetailClient({ team, allEmployees = [], tasks = [], canEdit 
               <Settings2 className="h-4 w-4 shrink-0" /> <span className="truncate">Edit Team</span>
             </Button>
             {canDelete && (
-              <Button size="sm" variant="destructive" onClick={handleDeleteTeam} className="h-8 shadow-none">
-                Delete
-              </Button>
+              <ConfirmAction
+                trigger={<Button size="sm" variant="destructive" className="h-8 shadow-none">Delete</Button>}
+                title={`Delete team ${team.name}?`}
+                description="This can't be undone."
+                confirmLabel="Delete Team"
+                pendingLabel="Deleting…"
+                destructive
+                onConfirm={handleDeleteTeam}
+              />
             )}
           </div>
         )}

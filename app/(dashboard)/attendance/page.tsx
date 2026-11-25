@@ -3,53 +3,83 @@ import Link from "next/link";
 import { CalendarClock, Users } from "lucide-react";
 import { getCurrentEmployee } from "@/lib/auth";
 import { tracksAttendance } from "@/lib/access";
-import { getMonth, getOfficeFor } from "@/lib/attendance/queries";
-import { hasPermission } from "@/lib/permissions";
+import { getAttendanceScope, getMonth, getOfficeFor } from "@/lib/attendance/queries";
+import { getMyAttendanceRequests } from "@/lib/leave/queries";
 import { todayKey } from "@/lib/attendance/calendar";
-import { db } from "@/lib/db";
 import { MonthCalendar } from "@/components/attendance/month-calendar";
+import { RequestDialog } from "@/components/leave/request-dialog";
+import { MyRequests } from "@/components/leave/my-requests";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 
-export default function AttendancePage({ searchParams }: { searchParams: Promise<{ month?: string }> }) {
+type Params = { month?: string; fix?: string };
+
+export default function AttendancePage({ searchParams }: { searchParams: Promise<Params> }) {
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">My Attendance</h1>
-          <p className="text-sm text-muted-foreground">Your days, times and hours, month by month.</p>
-        </div>
-        <Suspense fallback={null}>
-          <TeamTodayLink />
-        </Suspense>
+    <div className="space-y-6 p-6 md:p-8">
+      <div>
+        <h1 className="text-xl font-semibold tracking-tight">My Attendance</h1>
+        <p className="text-sm text-muted-foreground">Your days, times and hours. Ask for WFH or fix a day from here.</p>
       </div>
-      <Suspense fallback={<Skeleton className="h-[520px] w-full rounded-lg" />}>
-        <MyMonth searchParams={searchParams} />
+      <Suspense fallback={<AttendanceSkeleton />}>
+        <AttendanceBody searchParams={searchParams} />
       </Suspense>
     </div>
   );
 }
 
-async function TeamTodayLink() {
-  const me = await getCurrentEmployee();
-  const canSee = (await hasPermission(me, "attendance:view-all")) || (await db.team.count({ where: { leadId: me.id } })) > 0;
-  if (!canSee) return null;
+function AttendanceSkeleton() {
   return (
-    <Button asChild variant="outline" size="sm" className="gap-2">
-      <Link href="/attendance/today"><Users className="h-4 w-4" /> Team Today</Link>
-    </Button>
+    <div className="space-y-6">
+      <Skeleton className="h-8 w-72" />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">{Array.from({ length: 10 }, (_, i) => <Skeleton key={i} className="h-[68px] rounded-lg" />)}</div>
+      <Skeleton className="h-[620px] w-full rounded-xl" />
+    </div>
   );
 }
 
-async function MyMonth({ searchParams }: { searchParams: Promise<{ month?: string }> }) {
+async function AttendanceBody({ searchParams }: { searchParams: Promise<Params> }) {
   const [me, params] = await Promise.all([getCurrentEmployee(), searchParams]);
+  const scope = await getAttendanceScope(me);
+  const teamLink = scope && (
+    <Button asChild variant="outline" size="sm" className="gap-2">
+      <Link href="/attendance/team"><Users className="h-4 w-4" /> Team Attendance</Link>
+    </Button>
+  );
+
   if (!tracksAttendance(me.role)) {
-    return <EmptyState icon={CalendarClock} title="Attendance isn't tracked for Super Admins" description="Use Team Today to see everyone else's attendance." />;
+    return (
+      <div className="space-y-4">
+        {teamLink && <div className="flex justify-end">{teamLink}</div>}
+        <EmptyState icon={CalendarClock} title="Attendance isn't tracked for Super Admins" description="Use Team Attendance to see everyone else's attendance." />
+      </div>
+    );
   }
+
   const office = await getOfficeFor(me.id);
-  const current = todayKey(office.timezone).slice(0, 7);
+  const today = todayKey(office.timezone);
+  const current = today.slice(0, 7);
   const monthKey = params.month && /^\d{4}-(0[1-9]|1[0-2])$/.test(params.month) && params.month <= current ? params.month : current;
-  const month = await getMonth(me.id, monthKey);
-  return <MonthCalendar month={month} basePath="/attendance" />;
+  const fixDate = params.fix && /^\d{4}-\d{2}-\d{2}$/.test(params.fix) && params.fix <= today ? params.fix : undefined;
+  const [month, requests] = await Promise.all([getMonth(me.id, monthKey), getMyAttendanceRequests(me)]);
+
+  return (
+    <div className="space-y-10">
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <RequestDialog kind="WFH" today={today} variant="outline" />
+          {/* key: a new ?fix= date opens a fresh, pre-filled form */}
+          <RequestDialog key={fixDate ?? "fix"} kind="ATTENDANCE_FIX" today={today} variant="outline" defaultDate={fixDate} defaultOpen={!!fixDate} />
+          {teamLink}
+        </div>
+        <MonthCalendar month={month} basePath="/attendance" />
+      </div>
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-medium">My WFH and Attendance Fix Requests</h2>
+        <MyRequests requests={requests?.requests ?? []} emptyText="No WFH or fix requests yet." />
+      </section>
+    </div>
+  );
 }

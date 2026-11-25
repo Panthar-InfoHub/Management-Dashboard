@@ -8,6 +8,8 @@ import { hasPermission } from "@/lib/permissions";
 import { getCalendarDays, getOffices, type OfficeSettings } from "@/lib/attendance/settings";
 import { dayKindFor, eachDateKey, fromDateKey, todayKey, toDateKey, type DayKindValue, type WeekPattern } from "@/lib/attendance/calendar";
 import { formatTime, isSessionExpired, statusForEmptyDay, type AttendanceStatusValue } from "@/lib/attendance/rules";
+import { getCoverage, type Coverage } from "@/lib/leave/queries";
+import { trackedFrom } from "@/lib/attendance/policy";
 
 /** The office an employee clocks in at: their own, else the default. */
 export const getOfficeFor = cache(async (employeeId: string): Promise<OfficeSettings> => {
@@ -28,6 +30,12 @@ async function overridesFor(office: OfficeSettings, fromKey: string, toKey: stri
   for (const d of days) if (d.officeId === null) map.set(d.date, d.kind);
   for (const d of days) if (d.officeId === office.id) map.set(d.date, d.kind);
   return map;
+}
+
+/** What each day in a range is for an office (week pattern + overrides). */
+export async function dayKindsBetween(office: OfficeSettings, fromKey: string, toKey: string) {
+  const overrides = await overridesFor(office, fromKey, toKey);
+  return eachDateKey(fromKey, toKey).map((dateKey) => ({ dateKey, dayKind: dayKindFor(dateKey, office.weekPattern as WeekPattern, overrides) }));
 }
 
 export async function dayKindOn(office: OfficeSettings, dateKey: string): Promise<DayKindValue> {
@@ -76,6 +84,21 @@ const rowSelect = {
   isLate: true, missedCheckout: true, leftEarly: true, earlyMinutes: true, overtimeMinutes: true, reviewStatus: true,
 } as const;
 
+/** Approved WFH turns an office day into a WFH day for that person. */
+function withCoverage(dayKind: DayKindValue, coverage: Coverage | null | undefined): DayKindValue {
+  return coverage?.kind === "WFH" && dayKind === "OFFICE" ? "WFH" : dayKind;
+}
+
+/**
+ * A day with no attendance row: approved full-day leave shows as On Leave;
+ * days before tracking started (or before they joined) are blank.
+ */
+function emptyStatus(dayKind: DayKindValue, coverage: Coverage | null | undefined, isPast: boolean, beforeStart = false): AttendanceStatusValue | null {
+  if (beforeStart) return null;
+  if (coverage?.kind === "LEAVE") return coverage.halfDay && isPast ? "HALF_DAY" : "ON_LEAVE";
+  return statusForEmptyDay(dayKind, isPast);
+}
+
 /** The latest clock-in without a clock-out that hasn't been closed as missed. */
 export async function findOpenSession(employeeId: string) {
   return db.attendance.findFirst({
@@ -90,14 +113,16 @@ export async function getMyToday(employee: AuthEmployee) {
   if (!tracksAttendance(employee.role)) return null;
   const office = await getOfficeFor(employee.id);
   const dateKey = todayKey(office.timezone);
-  const [dayKind, record] = await Promise.all([
+  const [baseKind, record, coverage] = await Promise.all([
     dayKindOn(office, dateKey),
     db.attendance.findUnique({ where: { employeeId_date: { employeeId: employee.id, date: fromDateKey(dateKey) } }, select: rowSelect }),
+    getCoverage([employee.id], dateKey, dateKey).then((m) => m.get(employee.id)?.get(dateKey) ?? null),
   ]);
 
   return {
     dateKey,
-    dayKind,
+    dayKind: withCoverage(baseKind, coverage),
+    leave: coverage?.kind === "LEAVE" ? { typeName: coverage.typeName, halfDay: coverage.halfDay } : null,
     office: {
       name: office.name, radiusMeters: office.radiusMeters, workStart: office.workStart, workEnd: office.workEnd,
       lateAfter: office.lateAfter, lateOutcome: office.lateOutcome,
@@ -115,13 +140,17 @@ export async function getMonth(employeeId: string, monthKey: string) {
   const last = toDateKey(new Date(Date.UTC(year, month, 0)));
   const today = todayKey(office.timezone);
 
-  const [overrides, rows] = await Promise.all([
+  const [overrides, rows, coverageMap, person] = await Promise.all([
     overridesFor(office, first, last),
     db.attendance.findMany({
       where: { employeeId, date: { gte: fromDateKey(first), lte: fromDateKey(last) } },
       select: rowSelect,
     }),
+    getCoverage([employeeId], first, last),
+    db.employee.findUnique({ where: { id: employeeId }, select: { joinDate: true } }),
   ]);
+  const coverage = coverageMap.get(employeeId);
+  const startKey = trackedFrom(person ? toDateKey(person.joinDate) : null);
   const byDate = new Map(rows.map((r) => [toDateKey(r.date), r]));
 
   return {
@@ -129,7 +158,8 @@ export async function getMonth(employeeId: string, monthKey: string) {
     today,
     timeZone: office.timezone,
     days: eachDateKey(first, last).map((dateKey) => {
-      const dayKind = dayKindFor(dateKey, office.weekPattern as WeekPattern, overrides);
+      const cover = coverage?.get(dateKey);
+      const dayKind = withCoverage(dayKindFor(dateKey, office.weekPattern as WeekPattern, overrides), cover);
       const row = byDate.get(dateKey);
       return {
         dateKey,
@@ -138,58 +168,121 @@ export async function getMonth(employeeId: string, monthKey: string) {
         isFuture: dateKey > today,
         ...(row
           ? presentRow(row as AttendanceRow, office.timezone, today)
-          : { status: statusForEmptyDay(dayKind, dateKey < today), ...EMPTY_ROW }),
+          : { status: emptyStatus(dayKind, cover, dateKey < today, dateKey < startKey), ...EMPTY_ROW }),
+        leave: cover?.kind === "LEAVE" ? { typeName: cover.typeName, halfDay: cover.halfDay } : null,
       };
     }),
   };
 }
 
 /**
- * Today for a group: everyone (attendance:view-all) or the teams the viewer
- * leads. Null when the viewer can see nobody else.
+ * Whose attendance the viewer can see: everyone (attendance:view-all) or the
+ * teams they lead. Null when they can see nobody else.
  */
-export async function getTodayBoard(viewer: AuthEmployee) {
+export async function getAttendanceScope(viewer: AuthEmployee) {
   const canViewAll = await hasPermission(viewer, "attendance:view-all");
-  const ledTeams = canViewAll ? [] : await db.team.findMany({ where: { leadId: viewer.id }, select: { id: true, name: true } });
-  if (!canViewAll && ledTeams.length === 0) return null;
+  if (canViewAll) return { all: true as const, teams: [] as { id: string; name: string }[], label: "Everyone" };
+  const teams = await db.team.findMany({ where: { leadId: viewer.id }, select: { id: true, name: true }, orderBy: { name: "asc" } });
+  return teams.length ? { all: false as const, teams, label: teams.map((t) => t.name).join(", ") } : null;
+}
 
-  const people = await db.employee.findMany({
-    where: {
-      status: "ACTIVE",
-      role: { not: "SUPER_ADMIN" },
-      ...(canViewAll ? {} : { teamId: { in: ledTeams.map((t) => t.id) } }),
-    },
+type Scope = NonNullable<Awaited<ReturnType<typeof getAttendanceScope>>>;
+
+async function scopedPeople(scope: Scope, teamId?: string | null) {
+  const teamFilter = teamId && (scope.all || scope.teams.some((t) => t.id === teamId))
+    ? { teamId }
+    : scope.all ? {} : { teamId: { in: scope.teams.map((t) => t.id) } };
+  return db.employee.findMany({
+    where: { status: "ACTIVE", role: { not: "SUPER_ADMIN" }, ...teamFilter },
     orderBy: { firstName: "asc" },
-    select: { id: true, firstName: true, lastName: true, avatarUrl: true, designation: true, officeId: true, team: { select: { name: true } } },
+    select: { id: true, firstName: true, lastName: true, avatarUrl: true, designation: true, officeId: true, joinDate: true, team: { select: { id: true, name: true } } },
   });
+}
 
+/**
+ * Everyone in scope for a range of days: one query each for offices,
+ * calendar overrides, attendance rows and approved leave/WFH.
+ */
+async function groupDays(people: Awaited<ReturnType<typeof scopedPeople>>, fromKey: string, toKey: string) {
   const offices = await getOffices();
   const defaultOffice = offices.find((o) => o.isDefault) ?? offices[0];
   if (!defaultOffice) throw new Error("No office is set up. Ask an admin to add one in Settings → Office.");
-  const dateKey = todayKey(defaultOffice.timezone);
+  const today = todayKey(defaultOffice.timezone);
 
-  const records = await db.attendance.findMany({
-    where: { date: fromDateKey(dateKey), employeeId: { in: people.map((p) => p.id) } },
-    select: { employeeId: true, ...rowSelect },
-  });
-  const byEmployee = new Map(records.map((r) => [r.employeeId, r]));
-
-  const dayKinds = new Map<string, DayKindValue>();
-  for (const office of offices) dayKinds.set(office.id, await dayKindOn(office, dateKey));
-
-  const rows = people.map((p) => {
-    const office = offices.find((o) => o.id === p.officeId) ?? defaultOffice;
-    const record = byEmployee.get(p.id);
-    return {
-      employee: { id: p.id, name: `${p.firstName} ${p.lastName}`, avatarUrl: p.avatarUrl, designation: p.designation, team: p.team?.name ?? null },
-      dayKind: dayKinds.get(office.id) ?? "OFFICE",
-      ...(record ? presentRow(record as AttendanceRow, office.timezone, dateKey) : { status: null, ...EMPTY_ROW }),
-    };
-  });
+  const [rows, coverage, kindsByOffice] = await Promise.all([
+    db.attendance.findMany({
+      where: { employeeId: { in: people.map((p) => p.id) }, date: { gte: fromDateKey(fromKey), lte: fromDateKey(toKey) } },
+      select: { employeeId: true, ...rowSelect },
+    }),
+    getCoverage(people.map((p) => p.id), fromKey, toKey),
+    Promise.all(offices.map(async (o) => [o.id, await overridesFor(o, fromKey, toKey)] as const)),
+  ]);
+  const overrides = new Map(kindsByOffice);
+  const byKey = new Map(rows.map((r) => [`${r.employeeId}|${toDateKey(r.date)}`, r]));
+  const dateKeys = eachDateKey(fromKey, toKey);
 
   return {
-    dateKey,
-    scope: canViewAll ? "Everyone" : ledTeams.map((t) => t.name).join(", "),
-    rows,
+    today,
+    dateKeys,
+    people: people.map((p) => {
+      const office = offices.find((o) => o.id === p.officeId) ?? defaultOffice;
+      const cover = coverage.get(p.id);
+      const startKey = trackedFrom(toDateKey(p.joinDate));
+      const days = dateKeys.map((dateKey) => {
+        const c = cover?.get(dateKey);
+        const dayKind = withCoverage(dayKindFor(dateKey, office.weekPattern as WeekPattern, overrides.get(office.id) ?? new Map()), c);
+        const row = byKey.get(`${p.id}|${dateKey}`);
+        const isPast = dateKey < today;
+        return {
+          dateKey,
+          dayKind,
+          isFuture: dateKey > today,
+          leave: c?.kind === "LEAVE" ? { typeName: c.typeName, halfDay: c.halfDay } : null,
+          ...(row
+            ? presentRow(row as AttendanceRow, office.timezone, today)
+            : { status: emptyStatus(dayKind, c, isPast, dateKey < startKey), ...EMPTY_ROW }),
+        };
+      });
+      return {
+        employee: { id: p.id, name: `${p.firstName} ${p.lastName}`, avatarUrl: p.avatarUrl, designation: p.designation, team: p.team?.name ?? null },
+        days,
+      };
+    }),
   };
+}
+
+/** One day for a group (today by default). Past working days with nothing recorded are Absent. */
+export async function getTodayBoard(viewer: AuthEmployee, dateKey?: string) {
+  const scope = await getAttendanceScope(viewer);
+  if (!scope) return null;
+  const people = await scopedPeople(scope);
+  const offices = await getOffices();
+  const today = todayKey((offices.find((o) => o.isDefault) ?? offices[0])?.timezone ?? "Asia/Kolkata");
+  const day = dateKey && /^\d{4}-\d{2}-\d{2}$/.test(dateKey) && dateKey <= today ? dateKey : today;
+  const group = await groupDays(people, day, day);
+
+  return {
+    dateKey: day,
+    isToday: day === today,
+    canEdit: await hasPermission(viewer, "attendance:edit"),
+    viewerId: viewer.id,
+    scope: scope.label,
+    rows: group.people.map(({ employee, days }) => ({ employee, ...days[0] })),
+  };
+}
+
+/** A month for a group: people × days. `monthKey` is "YYYY-MM". */
+export async function getTeamMonth(viewer: AuthEmployee, monthKey: string, teamId?: string | null) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(monthKey)) throw new Error("Invalid month.");
+  const scope = await getAttendanceScope(viewer);
+  if (!scope) return null;
+  const [year, month] = monthKey.split("-").map(Number);
+  const first = `${monthKey}-01`;
+  const last = toDateKey(new Date(Date.UTC(year, month, 0)));
+  const [people, teams] = await Promise.all([
+    scopedPeople(scope, teamId),
+    scope.all ? db.team.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }) : Promise.resolve(scope.teams),
+  ]);
+  const group = await groupDays(people, first, last);
+  return { monthKey, scope: scope.label, teams, teamId: teamId ?? null, ...group };
 }

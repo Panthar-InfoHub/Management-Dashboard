@@ -1,11 +1,12 @@
 "use client";
 
-import { useOptimistic, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmAction } from "@/components/ui/confirm-action";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { deleteCalendarDayAction, upsertCalendarDayAction } from "@/lib/actions/attendance-settings.actions";
 import { DAY_KIND_LABELS, WEEKDAYS, fromDateKey, type DayKindValue } from "@/lib/attendance/calendar";
@@ -27,7 +28,7 @@ function formatDay(key: string) {
 
 export function CalendarTab({ days }: { days: CalendarRow[] }) {
   const [isPending, startTransition] = useTransition();
-  const [rows, removeRow] = useOptimistic(days, (list, id: string) => list.filter((d) => d.id !== id));
+  const rows = days;
   const [form, setForm] = useState<{ date: string; kind: DayKindValue; name: string }>({ date: "", kind: "HOLIDAY", name: "" });
 
   const add = () => {
@@ -38,18 +39,6 @@ export function CalendarTab({ days }: { days: CalendarRow[] }) {
         setForm((f) => ({ ...f, date: "", name: "" }));
       } catch (err) {
         toast.error(errorMessage(err, "Day not saved. Try again."));
-      }
-    });
-  };
-
-  const remove = (row: CalendarRow) => {
-    startTransition(async () => {
-      removeRow(row.id);
-      try {
-        await deleteCalendarDayAction(row.id);
-        toast.success(`${formatDay(row.date)} back to the weekly default`);
-      } catch (err) {
-        toast.error(errorMessage(err, "Day not removed. Try again."));
       }
     });
   };
@@ -98,9 +87,19 @@ export function CalendarTab({ days }: { days: CalendarRow[] }) {
                 <Badge variant="outline" className={`text-[10px] ${KIND_STYLES[row.kind]}`}>{DAY_KIND_LABELS[row.kind]}</Badge>
                 {row.name && <span className="truncate text-sm">{row.name}</span>}
               </div>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => remove(row)} disabled={isPending} aria-label={`Remove ${formatDay(row.date)}`}>
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
+              <ConfirmAction
+                trigger={
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" aria-label={`Remove ${formatDay(row.date)}`}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                }
+                title={`Remove ${formatDay(row.date)}?`}
+                description={`It goes back to the normal working week${row.name ? ` (removes “${row.name}”)` : ""}.`}
+                confirmLabel="Remove Day"
+                pendingLabel="Removing…"
+                destructive
+                onConfirm={async () => { await deleteCalendarDayAction(row.id); return `${formatDay(row.date)} back to the weekly default`; }}
+              />
             </li>
           ))}
         </ul>

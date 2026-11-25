@@ -16,6 +16,7 @@ export function useAccess() {
   return {
     isLoaded: access !== null,
     role: access?.role ?? null,
+    leadsTeam: access?.leadsTeam ?? false,
     isAdmin,
     can: (permission: Permission) => isAdmin || permissions.has(permission),
   };

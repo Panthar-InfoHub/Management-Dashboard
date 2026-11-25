@@ -1,5 +1,7 @@
 "use client";
 
+import { ConfirmAction } from "@/components/ui/confirm-action";
+
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -130,14 +132,10 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
     });
   };
 
-  const handleDeleteProject = () => {
-    if (!confirm("Are you sure you want to delete this project? This action cannot be undone and will delete all associated tasks.")) return;
-    startTransition(() => {
-      deleteProjectAction(project.id).then(() => {
-        toast.success("Project deleted successfully");
-        router.push("/projects");
-      }).catch((err: any) => toast.error(err.message || "Failed to delete project"));
-    });
+  const handleDeleteProject = async () => {
+    await deleteProjectAction(project.id);
+    router.push("/projects");
+    return `Project ${project.name} deleted`;
   };
 
   return (
@@ -163,9 +161,15 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
               </Link>
             </Button>
             {canDelete && (
-              <Button size="sm" variant="destructive" onClick={handleDeleteProject} className="h-8 shadow-none">
-                Delete
-              </Button>
+              <ConfirmAction
+                trigger={<Button size="sm" variant="destructive" className="h-8 shadow-none">Delete</Button>}
+                title={`Delete project ${project.name}?`}
+                description="All of its tasks are deleted too. This can't be undone."
+                confirmLabel="Delete Project"
+                pendingLabel="Deleting…"
+                destructive
+                onConfirm={handleDeleteProject}
+              />
             )}
           </div>
         )}

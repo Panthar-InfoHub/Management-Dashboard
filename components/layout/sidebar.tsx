@@ -14,7 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   LayoutDashboard, FolderKanban, Users, UserCircle,
-  FileText, Bell, Settings, ClipboardCheck, Search, CalendarClock,
+  FileText, Bell, Settings, ClipboardCheck, Search, CalendarClock, Plane, Inbox,
   PanelLeftClose, PanelLeft,
 } from "lucide-react";
 
@@ -27,6 +27,8 @@ const navItems: NavItem[] = [
   { label: "Teams", href: "/teams", icon: Users },
   { label: "Members", href: "/employees", icon: UserCircle },
   { label: "Attendance", href: "/attendance", icon: CalendarClock },
+  { label: "Leave", href: "/leave", icon: Plane },
+  { label: "Approvals", href: "/approvals", icon: Inbox },
   { label: "Records", href: "/records", icon: FileText },
 ];
 
@@ -40,7 +42,7 @@ function Divider() {
   return <div className="my-2 h-px bg-border w-[calc(100%-16px)] mx-auto" />;
 }
 
-type NavListsProps = { collapsed: boolean; canViewRecords: boolean; canOpenSettings: boolean; onNavigate?: () => void };
+type NavListsProps = { collapsed: boolean; canViewRecords: boolean; canOpenSettings: boolean; canApprove: boolean; onNavigate?: () => void };
 
 // usePathname() is request data on dynamic routes, so it lives in its own
 // component behind <Suspense>. The fallback renders the same links without the
@@ -92,12 +94,12 @@ function NavItemLink({ item, active, collapsed, onNavigate }: { item: NavItem; a
   );
 }
 
-function NavLists({ pathname, collapsed, canViewRecords, canOpenSettings, onNavigate }: NavListsProps & { pathname: string | null }) {
+function NavLists({ pathname, collapsed, canViewRecords, canOpenSettings, canApprove, onNavigate }: NavListsProps & { pathname: string | null }) {
   return (
     <>
       <ScrollArea className="flex-1 px-2 py-1">
         <nav className="flex flex-col gap-0.5 mt-1">
-          {navItems.filter((item) => canViewRecords || item.label !== "Records").map((item) => (
+          {navItems.filter((item) => (canViewRecords || item.label !== "Records") && (canApprove || item.label !== "Approvals")).map((item) => (
             <NavItemLink key={item.href} item={item} active={isActivePath(pathname, item.href)} collapsed={collapsed} onNavigate={onNavigate} />
           ))}
         </nav>
@@ -119,6 +121,7 @@ export function Sidebar({ collapsed, setCollapsed, isMobile, onNavigate }: { col
   const access = useAccess();
   const canViewRecords = access.can("employee:view-all");
   const canOpenSettings = access.isAdmin || access.can("leave:manage");
+  const canApprove = access.can("leave:approve") || access.leadsTeam;
 
   return (
     <aside
@@ -177,8 +180,8 @@ export function Sidebar({ collapsed, setCollapsed, isMobile, onNavigate }: { col
         </div>
       )}
 
-      <Suspense fallback={<NavLists pathname={null} collapsed={collapsed} canViewRecords={canViewRecords} canOpenSettings={canOpenSettings} onNavigate={onNavigate} />}>
-        <ActiveNavLists collapsed={collapsed} canViewRecords={canViewRecords} canOpenSettings={canOpenSettings} onNavigate={onNavigate} />
+      <Suspense fallback={<NavLists pathname={null} collapsed={collapsed} canViewRecords={canViewRecords} canOpenSettings={canOpenSettings} canApprove={canApprove} onNavigate={onNavigate} />}>
+        <ActiveNavLists collapsed={collapsed} canViewRecords={canViewRecords} canOpenSettings={canOpenSettings} canApprove={canApprove} onNavigate={onNavigate} />
       </Suspense>
 
       <Divider />

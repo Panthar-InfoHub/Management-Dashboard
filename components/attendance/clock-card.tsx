@@ -1,9 +1,11 @@
 "use client";
 
 import { useTransition } from "react";
+import Link from "next/link";
 import { Clock, LogIn, LogOut, MapPin, Home } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { ConfirmAction } from "@/components/ui/confirm-action";
 import { AttendanceStatusBadge } from "@/components/attendance/status-badge";
 import { DayFlags } from "@/components/attendance/day-flags";
 import { clockInAction, clockOutAction } from "@/lib/actions/attendance.actions";
@@ -30,6 +32,10 @@ export function ClockCard({ today }: { today: Today }) {
   const { record, office } = today;
   const needsLocation = today.dayKind === "OFFICE";
   const isIn = !!record?.checkIn && !record.checkOut;
+  const fullDayLeave = !!today.leave && !today.leave.halfDay;
+  const leaveText = today.leave
+    ? `${today.leave.halfDay ? (today.leave.halfDay === "FIRST_HALF" ? "First-half " : "Second-half ") : ""}${today.leave.typeName ?? "Leave"} today`
+    : null;
 
   const clockIn = () => {
     startTransition(async () => {
@@ -44,22 +50,19 @@ export function ClockCard({ today }: { today: Today }) {
     });
   };
 
-  const clockOut = () => {
-    startTransition(async () => {
-      try {
-        const location = await readLocation(5_000);
-        const res = await clockOutAction({ location });
-        const extra = res.earlyMinutes
-          ? ` · left ${formatDuration(res.earlyMinutes)} early`
-          : res.overtimeMinutes
-            ? ` · ${formatDuration(res.overtimeMinutes)} overtime`
-            : "";
-        if (res.message) toast.warning(res.message);
-        else toast.success(`Clocked out at ${res.time} · ${formatDuration(res.workMinutes)} worked${extra}`);
-      } catch (err) {
-        toast.error(errorMessage(err, "Clock-out failed. Try again."));
-      }
-    });
+  const clockOut = async () => {
+    const location = await readLocation(5_000);
+    const res = await clockOutAction({ location });
+    if (res.message) {
+      toast.warning(res.message);
+      return;
+    }
+    const extra = res.earlyMinutes
+      ? ` · left ${formatDuration(res.earlyMinutes)} early`
+      : res.overtimeMinutes
+        ? ` · ${formatDuration(res.overtimeMinutes)} overtime`
+        : "";
+    return `Clocked out at ${res.time} · ${formatDuration(res.workMinutes)} worked${extra}`;
   };
 
   return (
@@ -74,24 +77,37 @@ export function ClockCard({ today }: { today: Today }) {
         </div>
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
           <Clock className="h-3.5 w-3.5" />
-          {record?.checkIn ? (
+          {fullDayLeave ? (
+            <>On {leaveText}. Enjoy the day off.</>
+          ) : record?.missedCheckout ? (
+            <span>
+              In {record.checkIn} · no clock-out recorded.{" "}
+              <Link href={`/attendance?fix=${today.dateKey}`} className="font-medium text-foreground underline underline-offset-2">Fix attendance</Link>
+            </span>
+          ) : record?.checkIn ? (
             <>
               In {record.checkIn}
               {record.checkOut ? ` · Out ${record.checkOut} · ${formatDuration(record.workMinutes ?? 0)} worked` : ` · clock out before midnight`}
             </>
           ) : (
             <>
-              Office hours {office.workStart}–{office.workEnd} · late after {office.lateAfter}
+              {leaveText ? `${leaveText} · ` : ""}Office hours {office.workStart}–{office.workEnd}
+              {!today.leave && ` · late after ${office.lateAfter}`}
               {needsLocation && ` · within ${office.radiusMeters} m`}
             </>
           )}
         </p>
       </div>
 
-      {isIn ? (
-        <Button variant="outline" onClick={clockOut} disabled={isPending} className="gap-2">
-          <LogOut className="h-4 w-4" /> {isPending ? "Clocking out…" : "Clock Out"}
-        </Button>
+      {fullDayLeave && !isIn ? null : isIn ? (
+        <ConfirmAction
+          trigger={<Button variant="outline" className="gap-2"><LogOut className="h-4 w-4" /> Clock Out</Button>}
+          title="Clock out now?"
+          description={`You clocked in at ${record?.checkIn}. Office ends at ${office.workEnd}; leaving earlier is marked as left early.`}
+          confirmLabel="Clock Out"
+          pendingLabel="Clocking out…"
+          onConfirm={clockOut}
+        />
       ) : (
         <Button onClick={clockIn} disabled={isPending} className="gap-2">
           <LogIn className="h-4 w-4" />

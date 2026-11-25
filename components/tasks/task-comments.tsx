@@ -1,8 +1,10 @@
 "use client";
 
+
 import { useOptimistic, useState, useTransition } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { MessageSquare, MoreHorizontal } from "lucide-react";
+import { Loader2, MessageSquare, MoreHorizontal } from "lucide-react";
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -24,7 +26,7 @@ export type TaskComment = {
 type CommentChange =
   | { type: "add"; comment: TaskComment }
   | { type: "edit"; id: string; content: string }
-  | { type: "delete"; id: string };
+
 
 function applyChange(list: TaskComment[], change: CommentChange): TaskComment[] {
   switch (change.type) {
@@ -32,8 +34,6 @@ function applyChange(list: TaskComment[], change: CommentChange): TaskComment[] 
       return [...list, change.comment];
     case "edit":
       return list.map((c) => (c.id === change.id ? { ...c, content: change.content, editedAt: new Date() } : c));
-    case "delete":
-      return list.filter((c) => c.id !== change.id);
   }
 }
 
@@ -88,18 +88,7 @@ export function TaskComments({
     });
   };
 
-  const remove = (id: string) => {
-    if (!confirm("Delete this comment? This can't be undone.")) return;
-    startTransition(async () => {
-      applyOptimistic({ type: "delete", id });
-      try {
-        await deleteCommentAction(id);
-        toast.success("Comment deleted");
-      } catch (err) {
-        toast.error(errorMessage(err, "Comment not deleted. Try again."));
-      }
-    });
-  };
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   return (
     <div className="pt-6 border-t border-border/40">
@@ -141,7 +130,7 @@ export function TaskComments({
                                 Edit Comment
                               </DropdownMenuItem>
                             )}
-                            <DropdownMenuItem className="text-xs text-red-600" onClick={() => remove(c.id)}>
+                            <DropdownMenuItem className="text-xs text-red-600" onClick={() => setDeletingId(c.id)}>
                               Delete Comment
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -167,6 +156,13 @@ export function TaskComments({
         </ul>
       )}
 
+      {deletingId && (
+        <DeleteCommentDialog
+          onClose={() => setDeletingId(null)}
+          onConfirm={async () => { await deleteCommentAction(deletingId); setDeletingId(null); toast.success("Comment deleted"); }}
+        />
+      )}
+
       {canComment && currentEmployee && (
         <form
           className="space-y-2"
@@ -190,5 +186,32 @@ export function TaskComments({
         </form>
       )}
     </div>
+  );
+}
+
+function DeleteCommentDialog({ onClose, onConfirm }: { onClose: () => void; onConfirm: () => Promise<void> }) {
+  const [isPending, startTransition] = useTransition();
+  return (
+    <AlertDialog open onOpenChange={(open) => !open && !isPending && onClose()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete this comment?</AlertDialogTitle>
+          <AlertDialogDescription>This can&apos;t be undone.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+          <Button
+            variant="destructive"
+            disabled={isPending}
+            onClick={() => startTransition(async () => {
+              try { await onConfirm(); } catch (err) { toast.error(errorMessage(err, "Comment not deleted. Try again.")); }
+            })}
+          >
+            {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isPending ? "Deleting…" : "Delete Comment"}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

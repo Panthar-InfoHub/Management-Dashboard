@@ -14,6 +14,7 @@ export async function getMyAccessAction() {
     name: `${me.firstName} ${me.lastName}`,
     role: me.role,
     permissions: await getEffectivePermissions(me),
+    leadsTeam: (await db.team.count({ where: { leadId: me.id } })) > 0,
     viewingAs: VIEW_AS_ENABLED && (await cookies()).has(VIEW_AS_COOKIE),
   };
 }

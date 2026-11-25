@@ -12,6 +12,9 @@ export type AuditEntity =
   | "Office"
   | "CalendarDay"
   | "LeaveType"
+  | "Request"
+  | "LeaveBalance"
+  | "Attendance"
   | "EmployeePermission"
   | "Comment";
 

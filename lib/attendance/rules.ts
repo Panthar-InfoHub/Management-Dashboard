@@ -16,6 +16,10 @@ export const ATTENDANCE_STATUS_LABELS: Record<AttendanceStatusValue, string> = {
   WEEKLY_OFF: "Weekly Off",
 };
 
+/** Statuses an admin can set by hand (leave and holidays come from requests and the calendar). */
+export const EDITABLE_STATUSES = ["PRESENT", "LATE", "HALF_DAY", "WFH", "ABSENT"] as const satisfies readonly AttendanceStatusValue[];
+export type EditableStatus = (typeof EDITABLE_STATUSES)[number];
+
 /** Browsers report accuracy in metres; beyond this a fix is too vague to trust. */
 export const MAX_LOCATION_ACCURACY_M = 200;
 

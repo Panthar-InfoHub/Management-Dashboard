@@ -63,3 +63,20 @@ export function eachDateKey(startKey: string, endKey: string): string[] {
   for (let t = fromDateKey(startKey).getTime(); t <= end; t += 86_400_000) out.push(new Date(t).toISOString().slice(0, 10));
   return out;
 }
+
+/** Offset of a timezone from UTC at an instant, in minutes (IST = +330). */
+function zoneOffsetMinutes(timeZone: string, at: Date): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
+  }).formatToParts(at);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+  const asUtc = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
+  return Math.round((asUtc - at.getTime()) / 60_000);
+}
+
+/** "2026-11-25" + "09:30" in a timezone → the UTC instant. */
+export function zonedDateTime(dateKey: string, hhmm: string, timeZone: string): Date {
+  const minutes = parseHHmm(hhmm);
+  const guess = new Date(fromDateKey(dateKey).getTime() + minutes * 60_000);
+  return new Date(guess.getTime() - zoneOffsetMinutes(timeZone, guess) * 60_000);
+}
