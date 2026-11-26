@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { connection } from "next/server";
 import Link from "next/link";
 import { ArrowLeft, CalendarDays, Download } from "lucide-react";
 import { redirect } from "next/navigation";
@@ -32,6 +33,7 @@ export default function TeamAttendancePage({ searchParams }: { searchParams: Pro
 }
 
 async function TeamMonthBody({ searchParams }: { searchParams: Promise<Params> }) {
+  await connection();
   const [viewer, params, offices] = await Promise.all([getCurrentEmployee(), searchParams, getOffices()]);
   const current = todayKey((offices.find((o) => o.isDefault) ?? offices[0])?.timezone ?? "Asia/Kolkata").slice(0, 7);
   const monthKey = params.month && /^\d{4}-(0[1-9]|1[0-2])$/.test(params.month) && params.month <= current ? params.month : current;

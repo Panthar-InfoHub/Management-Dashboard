@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { connection } from "next/server";
 import Link from "next/link";
 import { CalendarClock, Users } from "lucide-react";
 import { getCurrentEmployee } from "@/lib/auth";
@@ -40,6 +41,7 @@ function AttendanceSkeleton() {
 }
 
 async function AttendanceBody({ searchParams }: { searchParams: Promise<Params> }) {
+  await connection();
   const [me, params] = await Promise.all([getCurrentEmployee(), searchParams]);
   const scope = await getAttendanceScope(me);
   const teamLink = scope && (

@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { connection } from "next/server";
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { getCalendarDays, getDefaultOffice, getLeaveTypes } from "@/lib/attendance/settings";
 import { todayKey } from "@/lib/attendance/calendar";
@@ -42,6 +43,7 @@ export default function SettingsPage() {
 }
 
 async function SettingsDataAsync() {
+  await connection();
   const [employee, canManageLeave] = await Promise.all([getCurrentEmployee(), checkPermission("leave:manage")]);
   const isAdmin = isAdminRole(employee.role);
 

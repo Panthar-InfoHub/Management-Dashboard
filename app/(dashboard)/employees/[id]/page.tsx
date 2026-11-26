@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { connection } from "next/server";
 import { getEmployeeById } from "@/lib/queries/employee.queries";
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { notFound, redirect } from "next/navigation";
@@ -44,6 +45,7 @@ function ProfileLoading() {
 }
 
 async function EmployeeProfileDataAsync({ id }: { id: string }) {
+  await connection();
   const [currentEmployee, canView, canUpdate, canOffboard, canManageLeave] = await Promise.all([
     getCurrentEmployee(),
     checkPermission("employee:view-all"),

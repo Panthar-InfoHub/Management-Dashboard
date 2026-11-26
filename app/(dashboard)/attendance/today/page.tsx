@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { connection } from "next/server";
 import Link from "next/link";
 import { ArrowLeft, LayoutGrid } from "lucide-react";
 import { redirect } from "next/navigation";
@@ -29,6 +30,7 @@ export default function TeamDayPage({ searchParams }: { searchParams: Promise<Pa
 }
 
 async function Board({ searchParams }: { searchParams: Promise<Params> }) {
+  await connection();
   const [viewer, params] = await Promise.all([getCurrentEmployee(), searchParams]);
   const board = await getTodayBoard(viewer, params.date);
   if (!board) redirect("/attendance");

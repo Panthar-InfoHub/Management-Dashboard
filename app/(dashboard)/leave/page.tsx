@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { connection } from "next/server";
 import { Plane } from "lucide-react";
 import { getCurrentEmployee } from "@/lib/auth";
 import { getMyLeave } from "@/lib/leave/queries";
@@ -31,6 +32,7 @@ function LeaveSkeleton() {
 }
 
 async function LeaveBody() {
+  await connection();
   const leave = await getMyLeave(await getCurrentEmployee());
   if (!leave) {
     return <EmptyState icon={Plane} title="Leave isn't tracked for Super Admins" description="Approve other people's requests from Approvals." />;

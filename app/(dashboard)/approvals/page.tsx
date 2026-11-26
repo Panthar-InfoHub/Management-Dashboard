@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { connection } from "next/server";
 import { redirect } from "next/navigation";
 import { getCurrentEmployee } from "@/lib/auth";
 import { getInbox } from "@/lib/leave/queries";
@@ -20,6 +21,7 @@ export default function ApprovalsPage() {
 }
 
 async function InboxBody() {
+  await connection();
   const inbox = await getInbox(await getCurrentEmployee());
   if (!inbox) redirect("/leave");
   return <ApprovalsInbox inbox={inbox} />;
