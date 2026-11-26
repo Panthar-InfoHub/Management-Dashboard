@@ -8,6 +8,15 @@ export type AuditEntity =
   | "Team"
   | "Employee"
   | "SystemRole"
+  | "AccessPreset"
+  | "Office"
+  | "CalendarDay"
+  | "LeaveType"
+  | "Request"
+  | "LeaveBalance"
+  | "Announcement"
+  | "AuditLog"
+  | "Attendance"
   | "EmployeePermission"
   | "Comment";
 

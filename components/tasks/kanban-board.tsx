@@ -1,707 +1,588 @@
 "use client";
+import type { BoardTask } from "@/lib/queries/task.queries";
+import { PriorityIcon, StatusIcon, TASK_PRIORITIES } from "@/components/tasks/task-icons";
 
-import { useState, useTransition, useMemo, useEffect, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/empty-state";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
-import { Filter, Search, ClipboardList, Clock, Loader2, X, ListChecks } from "lucide-react";
-import { updateTaskStatusAction, rebalanceColumnTasksAction } from "@/lib/actions/task.actions";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import {
+  AlertCircle, ArrowRightLeft, Ban, CalendarClock, CalendarDays, CalendarRange, CalendarX, Columns3, FolderKanban, Inbox, ListChecks, ListTree,
+  MessageSquare, Network, Plus, Rows3, Search, SignalHigh, SlidersHorizontal, UserRound, UserX, UsersRound, X,
+} from "lucide-react";
 import { toast } from "sonner";
-import { format, isPast, isToday, endOfDay } from "date-fns";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { FacetFilter } from "@/components/tasks/board-filters";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { UserAvatar } from "@/components/ui/user-avatar";
+import { DoneNoteDialog } from "@/components/tasks/done-note-dialog";
+import { TaskListView } from "@/components/tasks/task-list-view";
+import { rebalanceColumnTasksAction, updateTaskStatusAction } from "@/lib/actions/task.actions";
+import { errorMessage } from "@/lib/errors";
+import { taskKey } from "@/lib/tasks/keys";
+import { cn } from "@/lib/utils";
 
-const statusColors: Record<string, string> = { 
-  BACKLOG: "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20 hover:bg-gray-500/20", 
-  TODO: "bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20 hover:bg-slate-500/20", 
-  IN_PROGRESS: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20", 
-  REVIEW: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20 hover:bg-purple-500/20", 
-  TESTING: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/20", 
-  DONE: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20" 
+// Status moves locally as plain strings (optimistic drags), so loosen those fields.
+export type Task = Omit<BoardTask, "status" | "completedAt"> & { status: string; completedAt: Date | string | null };
+type Person = { id: string; firstName: string; lastName: string; avatarUrl?: string | null };
+
+const COLUMNS = [
+  { id: "TODO", title: "To Do", dot: "bg-neutral-400" },
+  { id: "IN_PROGRESS", title: "In Progress", dot: "bg-blue-500" },
+  { id: "REVIEW", title: "Review", dot: "bg-purple-500" },
+  { id: "TESTING", title: "Testing", dot: "bg-amber-500" },
+  { id: "DONE", title: "Done", dot: "bg-emerald-500" },
+] as const;
+const CANCELLED_COLUMN = { id: "CANCELLED", title: "Cancelled", dot: "bg-neutral-300" } as const;
+const PRIORITY: Record<string, { label: string; cls: string }> = {
+  CRITICAL: { label: "Critical", cls: "bg-red-500/10 text-red-700 dark:text-red-400" },
+  HIGH: { label: "High", cls: "bg-orange-500/10 text-orange-700 dark:text-orange-400" },
+  MEDIUM: { label: "Medium", cls: "bg-neutral-500/10 text-muted-foreground" },
+  LOW: { label: "Low", cls: "bg-neutral-500/10 text-muted-foreground" },
 };
+const DONE_PREVIEW = 10;
+const TZ = "Asia/Kolkata";
+const dayKey = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: TZ });
 
-const priorityColors: Record<string, string> = { 
-  CRITICAL: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20 hover:bg-red-500/20", 
-  HIGH: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20 hover:bg-orange-500/20", 
-  MEDIUM: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20", 
-  LOW: "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20 hover:bg-gray-500/20" 
-};
+const splitList = (raw: string) => raw.split(",").filter((v) => v && v !== "ALL");
 
-const priorityDots: Record<string, string> = { 
-  CRITICAL: "bg-red-500", 
-  HIGH: "bg-orange-500", 
-  MEDIUM: "bg-blue-500", 
-  LOW: "bg-gray-500" 
-};
-
-const columns = [
-  { id: "BACKLOG", title: "Backlog" },
-  { id: "TODO", title: "Todo" },
-  { id: "IN_PROGRESS", title: "In Progress" },
-  { id: "REVIEW", title: "Review" },
-  { id: "TESTING", title: "Testing" },
-  { id: "DONE", title: "Done" },
-];
-
-export function KanbanBoard({ 
-  initialTasks, 
-  allowedProjects = [], 
-  allowedTeams = [], 
-  allEmployees = [],
-  currentEmployeeId,
-  employeeRole
-}: { 
-  initialTasks: any[], 
-  allowedProjects?: any[], 
-  allowedTeams?: any[], 
-  allEmployees?: any[],
-  currentEmployeeId: string,
-  employeeRole: string
-}) {
-  const [taskList, setTaskList] = useState(initialTasks);
+/** Board filters live in the URL (shareable) but change without a server round trip. */
+function useBoardParams() {
   const searchParams = useSearchParams();
-  const [isFilterPending, startFilterTransition] = useTransition();
-  const [showAllDone, setShowAllDone] = useState(false);
-  
-  // Drag-and-drop snapping & insertion state
-  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
-  const [dragOverInfo, setDragOverInfo] = useState<{
-    columnId: string;
-    index: number; // insertion target index in the column
-  } | null>(null);
-
-  // In-flight status & order changes to protect optimistic UI against stale server revalidations
-  const inFlightStatusUpdatesRef = useRef<Map<string, { status: string; order?: number }>>(new Map());
-
-  const [optimisticFilters, setOptimisticFilters] = useState<{
-    team?: string;
-    project?: string;
-    assignee?: string;
-    search?: string;
-  }>({});
-  
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const router = useRouter();
-
-  useEffect(() => {
-    // Preserve any optimistic updates that are still in flight with the server
-    setTaskList(
-      initialTasks.map(t => {
-        const inFlight = inFlightStatusUpdatesRef.current.get(t.id);
-        return inFlight 
-          ? { ...t, status: inFlight.status, ...(inFlight.order !== undefined ? { order: inFlight.order } : {}) } 
-          : t;
-      })
-    );
-    setOptimisticFilters({});
-  }, [initialTasks]);
-
-  useEffect(() => {
-    return () => {
-      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-    };
+  const get = (k: string, fallback = "ALL") => searchParams.get(k) || fallback;
+  /** Multi-value filters are comma lists in the URL ("ALL" from old links means none). */
+  const getList = (k: string) => searchParams.get(k) ?? "";
+  const set = useCallback((updates: Record<string, string | null>) => {
+    const params = new URLSearchParams(window.location.search);
+    for (const [k, v] of Object.entries(updates)) {
+      if (v === null || v === "ALL" || v === "") params.delete(k);
+      else params.set(k, v);
+    }
+    const qs = params.toString();
+    window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
   }, []);
+  return { get, getList, set };
+}
 
-  const urlTeam = optimisticFilters.team !== undefined ? optimisticFilters.team : (searchParams.get("team") || "ALL");
-  const urlProject = optimisticFilters.project !== undefined ? optimisticFilters.project : (searchParams.get("project") || "ALL");
-  const urlAssignee = optimisticFilters.assignee !== undefined ? optimisticFilters.assignee : (searchParams.get("assignee") || "ALL");
-  const urlSearch = optimisticFilters.search !== undefined ? optimisticFilters.search : (searchParams.get("search") || "");
+/** Where a dragged card would land: its column and position. */
+type DropTarget = { columnId: string; index: number } | null;
 
-  // Build filter options combining explicit lists with task references
-  const teams = useMemo(() => {
-    const map = new Map(allowedTeams.map(t => [t.id, t]));
-    initialTasks.forEach(t => {
-      if (t.project?.team) map.set(t.project.team.id, t.project.team);
-    });
-    return Array.from(map.values());
-  }, [allowedTeams, initialTasks]);
+// ─── Card (memoized: dragging over the board doesn't re-render every card) ───
 
-  const projects = useMemo(() => {
-    const map = new Map(allowedProjects.map(p => [p.id, p]));
-    initialTasks.forEach(t => {
-      if (t.project) map.set(t.project.id, t.project);
-    });
-    return Array.from(map.values());
-  }, [allowedProjects, initialTasks]);
-
-  // Client-side filtering for immediate feedback
-  const filteredTasks = useMemo(() => {
-    return taskList.filter(t => {
-      const matchSearch = !urlSearch || 
-                          t.title.toLowerCase().includes(urlSearch.toLowerCase()) || 
-                          (t.project?.name || "").toLowerCase().includes(urlSearch.toLowerCase());
-      const matchTeam = urlTeam === "ALL" || t.project?.team?.id === urlTeam;
-      const matchProject = urlProject === "ALL" || t.project?.id === urlProject;
-      const matchAssignee = urlAssignee === "ALL" || 
-                            (urlAssignee === "UNASSIGNED" ? (!t.assignees || t.assignees.length === 0) : (t.assignees && t.assignees.some((a: any) => a.id === urlAssignee)));
-      
-      return matchSearch && matchTeam && matchProject && matchAssignee;
-    });
-  }, [taskList, urlSearch, urlTeam, urlProject, urlAssignee]);
-
-  // Tasks grouped by status, sorted by order asc, then updatedAt desc
-  const tasksByStatus = useMemo(() => {
-    const map: Record<string, any[]> = {
-      BACKLOG: [],
-      TODO: [],
-      IN_PROGRESS: [],
-      REVIEW: [],
-      TESTING: [],
-      DONE: [],
-    };
-    for (const t of filteredTasks) {
-      if (map[t.status]) {
-        map[t.status].push(t);
-      } else {
-        map[t.status] = [t];
-      }
-    }
-    for (const key in map) {
-      map[key].sort((a, b) => {
-        const orderA = a.order ?? 0;
-        const orderB = b.order ?? 0;
-        if (orderA !== orderB) return orderA - orderB;
-        return new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime();
-      });
-    }
-    return map;
-  }, [filteredTasks]);
-
-  // In the List view, push DONE tasks to the bottom, then sort by order
-  const listTasks = useMemo(() => {
-    return [...filteredTasks].sort((a, b) => {
-      const aDone = a.status === "DONE";
-      const bDone = b.status === "DONE";
-      if (aDone && !bDone) return 1;
-      if (!aDone && bDone) return -1;
-      const orderA = a.order ?? 0;
-      const orderB = b.order ?? 0;
-      if (orderA !== orderB) return orderA - orderB;
-      return new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime();
-    });
-  }, [filteredTasks]);
-
-  const updateUrlFilter = (key: string, value: string) => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (value === "ALL" || value === "") {
-      params.delete(key);
-    } else {
-      params.set(key, value);
-    }
-    setOptimisticFilters(prev => ({ ...prev, [key]: value }));
-    startFilterTransition(() => {
-      router.push(`?${params.toString()}`);
-    });
-  };
-
-  const clearAllFilters = () => {
-    setOptimisticFilters({
-      team: "ALL",
-      project: "ALL",
-      assignee: "ALL",
-      search: "",
-    });
-    startFilterTransition(() => {
-      router.push("/tasks");
-    });
-  };
-
-  // Collision-proof fractional indexing algorithm for midpoint ordering
-  const calculateNewOrder = (colTasks: any[], targetIndex: number): number => {
-    if (colTasks.length === 0) {
-      return 1000;
-    }
-    if (targetIndex <= 0) {
-      const firstOrder = (colTasks[0]?.order && colTasks[0].order !== 0) ? colTasks[0].order : 1000;
-      return firstOrder - 500;
-    }
-    if (targetIndex >= colTasks.length) {
-      const lastOrder = (colTasks[colTasks.length - 1]?.order && colTasks[colTasks.length - 1].order !== 0) 
-        ? colTasks[colTasks.length - 1].order 
-        : (colTasks.length * 1000);
-      return lastOrder + 500;
-    }
-    
-    // Effective orders with automatic zero-collision resolution
-    let prevOrder = colTasks[targetIndex - 1]?.order ?? 0;
-    let nextOrder = colTasks[targetIndex]?.order ?? 0;
-
-    if (prevOrder === 0 && nextOrder === 0) {
-      prevOrder = targetIndex * 1000;
-      nextOrder = (targetIndex + 1) * 1000;
-    } else if (prevOrder === 0) {
-      prevOrder = nextOrder - 1000;
-    } else if (nextOrder === 0 || prevOrder >= nextOrder) {
-      nextOrder = prevOrder + 1000;
-    }
-
-    return (prevOrder + nextOrder) / 2;
-  };
-
-  // Drag and drop event handlers
-  const handleDragStart = (e: React.DragEvent, taskId: string) => {
-    e.dataTransfer.setData("taskId", taskId);
-    e.dataTransfer.effectAllowed = "move";
-    setDraggedTaskId(taskId);
-  };
-
-  const handleDragEnd = () => {
-    setDraggedTaskId(null);
-    setDragOverInfo(null);
-  };
-
-  const handleColumnDragOver = (e: React.DragEvent, columnId: string) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    const colTasks = (tasksByStatus[columnId] || []).filter(t => t.id !== draggedTaskId);
-    setDragOverInfo(prev => {
-      if (prev && prev.columnId === columnId) return prev;
-      return { columnId, index: colTasks.length };
-    });
-  };
-
-  const handleCardDragOver = (e: React.DragEvent, columnId: string, cardIndex: number) => {
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = "move";
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    const midY = rect.top + rect.height / 2;
-    const insertIndex = e.clientY < midY ? cardIndex : cardIndex + 1;
-
-    setDragOverInfo({
-      columnId,
-      index: insertIndex,
-    });
-  };
-
-  const handleDrop = async (e: React.DragEvent, statusId: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const taskId = e.dataTransfer.getData("taskId") || draggedTaskId;
-    const currentDragInfo = dragOverInfo;
-    
-    setDraggedTaskId(null);
-    setDragOverInfo(null);
-
-    if (!taskId) return;
-    const task = taskList.find(t => t.id === taskId);
-    if (!task) return;
-
-    const oldStatus = task.status;
-    const oldOrder = task.order ?? 0;
-
-    // Remaining tasks in target column (excluding the dragged task)
-    const otherTasksInTarget = (tasksByStatus[statusId] || []).filter(t => t.id !== taskId);
-    
-    const targetIndex = currentDragInfo && currentDragInfo.columnId === statusId
-      ? Math.min(Math.max(0, currentDragInfo.index), otherTasksInTarget.length)
-      : otherTasksInTarget.length;
-
-    const newOrder = calculateNewOrder(otherTasksInTarget, targetIndex);
-
-    // If neither status nor position changed, skip
-    if (task.status === statusId && Math.abs((task.order ?? 0) - newOrder) < 0.0001) {
-      return;
-    }
-
-    // Check if the gap between adjacent tasks is getting too tight (under 0.001)
-    const prevOrder = targetIndex > 0 ? (otherTasksInTarget[targetIndex - 1]?.order ?? 0) : 0;
-    const nextOrder = targetIndex < otherTasksInTarget.length ? (otherTasksInTarget[targetIndex]?.order ?? 0) : 0;
-    const isGapTooTight = targetIndex > 0 && targetIndex < otherTasksInTarget.length && Math.abs(nextOrder - prevOrder) < 0.001;
-
-    // 1. Instant Optimistic UI Update (Zero delay, zero skeletons, zero loaders)
-    const updatedTask = { ...task, status: statusId, order: newOrder };
-
-    if (isGapTooTight) {
-      // Auto-rebalance the column tasks back to clean 1,000-unit spaced integers
-      const rebalanced = [...otherTasksInTarget];
-      rebalanced.splice(targetIndex, 0, updatedTask);
-      const idToOrder = new Map(rebalanced.map((t, idx) => [t.id, (idx + 1) * 1000]));
-
-      setTaskList(prev => prev.map(t => idToOrder.has(t.id) ? { ...t, order: idToOrder.get(t.id)!, ...(t.id === taskId ? { status: statusId } : {}) } : t));
-      
-      // Persist status change and column rebalance in background
-      updateTaskStatusAction(taskId, statusId, idToOrder.get(taskId)!)
-        .then(() => rebalanceColumnTasksAction(rebalanced.map(t => t.id)))
-        .then(() => toast.success("Task updated"))
-        .catch(err => {
-          setTaskList(prev => prev.map(t => t.id === taskId ? { ...t, status: oldStatus, order: oldOrder } : t));
-          toast.error(err.message || "Task not moved. Try again.");
-        });
-      return;
-    }
-
-    setTaskList(prev => prev.map(t => t.id === taskId ? updatedTask : t));
-
-    // 2. Track in-flight update to prevent server revalidation race conditions
-    inFlightStatusUpdatesRef.current.set(taskId, { status: statusId, order: newOrder });
-
-    // 3. Background Async Server Action (No startTransition!)
-    try {
-      const res = await updateTaskStatusAction(taskId, statusId, newOrder);
-      if (!res?.success) {
-        throw new Error("Failed to update status");
-      }
-      toast.success("Task updated");
-    } catch (err: any) {
-      // Revert optimistic update
-      setTaskList(prev => prev.map(t => t.id === taskId ? { ...t, status: oldStatus, order: oldOrder } : t));
-      toast.error(err.message || "Failed to update task");
-    } finally {
-      inFlightStatusUpdatesRef.current.delete(taskId);
-    }
-  };
-
-  const hasActiveFilters = urlTeam !== "ALL" || urlProject !== "ALL" || urlAssignee !== "ALL" || urlSearch !== "";
+const TaskCard = memo(function TaskCard({
+  task, columnId, index, dragging, today, onDragStart, onDragEnd, onDragOverCard, onMove,
+}: {
+  task: Task; columnId: string; index: number; dragging: boolean; today: string;
+  /** Phones can't drag: "Move to" changes the column instead. */
+  onMove: (taskId: string, columnId: string) => void;
+  onDragStart: (e: React.DragEvent, id: string) => void;
+  onDragEnd: () => void;
+  onDragOverCard: (e: React.DragEvent, columnId: string, index: number) => void;
+}) {
+  const key = taskKey(task);
+  const owner = task.owner ?? task.assignees?.[0] ?? null;
+  const others = (task.assignees ?? []).filter((a: Person) => a.id !== owner?.id);
+  const subTotal = task.subtasks?.length ?? 0;
+  const subDone = task.subtasks?.filter((s) => s.status === "DONE").length ?? 0;
+  const closed = task.status === "DONE" || task.status === "CANCELLED";
+  const due = task.dueDate ? new Date(task.dueDate) : null;
+  const dueKey = due ? dayKey(due) : null;
+  const dueTone = !dueKey || closed ? "muted" : dueKey < today ? "overdue" : dueKey === today ? "today" : "muted";
+  const priority = PRIORITY[task.priority];
 
   return (
-    <div className="flex flex-col gap-4 flex-1 min-w-0">
-      {/* Top filter toolbar */}
-      <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0 flex-wrap">
-        <div className="relative flex-1 w-full min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input 
-            placeholder="Search tasks…" 
-            defaultValue={urlSearch}
-            onChange={(e) => {
-              const val = e.target.value;
-              if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-              searchTimeoutRef.current = setTimeout(() => {
-                updateUrlFilter("search", val || "ALL");
-              }, 400);
-            }}
-            className="pl-9 pr-9 h-9 text-xs" 
+    <div
+      draggable
+      onDragStart={(e) => onDragStart(e, task.id)}
+      onDragEnd={onDragEnd}
+      onDragOver={(e) => onDragOverCard(e, columnId, index)}
+      className={cn(
+        "group relative cursor-grab rounded-lg border border-border/70 bg-card p-3 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors select-none hover:border-foreground/25 active:cursor-grabbing",
+        dragging && "opacity-40",
+        closed && "opacity-80"
+      )}
+    >
+      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+        {key && <span className="font-mono text-foreground/70">{key}</span>}
+        <span className="min-w-0 flex-1 truncate">{task.project?.name ?? "General"}</span>
+        {(task.priority === "HIGH" || task.priority === "CRITICAL") && (
+          <span className={cn("shrink-0 rounded px-1.5 py-px text-[10px] font-medium", priority.cls)}>{priority.label}</span>
+        )}
+        {task.status !== "CANCELLED" && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              {/* Above the card's full-size link, so tapping it doesn't open the task. */}
+              <button type="button" className="relative z-10 -my-1 -mr-1.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted md:hidden" aria-label={`Move ${task.title}`}>
+                <ArrowRightLeft className="h-3.5 w-3.5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuLabel className="text-xs text-muted-foreground">Move to</DropdownMenuLabel>
+              {COLUMNS.filter((c) => c.id !== task.status).map((c) => (
+                <DropdownMenuItem key={c.id} onClick={() => onMove(task.id, c.id)} className="gap-2">
+                  <StatusIcon status={c.id} className="h-3.5 w-3.5" />{c.title}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+      {task.parent && <p className="mt-1 truncate text-[11px] text-muted-foreground">↳ {task.parent.title}</p>}
+      <Link
+        href={`/tasks/${task.id}`}
+        draggable={false}
+        className={cn(
+          "mt-1.5 line-clamp-2 text-[13px] leading-snug font-medium text-foreground after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring/50",
+          task.status === "CANCELLED" && "line-through"
+        )}
+      >
+        {task.title}
+      </Link>
+
+      <div className="mt-3 flex items-center gap-2.5 text-[11px] text-muted-foreground">
+        {due && (
+          <span className={cn("tabular-nums", dueTone === "overdue" && "font-medium text-red-600 dark:text-red-400", dueTone === "today" && "font-medium text-amber-700 dark:text-amber-400")}>
+            {dueTone === "overdue" ? "Overdue · " : dueTone === "today" ? "Today · " : ""}
+            {due.toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: TZ })}
+          </span>
+        )}
+        {subTotal > 0 && (
+          <span className="flex items-center gap-1 tabular-nums" title={`${subDone} of ${subTotal} subtasks done`}><ListChecks className="h-3 w-3" />{subDone}/{subTotal}</span>
+        )}
+        {task._count?.comments > 0 && (
+          <span className="flex items-center gap-1 tabular-nums" title={`${task._count.comments} comments`}><MessageSquare className="h-3 w-3" />{task._count.comments}</span>
+        )}
+        <span className="ml-auto flex items-center -space-x-1.5">
+          {owner ? (
+            <UserAvatar className="h-5 w-5 ring-2 ring-card" user={owner} textClassName="text-[8px]" title={`Owner: ${owner.firstName} ${owner.lastName}`} />
+          ) : (
+            <span className="rounded border border-dashed border-border px-1 text-[10px]">No owner</span>
+          )}
+          {others.slice(0, 2).map((p: Person) => <UserAvatar key={p.id} className="h-5 w-5 ring-2 ring-card" user={p} textClassName="text-[8px]" />)}
+          {others.length > 2 && <span className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[8px] font-medium ring-2 ring-card">+{others.length - 2}</span>}
+        </span>
+      </div>
+    </div>
+  );
+});
+
+// ─── Board ───
+
+export function KanbanBoard({
+  initialTasks,
+  allowedProjects = [],
+  allowedTeams = [],
+  allEmployees = [],
+  currentEmployeeId,
+}: {
+  initialTasks: Task[];
+  allowedProjects?: { id: string; name: string }[];
+  allowedTeams?: { id: string; name: string }[];
+  allEmployees?: Person[];
+  currentEmployeeId: string;
+}) {
+  const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [drop, setDrop] = useState<DropTarget>(null);
+  const [pendingDone, setPendingDone] = useState<{ taskId: string; order: number } | null>(null);
+  const [savingDone, setSavingDone] = useState(false);
+  const [showAllDone, setShowAllDone] = useState(false);
+  const [today] = useState(() => dayKey(new Date()));
+  // Moves still on their way to the server; a refresh mustn't undo them.
+  const inFlight = useRef(new Map<string, { status: string; order: number }>());
+  const { get, getList, set } = useBoardParams();
+
+  useEffect(() => {
+    setTasks(initialTasks.map((t) => {
+      const f = inFlight.current.get(t.id);
+      return f ? { ...t, status: f.status, order: f.order } : t;
+    }));
+  }, [initialTasks]);
+
+  const view = get("view", "board");
+  const search = get("search", "");
+  // Raw strings keep the lists stable between renders, so memos don't recompute for nothing.
+  const teamsRaw = getList("team"), projectsRaw = getList("project"), assigneesRaw = getList("assignee"), prioritiesRaw = getList("priority"), duesRaw = getList("due");
+  const teams = useMemo(() => splitList(teamsRaw), [teamsRaw]);
+  const projects = useMemo(() => splitList(projectsRaw), [projectsRaw]);
+  const assignees = useMemo(() => splitList(assigneesRaw), [assigneesRaw]);
+  const priorities = useMemo(() => splitList(prioritiesRaw), [prioritiesRaw]);
+  const dues = useMemo(() => splitList(duesRaw), [duesRaw]);
+  const setList = (k: string, values: string[]) => set({ [k]: values.length ? values.join(",") : null });
+  const showSubtasks = get("subtasks", "") === "1";
+  const showCancelled = get("cancelled", "") === "1";
+  const [searchDraft, setSearchDraft] = useState(search);
+
+  const weekKey = useMemo(() => {
+    const d = new Date(`${today}T00:00:00`);
+    d.setDate(d.getDate() + 7);
+    return dayKey(d);
+  }, [today]);
+
+  /** The one due bucket a task falls in: overdue (open, past due), next 7 days, later, or none. */
+  const dueBucket = useCallback((t: Task) => {
+    if (!t.dueDate) return "NONE";
+    const k = dayKey(new Date(t.dueDate));
+    const open = t.status !== "DONE" && t.status !== "CANCELLED";
+    if (open && k < today) return "OVERDUE";
+    if (k >= today && k <= weekKey) return "WEEK";
+    return "LATER";
+  }, [today, weekKey]);
+
+  // Tasks the toggles allow at all; filters and their counts work from this.
+  const base = useMemo(
+    () => tasks.filter((t) => (showSubtasks || !t.parentId || !!search.trim()) && (showCancelled || t.status !== "CANCELLED")),
+    [tasks, showSubtasks, showCancelled, search]
+  );
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const mine = assignees.includes("ME"), none = assignees.includes("NONE");
+    const people = assignees.filter((a) => a !== "ME" && a !== "NONE");
+    return base.filter((t) => {
+      if (q && !t.title.toLowerCase().includes(q) && (taskKey(t) ?? "").toLowerCase() !== q && !(t.project?.name ?? "").toLowerCase().includes(q)) return false;
+      if (teams.length && !teams.includes(t.project?.team?.id ?? "")) return false;
+      if (projects.length && !projects.includes(t.projectId ?? "GENERAL")) return false;
+      if (assignees.length) {
+        const ids = (t.assignees ?? []).map((a) => a.id);
+        const hit = (mine && ids.includes(currentEmployeeId)) || (none && ids.length === 0) || people.some((p) => ids.includes(p));
+        if (!hit) return false;
+      }
+      if (priorities.length && !priorities.includes(t.priority)) return false;
+      if (dues.length && !dues.includes(dueBucket(t))) return false;
+      return true;
+    });
+  }, [base, search, teams, projects, assignees, priorities, dues, currentEmployeeId, dueBucket]);
+
+  /** How many tasks each filter value would match, for the counts in the menus. */
+  const counts = useMemo(() => {
+    const c = { project: new Map<string, number>(), person: new Map<string, number>(), priority: new Map<string, number>(), due: new Map<string, number>(), team: new Map<string, number>() };
+    const add = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1);
+    for (const t of base) {
+      add(c.project, t.projectId ?? "GENERAL");
+      add(c.priority, t.priority);
+      add(c.due, dueBucket(t));
+      if (t.project?.team?.id) add(c.team, t.project.team.id);
+      const ids = (t.assignees ?? []).map((a) => a.id);
+      if (ids.length === 0) add(c.person, "NONE");
+      for (const id of ids) add(c.person, id);
+      if (ids.includes(currentEmployeeId)) add(c.person, "ME");
+    }
+    return c;
+  }, [base, dueBucket, currentEmployeeId]);
+
+  const byColumn = useMemo(() => {
+    const map: Record<string, Task[]> = { TODO: [], IN_PROGRESS: [], REVIEW: [], TESTING: [], DONE: [], CANCELLED: [] };
+    for (const t of filtered) (map[t.status] ??= []).push(t);
+    for (const k of ["TODO", "IN_PROGRESS", "REVIEW", "TESTING"]) map[k].sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || +new Date(b.updatedAt) - +new Date(a.updatedAt));
+    map.DONE.sort((a, b) => +new Date(b.completedAt ?? 0) - +new Date(a.completedAt ?? 0));
+    return map;
+  }, [filtered]);
+
+  // ─── Drag and drop (stable handlers keep the memoized cards still) ───
+
+  const onDragStart = useCallback((e: React.DragEvent, id: string) => {
+    e.dataTransfer.setData("taskId", id);
+    e.dataTransfer.effectAllowed = "move";
+    setDraggedId(id);
+  }, []);
+  const onDragEnd = useCallback(() => { setDraggedId(null); setDrop(null); }, []);
+  const onDragOverCard = useCallback((e: React.DragEvent, columnId: string, index: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const at = e.clientY < rect.top + rect.height / 2 ? index : index + 1;
+    // Only re-render when the insertion point actually moves.
+    setDrop((prev) => (prev && prev.columnId === columnId && prev.index === at ? prev : { columnId, index: at }));
+  }, []);
+  const onDragOverColumn = (e: React.DragEvent, columnId: string) => {
+    e.preventDefault();
+    setDrop((prev) => (prev?.columnId === columnId ? prev : { columnId, index: (byColumn[columnId] ?? []).length }));
+  };
+
+  /** Midpoint ordering, so a move writes one row. */
+  const orderAt = (list: Task[], i: number) => {
+    if (list.length === 0) return 1000;
+    if (i <= 0) return (list[0].order || 1000) - 500;
+    if (i >= list.length) return (list[list.length - 1].order || list.length * 1000) + 500;
+    const a = list[i - 1].order ?? 0, b = list[i].order ?? 0;
+    return a < b ? (a + b) / 2 : a + 500;
+  };
+
+  const persist = async (taskId: string, status: string, order: number, previous: { status: string; order: number }, note?: string) => {
+    inFlight.current.set(taskId, { status, order });
+    try {
+      await updateTaskStatusAction(taskId, status, order, note);
+      return true;
+    } catch (err) {
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, ...previous } : t)));
+      toast.error(errorMessage(err, "Task not moved. Try again."));
+      return false;
+    } finally {
+      inFlight.current.delete(taskId);
+    }
+  };
+
+  const onDrop = async (e: React.DragEvent, columnId: string) => {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData("taskId") || draggedId;
+    const target = drop;
+    setDraggedId(null);
+    setDrop(null);
+    if (taskId) await moveTask(taskId, columnId, target?.columnId === columnId ? target.index : null);
+  };
+
+  /** Move a task to a column (at a position, or the end): from a drop, or "Move to" on phones. */
+  const moveTask = async (taskId: string, columnId: string, at: number | null) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    if (columnId === "CANCELLED" && task.status !== "CANCELLED") {
+      toast.info("Open the task and use Cancel Task to give a reason");
+      return;
+    }
+
+    const others = (byColumn[columnId] ?? []).filter((t) => t.id !== taskId);
+    const index = at !== null ? Math.min(at, others.length) : others.length;
+    const order = orderAt(others, index);
+    if (task.status === columnId && Math.abs((task.order ?? 0) - order) < 1e-6) return;
+
+    // Done asks what was done first; nothing moves until then.
+    if (columnId === "DONE" && task.status !== "DONE") {
+      setPendingDone({ taskId: task.id, order });
+      return;
+    }
+
+    const previous = { status: task.status, order: task.order ?? 0 };
+    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: columnId, order } : t)));
+    const ok = await persist(task.id, columnId, order, previous);
+    // Orders can get too close after many moves; respace the column now and then.
+    if (ok && index > 0 && index < others.length && Math.abs((others[index].order ?? 0) - (others[index - 1].order ?? 0)) < 0.01) {
+      const ids = [...others.slice(0, index).map((t) => t.id), task.id, ...others.slice(index).map((t) => t.id)];
+      rebalanceColumnTasksAction(ids).catch(() => {});
+    }
+  };
+
+  const confirmDone = async (note: string) => {
+    if (!pendingDone) return;
+    const task = tasks.find((t) => t.id === pendingDone.taskId);
+    if (!task) {
+      setPendingDone(null);
+      return;
+    }
+    setSavingDone(true);
+    const previous = { status: task.status, order: task.order ?? 0 };
+    const ok = await persist(task.id, "DONE", pendingDone.order, previous, note);
+    if (ok) {
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: "DONE", order: pendingDone.order, completedAt: new Date().toISOString() } : t)));
+      toast.success(`${taskKey(task) ?? "Task"} done`);
+      setPendingDone(null);
+    }
+    setSavingDone(false);
+  };
+
+  // Cards are memoized; give them a callback that never changes but always runs the latest move.
+  const moveRef = useRef(moveTask);
+  useEffect(() => { moveRef.current = moveTask; });
+  const onMoveCard = useCallback((taskId: string, columnId: string) => { void moveRef.current(taskId, columnId, null); }, []);
+
+  // ─── Toolbar ───
+
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const mineOnly = assignees.length === 1 && assignees[0] === "ME";
+  // "/" jumps to search, unless you're already typing somewhere.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement;
+      if (e.key !== "/" || e.metaKey || e.ctrlKey || el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName)) return;
+      e.preventDefault();
+      searchRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  const onSearch = (v: string) => {
+    setSearchDraft(v);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => set({ search: v }), 200);
+  };
+  const active = [teams, projects, assignees, priorities, dues].some((l) => l.length > 0) || !!search;
+  const reset = () => {
+    setSearchDraft("");
+    set({ search: null, team: null, project: null, assignee: null, priority: null, due: null });
+  };
+  const columns = showCancelled ? [...COLUMNS, CANCELLED_COLUMN] : COLUMNS;
+  const openCount = filtered.filter((t) => t.status !== "DONE" && t.status !== "CANCELLED").length;
+
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full sm:w-60">
+          <Search className="absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            ref={searchRef}
+            value={searchDraft}
+            onChange={(e) => onSearch(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Escape") { onSearch(""); e.currentTarget.blur(); } }}
+            placeholder="Search or KX-12"
+            className="h-9 pr-7 pl-8 sm:h-8 md:text-sm"
+            aria-label="Search tasks"
           />
-          {isFilterPending && (
-            <Loader2 className="absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-muted-foreground pointer-events-none" />
-          )}
+          <kbd className="pointer-events-none absolute top-1/2 right-2 hidden -translate-y-1/2 rounded border border-border px-1 font-mono text-[10px] text-muted-foreground sm:block">/</kbd>
         </div>
-        
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <div className={cn("flex items-center gap-2 px-3 h-9 rounded-md border border-border/50 bg-background shrink-0 transition-colors", urlAssignee === currentEmployeeId && "border-primary/50 bg-primary/5 text-foreground")}>
-            <Switch 
-              id="my-tasks" 
-              checked={urlAssignee === currentEmployeeId} 
-              onCheckedChange={(checked) => updateUrlFilter("assignee", checked ? currentEmployeeId : "ALL")}
-            />
-            <Label htmlFor="my-tasks" className="text-xs font-medium cursor-pointer">My Tasks</Label>
+
+        {/* Filters: one row that scrolls sideways on phones, wraps on wider screens. */}
+        <div className="-mx-4 flex min-w-0 items-center gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 [&>*]:shrink-0">
+
+        <button
+          type="button"
+          aria-pressed={mineOnly}
+          onClick={() => setList("assignee", mineOnly ? [] : ["ME"])}
+          className={cn("flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-sm transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none", mineOnly ? "border-foreground bg-foreground text-background" : "border-border bg-background hover:bg-muted/60")}
+        >
+          <UserRound className="h-3.5 w-3.5" /> Mine
+        </button>
+
+        <FacetFilter
+          label="Project" plural="projects" icon={<FolderKanban />}
+          selected={projects} onChange={(v) => setList("project", v)}
+          pinned={[{ value: "GENERAL", label: "General", icon: <Inbox className="h-3.5 w-3.5 text-muted-foreground" />, count: counts.project.get("GENERAL") ?? 0 }]}
+          options={allowedProjects.map((p) => ({ value: p.id, label: p.name, count: counts.project.get(p.id) ?? 0 }))}
+        />
+        <FacetFilter
+          label="Assignee" plural="people" icon={<UsersRound />}
+          selected={assignees} onChange={(v) => setList("assignee", v)}
+          pinned={[
+            { value: "ME", label: "Me", icon: <UserRound className="h-3.5 w-3.5 text-muted-foreground" />, count: counts.person.get("ME") ?? 0 },
+            { value: "NONE", label: "Unassigned", icon: <UserX className="h-3.5 w-3.5 text-muted-foreground" />, count: counts.person.get("NONE") ?? 0 },
+          ]}
+          options={allEmployees.map((p) => ({ value: p.id, label: `${p.firstName} ${p.lastName}`, icon: <UserAvatar className="h-4 w-4" user={p} textClassName="text-[7px]" />, count: counts.person.get(p.id) ?? 0 }))}
+        />
+        <FacetFilter
+          label="Priority" plural="priorities" icon={<SignalHigh />} searchable={false}
+          selected={priorities} onChange={(v) => setList("priority", v)}
+          options={TASK_PRIORITIES.map((k) => ({ value: k, label: PRIORITY[k].label, icon: <PriorityIcon priority={k} className="h-3.5 w-3.5" />, count: counts.priority.get(k) ?? 0 }))}
+        />
+        <FacetFilter
+          label="Due" plural="dates" icon={<CalendarClock />} searchable={false}
+          selected={dues} onChange={(v) => setList("due", v)}
+          options={[
+            { value: "OVERDUE", label: "Overdue", icon: <AlertCircle className="h-3.5 w-3.5 text-red-600" />, count: counts.due.get("OVERDUE") ?? 0 },
+            { value: "WEEK", label: "Next 7 days", icon: <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />, count: counts.due.get("WEEK") ?? 0 },
+            { value: "LATER", label: "Later", icon: <CalendarRange className="h-3.5 w-3.5 text-muted-foreground" />, count: counts.due.get("LATER") ?? 0 },
+            { value: "NONE", label: "No due date", icon: <CalendarX className="h-3.5 w-3.5 text-muted-foreground" />, count: counts.due.get("NONE") ?? 0 },
+          ]}
+        />
+        {(allowedTeams.length > 1 || teams.length > 0) && (
+          <FacetFilter
+            label="Team" plural="teams" icon={<Network />}
+            selected={teams} onChange={(v) => setList("team", v)}
+            options={allowedTeams.map((t) => ({ value: t.id, label: t.name, count: counts.team.get(t.id) ?? 0 }))}
+          />
+        )}
+
+        {active && (
+          <Button variant="ghost" size="sm" className="h-8 gap-1 text-muted-foreground" onClick={reset}><X className="h-3.5 w-3.5" /> Clear</Button>
+        )}
+        </div>
+
+        <div className="ml-auto flex items-center gap-2">
+          <span className="hidden text-xs text-muted-foreground tabular-nums lg:inline">{openCount} open · {filtered.length} shown</span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="h-8 gap-1.5">
+                <SlidersHorizontal className="h-3.5 w-3.5" /> Display
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-60 p-1">
+              <DropdownMenuLabel className="text-xs text-muted-foreground">Show on board</DropdownMenuLabel>
+              <label className="flex cursor-pointer items-center justify-between gap-3 rounded-sm px-2 py-1.5 text-sm hover:bg-muted">
+                <span className="flex items-center gap-2"><ListTree className="h-3.5 w-3.5 text-muted-foreground" /> Subtasks as cards</span>
+                <Switch checked={showSubtasks} onCheckedChange={(c) => set({ subtasks: c ? "1" : null })} />
+              </label>
+              <label className="flex cursor-pointer items-center justify-between gap-3 rounded-sm px-2 py-1.5 text-sm hover:bg-muted">
+                <span className="flex items-center gap-2"><Ban className="h-3.5 w-3.5 text-muted-foreground" /> Cancelled tasks</span>
+                <Switch checked={showCancelled} onCheckedChange={(c) => set({ cancelled: c ? "1" : null })} />
+              </label>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <div role="radiogroup" aria-label="Layout" className="flex rounded-md border border-border bg-background p-0.5">
+            {([["board", Columns3, "Board"], ["list", Rows3, "List"]] as const).map(([v, Icon, label]) => (
+              <button key={v} type="button" role="radio" aria-checked={view === v} aria-label={label} title={label} onClick={() => set({ view: v === "board" ? null : v })} className={cn("flex h-6 w-7 items-center justify-center rounded-[5px] focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none", view === v ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground")}>
+                <Icon className="h-3.5 w-3.5" />
+              </button>
+            ))}
           </div>
-
-          <Select value={urlTeam} onValueChange={(v) => updateUrlFilter("team", v)}>
-            <SelectTrigger className={cn("h-9 min-w-[130px] max-w-[160px] text-xs transition-colors", urlTeam !== "ALL" && "border-primary/50 bg-primary/5 text-foreground font-medium")}>
-              <div className="flex items-center gap-1.5 truncate">
-                <Filter className={cn("h-3.5 w-3.5 shrink-0", urlTeam !== "ALL" ? "text-primary" : "text-muted-foreground")} />
-                <SelectValue placeholder="All Teams" />
-              </div>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All Teams</SelectItem>
-              {teams.map((t: any) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-
-          <Select value={urlProject} onValueChange={(v) => updateUrlFilter("project", v)}>
-            <SelectTrigger className={cn("h-9 min-w-[130px] max-w-[160px] text-xs transition-colors", urlProject !== "ALL" && "border-primary/50 bg-primary/5 text-foreground font-medium")}>
-              <div className="flex items-center gap-1.5 truncate">
-                <Filter className={cn("h-3.5 w-3.5 shrink-0", urlProject !== "ALL" ? "text-primary" : "text-muted-foreground")} />
-                <SelectValue placeholder="All Projects" />
-              </div>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All Projects</SelectItem>
-              {projects.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-
-          <Select value={urlAssignee} onValueChange={(v) => updateUrlFilter("assignee", v)}>
-            <SelectTrigger className={cn("h-9 min-w-[130px] max-w-[160px] text-xs transition-colors", urlAssignee !== "ALL" && "border-primary/50 bg-primary/5 text-foreground font-medium")}>
-              <div className="flex items-center gap-1.5 truncate">
-                <Filter className={cn("h-3.5 w-3.5 shrink-0", urlAssignee !== "ALL" ? "text-primary" : "text-muted-foreground")} />
-                <SelectValue placeholder="All Assignees" />
-              </div>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All Assignees</SelectItem>
-              <SelectItem value="UNASSIGNED">Unassigned</SelectItem>
-              {allEmployees.map((e: any) => <SelectItem key={e.id} value={e.id}>{e.firstName} {e.lastName}</SelectItem>)}
-            </SelectContent>
-          </Select>
-
-          {hasActiveFilters && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clearAllFilters}
-              className="h-9 px-2.5 text-xs text-muted-foreground hover:text-foreground gap-1 border border-dashed border-border/60 hover:border-border hover:bg-muted/40"
-            >
-              <X className="h-3 w-3" />
-              <span>Reset</span>
-            </Button>
-          )}
         </div>
       </div>
 
-      {filteredTasks.length === 0 ? (
-        <EmptyState 
-          icon={ClipboardList}
-          title={hasActiveFilters ? "No tasks match your filters" : "No tasks found"}
-          description={hasActiveFilters ? "Try adjusting your search or filters to see more tasks." : "There are no tasks assigned to you or in your active projects yet."}
-          {...(!hasActiveFilters ? { actionLabel: "Create New Task", actionHref: "/tasks/new" } : {
-            actionLabel: "Clear Filters",
-            onAction: clearAllFilters
-          })}
-          className="mt-6 h-[380px]"
-        />
+      {view === "list" ? (
+        <TaskListView tasks={filtered} employees={allEmployees} />
       ) : (
-        <Tabs defaultValue="board" className="flex-1 flex flex-col min-w-0">
-          <TabsList className="shrink-0 w-fit">
-            <TabsTrigger value="board" className="text-xs">Board</TabsTrigger>
-            <TabsTrigger value="list" className="text-xs">List</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="board" className="mt-0 pt-4 flex-1 focus-visible:outline-none">
-            <div className="flex overflow-x-auto pb-4 gap-4 snap-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-              {columns.map(col => {
-                const colTasks = tasksByStatus[col.id] || [];
-                const isDoneCol = col.id === "DONE";
-                const visibleTasks = (isDoneCol && !showAllDone) ? colTasks.slice(0, 8) : colTasks;
-                const isColumnActive = dragOverInfo?.columnId === col.id;
-
-                return (
-                  <div 
-                    key={col.id} 
-                    className={cn(
-                      "flex flex-col rounded-lg p-2.5 border transition-colors min-h-[120px] min-w-[280px] max-w-[280px] snap-center shrink-0",
-                      isColumnActive ? "border-primary/40 bg-muted/20" : "bg-muted/10 border-border/40"
-                    )}
-                    onDragOver={(e) => handleColumnDragOver(e, col.id)}
-                    onDrop={(e) => handleDrop(e, col.id)}
-                  >
-                    <div className="flex items-center justify-between mb-3 px-1">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className={cn("text-[10px]", statusColors[col.id])}>{col.title}</Badge>
-                        <span className="text-[10px] text-muted-foreground font-medium">{colTasks.length}</span>
-                      </div>
+        <div className="-mx-4 flex min-h-0 flex-1 snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-4 px-4 pb-2 sm:-mx-6 sm:scroll-px-6 sm:px-6 sm:pb-4 md:snap-none">
+          {columns.map((col) => {
+            const list = byColumn[col.id] ?? [];
+            const isDone = col.id === "DONE";
+            const visible = isDone && !showAllDone ? list.slice(0, DONE_PREVIEW) : list;
+            const hot = drop?.columnId === col.id;
+            const bar = <div className="h-0.5 rounded-full bg-foreground" />;
+            return (
+              <section
+                key={col.id}
+                aria-label={col.title}
+                onDragOver={(e) => onDragOverColumn(e, col.id)}
+                onDrop={(e) => onDrop(e, col.id)}
+                className={cn("flex min-h-0 w-[85vw] max-w-[320px] shrink-0 snap-start flex-col rounded-xl border transition-colors sm:w-[292px]", hot ? "border-foreground/30 bg-muted" : "border-border/60 bg-muted/50 dark:bg-muted/20")}
+              >
+                <header className="flex items-center gap-2 px-3 pt-3 pb-2">
+                  <StatusIcon status={col.id} className="h-3.5 w-3.5" />
+                  <h2 className="text-xs font-semibold">{col.title}</h2>
+                  <span className="text-xs text-muted-foreground tabular-nums">{list.length}</span>
+                  {col.id === "TODO" && (
+                    <Link href={projects.length === 1 && projects[0] !== "GENERAL" ? `/tasks/new?project=${projects[0]}` : "/tasks/new"} className="ml-auto rounded p-0.5 text-muted-foreground hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none" aria-label="New task">
+                      <Plus className="h-4 w-4" />
+                    </Link>
+                  )}
+                </header>
+                <div className="flex min-h-24 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain px-2 pb-2">
+                  {visible.map((t, i) => (
+                    <div key={t.id} className="flex flex-col gap-2">
+                      {hot && drop.index === i && bar}
+                      <TaskCard task={t} columnId={col.id} index={i} dragging={draggedId === t.id} today={today} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragOverCard={onDragOverCard} onMove={onMoveCard} />
                     </div>
-
-                    <div className="space-y-2 flex-1 pr-1 pb-2 max-h-[calc(100vh-250px)] overflow-y-auto custom-scrollbar min-h-[80px]">
-                      {visibleTasks.map((task, idx) => {
-                        const assignee = task.assignees && task.assignees.length > 0 ? task.assignees[0] : null;
-                        const isDraggingCurrent = draggedTaskId === task.id;
-                        const showInsertionBarBefore = isColumnActive && dragOverInfo.index === idx;
-
-                        return (
-                          <div key={task.id} className="flex flex-col">
-                            {/* Snapping insertion indicator bar before this card */}
-                            {showInsertionBarBefore && (
-                              <div className="py-1 flex items-center justify-center pointer-events-none transition-all duration-150">
-                                <div className="h-1 w-full rounded-full bg-primary ring-2 ring-primary/30 shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
-                              </div>
-                            )}
-
-                            <Card 
-                              draggable
-                              onDragStart={(e) => handleDragStart(e, task.id)}
-                              onDragEnd={handleDragEnd}
-                              onDragOver={(e) => handleCardDragOver(e, col.id, idx)}
-                              onClick={() => router.push(`/tasks/${task.id}`)}
-                              onMouseEnter={() => router.prefetch(`/tasks/${task.id}`)}
-                              className={cn(
-                                "border-border/40 shadow-none hover:border-border transition-all hover:bg-muted/20 cursor-grab active:cursor-grabbing rounded-md select-none",
-                                isDraggingCurrent && "opacity-35 border-dashed scale-[0.98]"
-                              )}
-                            >
-                              <CardContent className="p-2.5 flex flex-col gap-2">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="flex flex-col gap-0.5 min-w-0">
-                                    {task.project?.name && (
-                                      <span className="text-[9px] font-medium text-muted-foreground uppercase tracking-wider truncate">
-                                        {task.project.team?.name ? `${task.project.team.name} › ` : ""}{task.project.name}
-                                      </span>
-                                    )}
-                                    <p className="text-xs font-semibold leading-tight text-foreground">{task.title}</p>
-                                  </div>
-                                  <Avatar className="h-5 w-5 shrink-0 ring-1 ring-border/50">
-                                    {assignee ? (
-                                      <>
-                                        <AvatarImage src={assignee.avatarUrl} />
-                                        <AvatarFallback className="text-[8px] bg-primary/10">{assignee.firstName?.charAt(0)}</AvatarFallback>
-                                      </>
-                                    ) : (
-                                      <AvatarFallback className="text-[8px] bg-muted text-muted-foreground border-dashed">?</AvatarFallback>
-                                    )}
-                                  </Avatar>
-                                </div>
-
-                                <div className="flex items-center justify-between mt-1">
-                                  <div className="flex items-center gap-1.5">
-                                    <div className={cn("h-1.5 w-1.5 rounded-full shrink-0", priorityDots[task.priority] || "bg-muted")} title={`Priority: ${task.priority}`} />
-                                    {task._count?.subtasks > 0 && (
-                                      <span className="text-[9px] font-medium text-muted-foreground flex items-center gap-0.5" title={`${task.subtasks?.length ?? 0} of ${task._count.subtasks} subtasks done`}>
-                                        <ListChecks className="h-2.5 w-2.5" />
-                                        {task.subtasks?.length ?? 0}/{task._count.subtasks}
-                                      </span>
-                                    )}
-                                    {task.dueDate && (() => {
-                                      const date = new Date(task.dueDate);
-                                      const isOverdue = task.status !== "DONE" && !isToday(date) && isPast(endOfDay(date));
-                                      return (
-                                        <span className={cn("text-[9px] font-medium flex items-center gap-1", isOverdue ? "text-red-500/90 font-medium" : "text-muted-foreground")}>
-                                          <Clock className={cn("h-2.5 w-2.5", isOverdue && "text-red-500")} />
-                                          <span>Target: {format(date, "MMM d")}</span>
-                                          {isOverdue && (
-                                            <span className="text-[8px] text-red-600 dark:text-red-400 font-semibold uppercase tracking-wider ml-0.5">
-                                              (Overdue)
-                                            </span>
-                                          )}
-                                        </span>
-                                      );
-                                    })()}
-                                  </div>
-                                  
-                                  {task.labels && task.labels.length > 0 && (
-                                    <div className="flex gap-1 shrink-0">
-                                      {task.labels.slice(0, 1).map((l: string) => (
-                                        <span key={l} className="rounded text-[8px] font-medium bg-accent text-muted-foreground px-1 py-0.5 max-w-[60px] truncate">{l}</span>
-                                      ))}
-                                      {task.labels.length > 1 && <span className="rounded text-[8px] font-medium bg-accent text-muted-foreground px-1 py-0.5">+{task.labels.length - 1}</span>}
-                                    </div>
-                                  )}
-                                </div>
-                              </CardContent>
-                            </Card>
-                          </div>
-                        );
-                      })}
-
-                      {/* Snapping insertion indicator bar at the bottom of the column */}
-                      {isColumnActive && dragOverInfo.index >= visibleTasks.length && (
-                        <div className="py-1 flex items-center justify-center pointer-events-none transition-all duration-150">
-                          <div className="h-1 w-full rounded-full bg-primary ring-2 ring-primary/30 shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
-                        </div>
-                      )}
-
-                      {isDoneCol && colTasks.length > 8 && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="w-full text-[11px] h-7 text-muted-foreground hover:text-foreground mt-1 border border-dashed border-border/50 bg-background/50 hover:bg-background"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowAllDone(prev => !prev);
-                          }}
-                        >
-                          {showAllDone ? "Show recent only" : `Show all completed (+${colTasks.length - 8})`}
-                        </Button>
-                      )}
-
-                      {visibleTasks.length === 0 && (
-                        <div className={cn(
-                          "rounded-lg border border-dashed p-4 text-center transition-colors",
-                          isColumnActive ? "border-primary/60 bg-primary/5 text-primary" : "border-border/50 text-muted-foreground"
-                        )}>
-                          <p className="text-[11px] font-medium">{isColumnActive ? "Drop here" : "No tasks"}</p>
-                        </div>
-                      )}
+                  ))}
+                  {hot && drop.index >= visible.length && visible.length > 0 && bar}
+                  {visible.length === 0 && (
+                    <div className={cn("flex flex-1 items-center justify-center rounded-lg border border-dashed px-3 py-6 text-center text-xs", hot ? "border-foreground/40 text-foreground" : "border-border text-muted-foreground")}>
+                      {hot ? "Drop here" : col.id === "TODO" ? "Nothing to start" : col.id === "DONE" ? "Nothing done yet" : "Empty"}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="list" className="mt-0 pt-4 flex-1 overflow-y-auto focus-visible:outline-none">
-            <div className="border border-border/40 rounded-lg overflow-x-auto bg-background">
-              <Table className="min-w-[1000px]">
-                <TableHeader className="bg-muted/20">
-                  <TableRow>
-                    <TableHead className="min-w-[250px] font-medium text-[11px] uppercase tracking-wider">Task</TableHead>
-                    <TableHead className="min-w-[120px] font-medium text-[11px] uppercase tracking-wider">Status</TableHead>
-                    <TableHead className="min-w-[120px] font-medium text-[11px] uppercase tracking-wider">Priority</TableHead>
-                    <TableHead className="min-w-[150px] font-medium text-[11px] uppercase tracking-wider">Assignee</TableHead>
-                    <TableHead className="min-w-[120px] font-medium text-[11px] uppercase tracking-wider">Due Date</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {listTasks.map(task => {
-                    const assignee = task.assignees && task.assignees.length > 0 ? task.assignees[0] : null;
-                    return (
-                      <TableRow 
-                        key={task.id} 
-                        onClick={() => router.push(`/tasks/${task.id}`)}
-                              onMouseEnter={() => router.prefetch(`/tasks/${task.id}`)}
-                        className="cursor-pointer hover:bg-muted/30"
-                      >
-                        <TableCell>
-                          <div className="min-w-0">
-                            {task.project?.name && (
-                              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider truncate block">
-                                {task.project.team?.name ? `${task.project.team.name} › ` : ""}{task.project.name}
-                              </span>
-                            )}
-                            <p className="text-sm font-medium text-foreground truncate">{task.title}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={cn("text-[10px] shadow-none", statusColors[task.status])}>{task.status.replace("_", " ")}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={cn("text-[10px] shadow-none", priorityColors[task.priority])}>
-                            <div className={cn("w-1.5 h-1.5 rounded-full mr-1.5", priorityDots[task.priority])} />
-                            {task.priority}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {assignee ? (
-                            <div className="flex items-center gap-2">
-                              <Avatar className="h-6 w-6">
-                                <AvatarImage src={assignee.avatarUrl} />
-                                <AvatarFallback className="text-[10px] bg-primary/10">{assignee.firstName?.charAt(0)}</AvatarFallback>
-                              </Avatar>
-                              <span className="text-xs font-medium truncate">{assignee.firstName} {assignee.lastName}</span>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground italic">Unassigned</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {task.dueDate ? (() => {
-                            const date = new Date(task.dueDate);
-                            const isOverdue = task.status !== "DONE" && !isToday(date) && isPast(endOfDay(date));
-                            return (
-                              <div className="flex items-center gap-1.5 text-xs flex-wrap">
-                                <Clock className={cn("h-3.5 w-3.5", isOverdue ? "text-red-500" : "text-muted-foreground")} />
-                                <span className={isOverdue ? "text-red-500/90 font-medium" : "text-muted-foreground"}>
-                                  Target: {format(date, "MMM d, yyyy")}
-                                </span>
-                                {isOverdue && (
-                                  <Badge variant="outline" className="border-red-500/20 bg-red-500/10 text-[9px] text-red-600 dark:text-red-400 py-0 px-1 font-medium">
-                                    Overdue
-                                  </Badge>
-                                )}
-                              </div>
-                            );
-                          })() : <span className="text-xs text-muted-foreground">-</span>}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          </TabsContent>
-        </Tabs>
+                  )}
+                  {isDone && list.length > DONE_PREVIEW && (
+                    <button type="button" onClick={() => setShowAllDone((v) => !v)} className="rounded-md py-1.5 text-xs font-medium text-muted-foreground hover:bg-background hover:text-foreground">
+                      {showAllDone ? "Show fewer" : `Show ${list.length - DONE_PREVIEW} more`}
+                    </button>
+                  )}
+                </div>
+              </section>
+            );
+          })}
+        </div>
       )}
+
+      {filtered.length === 0 && tasks.length > 0 && (
+        <p className="text-center text-sm text-muted-foreground">
+          No tasks match these filters. <button type="button" onClick={reset} className="font-medium text-foreground underline-offset-2 hover:underline">Reset filters</button>
+        </p>
+      )}
+
+      <DoneNoteDialog
+        open={pendingDone !== null}
+        taskTitle={tasks.find((t) => t.id === pendingDone?.taskId)?.title}
+        pending={savingDone}
+        onConfirm={confirmDone}
+        onCancel={() => setPendingDone(null)}
+      />
     </div>
   );
 }

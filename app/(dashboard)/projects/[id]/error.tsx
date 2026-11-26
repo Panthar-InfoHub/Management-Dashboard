@@ -1,4 +1,5 @@
 "use client";
+import { publicMessage } from "@/lib/errors";
 
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -12,13 +13,14 @@ export default function ProjectDetailError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const safeMessage = publicMessage(error) ?? "";
   useEffect(() => {
     console.error("[Project Detail Error]", error);
   }, [error]);
 
   const isForbidden =
-    error.message.includes("FORBIDDEN") ||
-    error.message.includes("Unauthorized");
+    safeMessage.includes("FORBIDDEN") ||
+    safeMessage.includes("Unauthorized");
 
   return (
     <div className="flex flex-col items-center justify-center gap-4 p-12 text-center">

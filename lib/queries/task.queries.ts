@@ -1,133 +1,107 @@
+import { UserError } from "@/lib/errors";
 import { db } from "@/lib/db";
-import { getCurrentEmployee, checkPermission } from "@/lib/auth";
+import { type AuthEmployee, getCurrentEmployee, checkPermission } from "@/lib/auth";
 
-export async function getKanbanTasks(filters?: { team?: string, project?: string, assignee?: string, search?: string }, skip = 0, take = 100) {
+export type TaskFilters = {
+  team?: string;
+  project?: string;
+  assignee?: string;
+  search?: string;
+  /** "1": show subtasks as their own cards too. */
+  subtasks?: string;
+  /** "1": include cancelled tasks. */
+  cancelled?: string;
+};
+
+/** Project filter value for General tasks (no project). */
+export const GENERAL_FILTER = "GENERAL";
+
+const personSelect = { id: true, firstName: true, lastName: true, avatarUrl: true } as const;
+
+const boardSelect = {
+  id: true, title: true, status: true, priority: true, order: true, dueDate: true, number: true, projectId: true,
+  parentId: true, ownerId: true, updatedAt: true, completedAt: true,
+  assignees: { select: personSelect },
+  owner: { select: personSelect },
+  project: { select: { id: true, name: true, key: true, team: { select: { id: true, name: true } } } },
+  parent: { select: { id: true, title: true, number: true } },
+  // Subtask progress for the card ("2/5"); cancelled ones don't count.
+  subtasks: { where: { status: { not: "CANCELLED" } }, select: { id: true, status: true } },
+  _count: { select: { comments: true } },
+} as const;
+
+/**
+ * Everything the board needs in one go, so every filter runs in the browser
+ * with no round trip: all open tasks and subtasks, plus the latest Done and
+ * Cancelled ones (older closed work lives in the list and search).
+ */
+export async function getKanbanTasks(_filters?: TaskFilters) {
   const employee = await getCurrentEmployee();
-
   const canViewAll = await checkPermission("task:update");
-  
-  // For the Kanban board, fetch tasks the user has access to. Admins see all tasks.
-  const accessClause = canViewAll ? {} : {
+
+  // Admins and people with task:update see everything. Others see their
+  // projects' tasks, and tasks they're assigned to or created (this is how
+  // General tasks stay private to the people on them).
+  const access = canViewAll ? {} : {
     OR: [
       { project: { members: { some: { employeeId: employee.id } } } },
-      { assignees: { some: { id: employee.id } } }
-    ]
+      { assignees: { some: { id: employee.id } } },
+      { creatorId: employee.id },
+    ],
   };
 
-  const AND: any[] = [];
-  if (Object.keys(accessClause).length > 0) AND.push(accessClause);
-
-  if (filters?.team && filters.team !== "ALL") {
-    AND.push({ project: { teamId: filters.team } });
-  }
-  if (filters?.project && filters.project !== "ALL") {
-    AND.push({ projectId: filters.project });
-  }
-  if (filters?.assignee && filters.assignee !== "ALL") {
-    if (filters.assignee === "UNASSIGNED") {
-      AND.push({ assignees: { none: {} } });
-    } else {
-      AND.push({ assignees: { some: { id: filters.assignee } } });
-    }
-  }
-  if (filters?.search) {
-    AND.push({ title: { contains: filters.search, mode: "insensitive" } });
-  }
-
-  const whereClause = AND.length > 0 ? { AND } : {};
-
-  const tasks = await db.task.findMany({
-    where: whereClause,
-    skip,
-    take,
-    include: {
-      assignees: {
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          avatarUrl: true,
-        }
-      },
-      project: {
-        select: {
-          id: true,
-          name: true,
-          team: { select: { id: true, name: true } }
-        }
-      },
-      // Subtask progress for the card ("2/5"): total count + ids of done ones.
-      _count: { select: { subtasks: true } },
-      subtasks: { where: { status: "DONE" }, select: { id: true } },
-    },
-    orderBy: [
-      { order: "asc" },
-      { updatedAt: "desc" }
-    ]
-  });
-
-  return tasks;
+  const [open, done, cancelled] = await Promise.all([
+    db.task.findMany({ where: { ...access, status: { in: ["TODO", "IN_PROGRESS", "REVIEW", "TESTING"] } }, select: boardSelect, orderBy: [{ order: "asc" }, { updatedAt: "desc" }] }),
+    db.task.findMany({ where: { ...access, status: "DONE" }, select: boardSelect, orderBy: { completedAt: { sort: "desc", nulls: "last" } }, take: 60 }),
+    db.task.findMany({ where: { ...access, status: "CANCELLED" }, select: boardSelect, orderBy: { updatedAt: "desc" }, take: 30 }),
+  ]);
+  return [...open, ...done, ...cancelled];
 }
 
-export async function getTaskById(taskId: string, callerEmployee?: any, canUpdate?: boolean) {
-  const employee = callerEmployee ?? (await getCurrentEmployee());
+export type BoardTask = Awaited<ReturnType<typeof getKanbanTasks>>[number];
 
-  const task = await db.task.findUnique({
+/** Everything the task page shows, in one query. No access check: use canViewTask. */
+export async function loadTaskDetail(taskId: string) {
+  return db.task.findUnique({
     where: { id: taskId },
     include: {
       project: {
-        include: { 
-          team: true, 
-          members: {
-            include: {
-              employee: {
-                select: { id: true, firstName: true, lastName: true, avatarUrl: true }
-              }
-            }
-          } 
-        }
-      },
-      assignees: {
-        select: { id: true, firstName: true, lastName: true, avatarUrl: true }
-      },
-      creator: {
-        select: { id: true, firstName: true, lastName: true, avatarUrl: true }
-      },
-      subtasks: {
         select: {
-          id: true, title: true, status: true, priority: true, dueDate: true, parentId: true,
-          assignees: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
+          id: true, name: true, key: true, leadId: true,
+          team: { select: { id: true, name: true } },
+          members: { select: { employeeId: true } },
         },
-        orderBy: { createdAt: "asc" },
       },
+      assignees: { select: personSelect },
+      owner: { select: personSelect },
+      parent: { select: { id: true, title: true, number: true, dueDate: true, project: { select: { key: true } } } },
+      creator: { select: personSelect },
       comments: {
-        select: {
-          id: true, content: true, createdAt: true, editedAt: true,
-          author: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
-        },
+        select: { id: true, content: true, createdAt: true, editedAt: true, author: { select: personSelect } },
         orderBy: { createdAt: "asc" },
         take: 200,
       },
-      blockedBy: {
-        select: { id: true, title: true, status: true }
-      }
-    }
+      blockedBy: { select: { id: true, title: true, status: true, number: true, projectId: true } },
+    },
   });
+}
 
+export type TaskDetail = NonNullable<Awaited<ReturnType<typeof loadTaskDetail>>>;
+
+/** Who may open a task: anyone with task:update, or the assignees, project members and creator. */
+export function canViewTask(task: TaskDetail, employeeId: string, canViewAll: boolean) {
+  return canViewAll
+    || task.creatorId === employeeId
+    || task.assignees.some((a) => a.id === employeeId)
+    || (task.project?.members.some((m) => m.employeeId === employeeId) ?? false);
+}
+
+export async function getTaskById(taskId: string, callerEmployee?: AuthEmployee, canUpdate?: boolean) {
+  const employee = callerEmployee ?? (await getCurrentEmployee());
+  const task = await loadTaskDetail(taskId);
   if (!task) return null;
-
   const canViewAll = canUpdate !== undefined ? canUpdate : await checkPermission("task:update");
-
-  if (!canViewAll) {
-    const isAssignee = task.assignees?.some(a => a.id === employee.id);
-    const isProjectMember = task.project?.members?.some(m => m.employeeId === employee.id);
-    const isCreator = task.creatorId === employee.id;
-    
-    if (!isAssignee && !isProjectMember && !isCreator) {
-      throw new Error("FORBIDDEN: Requires higher permission level");
-    }
-  }
-
+  if (!canViewTask(task, employee.id, canViewAll)) throw new UserError("FORBIDDEN: Requires higher permission level");
   return task;
 }
 
@@ -160,14 +134,42 @@ export async function getTaskFilterDropdowns() {
   return { projects, teams, employees };
 }
 
-/** Every nested subtask in a project, for rendering a task's subtask tree. */
-export async function getProjectSubtaskTree(projectId: string) {
+/** A task's subtasks (one level). */
+export async function getSubtasks(taskId: string) {
   return db.task.findMany({
-    where: { projectId, parentId: { not: null } },
+    where: { parentId: taskId },
     select: {
-      id: true, title: true, status: true, priority: true, dueDate: true, parentId: true,
+      id: true, title: true, status: true, priority: true, dueDate: true, parentId: true, number: true, ownerId: true,
       assignees: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
     },
     orderBy: { createdAt: "asc" },
   });
+}
+
+const myTaskSelect = {
+  id: true, title: true, status: true, priority: true, dueDate: true, number: true, projectId: true, ownerId: true,
+  project: { select: { id: true, name: true, key: true } },
+  parent: { select: { id: true, title: true } },
+  owner: { select: personSelect },
+} as const;
+
+/** Open tasks and subtasks assigned to you, and tasks waiting for your review as a lead. */
+export async function getMyTasks() {
+  const me = await getCurrentEmployee();
+  const open = { notIn: ["DONE", "CANCELLED"] as ("DONE" | "CANCELLED")[] };
+  const [assigned, toReview] = await Promise.all([
+    db.task.findMany({
+      where: { assignees: { some: { id: me.id } }, status: open },
+      select: myTaskSelect,
+      orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { updatedAt: "desc" }],
+      take: 300,
+    }),
+    db.task.findMany({
+      where: { status: "REVIEW", project: { OR: [{ leadId: me.id }, { team: { leadId: me.id } }] } },
+      select: myTaskSelect,
+      orderBy: { updatedAt: "asc" },
+      take: 100,
+    }),
+  ]);
+  return { meId: me.id, assigned, toReview };
 }

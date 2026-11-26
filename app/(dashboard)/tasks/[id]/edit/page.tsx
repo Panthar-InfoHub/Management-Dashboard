@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { getAssignableIdsByProject } from "@/lib/tasks/assignees";
+import { getAssignableIdsByProject, getGeneralAssignable, getOutsideAllowed } from "@/lib/tasks/assignees";
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { NewTaskForm } from "@/components/tasks/new-task-form";
 import { notFound } from "next/navigation";
@@ -23,10 +23,11 @@ export default async function EditTaskPage({ params }: { params: Promise<{ id: s
   }
 
   // Permission check: Only users with global task:update or the creator can modify core details
-  const canEditGlobal = await checkPermission("task:update");
+  // For this project, so project and team leads can edit too.
+  const canEditGlobal = await checkPermission("task:update", task.projectId ?? undefined);
   const isCreator = task.creatorId === employee.id;
-  const isAssignee = task.assignees.some((a: any) => a.id === employee.id);
-  const isProjectMember = task.project?.members.some((m: any) => m.employeeId === employee.id);
+  const isAssignee = task.assignees.some((a) => a.id === employee.id);
+  const isProjectMember = task.project?.members.some((m) => m.employeeId === employee.id);
 
   if (!canEditGlobal && !isProjectMember && !isAssignee) {
     // If they don't have global edit and are NO LONGER part of the project/task, they lose all access
@@ -37,7 +38,7 @@ export default async function EditTaskPage({ params }: { params: Promise<{ id: s
     notFound();
   }
 
-  const projectWhereClause = employee.role === "ADMIN" || employee.role === "MANAGER" ? {
+  const projectWhereClause = (await checkPermission("project:update")) ? {
     status: { not: "COMPLETED" as const }
   } : {
     status: { not: "COMPLETED" as const },
@@ -53,11 +54,18 @@ export default async function EditTaskPage({ params }: { params: Promise<{ id: s
     }),
     db.employee.findMany({
       where: { status: "ACTIVE" },
-      select: { id: true, firstName: true, lastName: true },
+      select: { id: true, firstName: true, lastName: true, avatarUrl: true },
       orderBy: { firstName: "asc" }
     })
   ]);
-  const assignableByProject = await getAssignableIdsByProject(projects.map((p) => p.id));
+  // Keep the task's own project in the list even if it's completed.
+  if (task.project && !projects.some((p) => p.id === task.projectId)) projects.unshift({ id: task.project.id, name: task.project.name });
+  const [assignableByProject, general, outsideAllowed] = await Promise.all([
+    getAssignableIdsByProject(projects.map((p) => p.id)),
+    getGeneralAssignable(),
+    getOutsideAllowed(projects.map((p) => p.id)),
+  ]);
+  assignableByProject.GENERAL = general.map((e) => e.id);
 
-  return <NewTaskForm projects={projects} employees={employees} assignableByProject={assignableByProject} initialData={task} canAssign={canEditGlobal} />;
+  return <NewTaskForm projects={projects} employees={employees} assignableByProject={assignableByProject} outsideAllowed={outsideAllowed} initialData={task} canAssign={canEditGlobal} />;
 }

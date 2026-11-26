@@ -1,23 +1,80 @@
 "use client";
+import type { getEmployeeById } from "@/lib/queries/employee.queries";
+import type { Jsonify } from "@/lib/types";
+import { DatePicker } from "@/components/ui/date-picker";
+import { errorMessage } from "@/lib/errors";
+
+import { PromoteDialog } from "@/components/employees/promote-dialog";
+import { OffboardDialog } from "@/components/employees/offboard-dialog";
+import type { OffboardingChecklist } from "@/lib/employees/offboarding";
+
+const LEDGER_LABELS: Record<string, string> = {
+  JOINED: "Joined", PROMOTION: "Promotion", TRANSFER: "Transfer", TITLE_CHANGE: "Title change", REHIRED: "Rehired", EXITED: "Left",
+};
+
+import { ACCESS_ROLES, EMPLOYMENT_TYPE_LABELS, ROLE_LABELS, type AccessRole, type EmploymentTypeValue } from "@/lib/access";
+import { EmployeeAccessPanel, type PresetOption } from "@/components/employees/employee-access-panel";
 
 import { useState, useTransition } from "react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar, Mail, Building2, Shield, Pencil, UserMinus, ArrowUpRight, Copy } from "lucide-react";
+import { Pencil, Copy } from "lucide-react";
+import Link from "next/link";
+import { Panel } from "@/components/ui/panel";
 import { toast } from "sonner";
 import { 
   updateEmployeeAction, 
   generateEmployeeCodeAction, 
   reserveEmployeeSequenceAction,
-  transitionRoleAction,
-  offboardEmployeeAction
 } from "@/lib/actions/employee.actions";
+
+const STATUS: Record<string, { label: string; dot: string }> = {
+  ACTIVE: { label: "Active", dot: "bg-emerald-500" },
+  ON_LEAVE: { label: "On Leave", dot: "bg-amber-500" },
+  INACTIVE: { label: "Inactive", dot: "bg-muted-foreground" },
+};
+
+function tenure(join: string | Date, now: number) {
+  const months = Math.max(0, Math.floor((now - new Date(join).getTime()) / (30.44 * 86_400_000)));
+  if (months < 1) return "New";
+  const y = Math.floor(months / 12), m = months % 12;
+  return [y && `${y}y`, m && `${m}m`].filter(Boolean).join(" ");
+}
+
+function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <dt className="shrink-0 text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 text-right">{children}</dd>
+    </div>
+  );
+}
+
+function CodeRow({ label, code, canGenerate, disabled, onCopy, onGenerate }: {
+  label: string; code: string | null; canGenerate: boolean; disabled: boolean; onCopy: (t: string) => void; onGenerate: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      {code ? (
+        <span className="flex items-center gap-1">
+          <span className="font-mono text-xs">{code}</span>
+          <button type="button" onClick={() => onCopy(code)} aria-label={`Copy ${label} code`} className="rounded p-0.5 text-muted-foreground hover:text-foreground">
+            <Copy className="h-3 w-3" />
+          </button>
+        </span>
+      ) : canGenerate ? (
+        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={onGenerate} disabled={disabled}>Generate</Button>
+      ) : (
+        <span className="text-xs text-muted-foreground">Not generated</span>
+      )}
+    </div>
+  );
+}
 
 const formatDate = (dateString: string | Date) => {
   if (!dateString) return '';
@@ -28,46 +85,58 @@ const formatDate = (dateString: string | Date) => {
   return `${day} ${month} ${year}`;
 };
 
-export function EmployeeProfileClient({ employee, availableRoles, isAdmin, isManager }: { employee: any, availableRoles: string[], isAdmin: boolean, isManager: boolean }) {
+export function EmployeeProfileClient({
+  employee,
+  canEdit = false,
+  canAssignRoles = false,
+  canOffboard = false,
+  access = null,
+  teams = [],
+  checklist = null,
+  leave = null,
+  canSetFlexibleWfh = false,
+}: {
+  employee: Jsonify<NonNullable<Awaited<ReturnType<typeof getEmployeeById>>>>;
+  canEdit?: boolean;
+  canAssignRoles?: boolean;
+  canOffboard?: boolean;
+  access?: { presets: PresetOption[]; assignedPresetIds: string[]; personalPermissions: string[] } | null;
+  teams?: { id: string; name: string }[];
+  checklist?: OffboardingChecklist | null;
+  /** Leave balance block, rendered by the page when the viewer may see it. */
+  leave?: React.ReactNode;
+  /** Admins editing someone else may let them work from home without a request. */
+  canSetFlexibleWfh?: boolean;
+}) {
   const [isPending, startTransition] = useTransition();
+  const [now] = useState(() => Date.now());
 
   // Modals state
   const [editOpen, setEditOpen] = useState(false);
-  const [editingEmp, setEditingEmp] = useState({ role: employee.role, designation: employee.designation || "", joinDate: employee.joinDate ? new Date(employee.joinDate).toISOString().split("T")[0] : "" });
+  const [editingEmp, setEditingEmp] = useState({
+    role: employee.role as AccessRole,
+    employmentType: (employee.employmentType ?? "FULL_TIME") as EmploymentTypeValue,
+    designation: employee.designation || "",
+    joinDate: employee.joinDate ? new Date(employee.joinDate).toISOString().split("T")[0] : "",
+    flexibleWfh: !!employee.flexibleWfh,
+  });
 
-  const [promoteOpen, setPromoteOpen] = useState(false);
-  const [promoteData, setPromoteData] = useState({ newRole: availableRoles[0] || "EMPLOYEE", newDesignation: "", startDate: new Date().toISOString().split("T")[0], reason: "Promotion/Transition" });
 
-  const [offboardOpen, setOffboardOpen] = useState(false);
-  const [offboardData, setOffboardData] = useState({ endDate: new Date().toISOString().split("T")[0], reason: "Offboarding" });
 
   const [codeType, setCodeType] = useState<"PANTHAR" | "KAVACHX" | null>(null);
   const [reservedSeq, setReservedSeq] = useState<number | null>(null);
 
   const handleUpdate = () => {
     startTransition(() => {
-      updateEmployeeAction(employee.id, editingEmp).then(() => {
+      const { role, flexibleWfh, ...rest } = editingEmp;
+      updateEmployeeAction(employee.id, {
+        ...rest,
+        ...(canAssignRoles && { role }),
+        ...(canSetFlexibleWfh && { flexibleWfh }),
+      }).then(() => {
         setEditOpen(false);
         toast.success("Profile updated");
-      }).catch((e: any) => toast.error(e.message));
-    });
-  };
-
-  const handlePromote = () => {
-    startTransition(() => {
-      transitionRoleAction(employee.id, promoteData).then(() => {
-        setPromoteOpen(false);
-        toast.success("Role transitioned successfully");
-      }).catch((e: any) => toast.error(e.message));
-    });
-  };
-
-  const handleOffboard = () => {
-    startTransition(() => {
-      offboardEmployeeAction(employee.id, offboardData).then(() => {
-        setOffboardOpen(false);
-        toast.success("Employee offboarded successfully");
-      }).catch((e: any) => toast.error(e.message));
+      }).catch((e) => toast.error(errorMessage(e)));
     });
   };
 
@@ -77,7 +146,7 @@ export function EmployeeProfileClient({ employee, availableRoles, isAdmin, isMan
     startTransition(() => {
       reserveEmployeeSequenceAction(type).then((seq) => {
         setReservedSeq(seq);
-      }).catch((e: any) => toast.error(e.message));
+      }).catch((e) => toast.error(errorMessage(e)));
     });
   };
 
@@ -91,149 +160,152 @@ export function EmployeeProfileClient({ employee, availableRoles, isAdmin, isMan
       generateEmployeeCodeAction(employee.id, codeType, joinDateStr).then(() => {
         setCodeType(null);
         setReservedSeq(null);
-        toast.success("Code generated!");
-      }).catch((e: any) => toast.error(e.message));
+        toast.success("Code generated");
+      }).catch((e) => toast.error(errorMessage(e)));
     });
   };
 
   const copy = (text: string) => {
     navigator.clipboard.writeText(text);
-    toast.success("Copied to clipboard");
+    toast.success("Copied");
   };
 
+  const memberships = (employee.teamMemberships ?? []) as { team: { id: string; name: string; leadId: string | null } }[];
+  const records = (employee.employmentRecords ?? []) as { id: string; designation: string | null; type: string | null; startDate: string; endDate: string | null; reason: string | null }[];
+  const status = STATUS[employee.status as string] ?? STATUS.INACTIVE;
+  const role = ROLE_LABELS[employee.role as AccessRole] ?? employee.role;
+  const fullAccess = employee.role === "ADMIN" || employee.role === "SUPER_ADMIN";
+
   return (
-    <div className="space-y-10 animate-in fade-in duration-300 pb-20">
-      {/* Header Profile Section - Flatter */}
-      <div className="relative">
-        <div className="h-40 bg-gradient-to-r from-muted/50 to-muted/20 rounded-xl border border-border/40 relative">
-          <div className="absolute -bottom-12 left-8">
-            <Avatar className="h-28 w-28 border-4 border-background bg-background shadow-sm">
-              <AvatarImage src={employee.avatarUrl} />
-              <AvatarFallback className="text-3xl">{employee.firstName[0]}{employee.lastName[0]}</AvatarFallback>
-            </Avatar>
-            {employee.status === "ACTIVE" && (
-              <span className="absolute bottom-2 right-2 block h-5 w-5 rounded-full bg-emerald-500 ring-4 ring-background" />
-            )}
-            {employee.status === "INACTIVE" && (
-              <span className="absolute bottom-2 right-2 block h-5 w-5 rounded-full bg-red-500 ring-4 ring-background" />
-            )}
-          </div>
-        </div>
-        
-        <div className="pt-16 pb-6 px-8 flex flex-col sm:flex-row justify-between gap-6 items-start">
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight">{employee.firstName} {employee.lastName}</h2>
-            <p className="text-muted-foreground font-medium">{employee.designation || "No Designation"}</p>
-            
-            <div className="mt-4 flex flex-wrap gap-4 text-sm text-muted-foreground">
-              <div className="flex items-center gap-1.5"><Mail className="h-4 w-4" /> {employee.email}</div>
-              {employee.phone && <div className="flex items-center gap-1.5"><Building2 className="h-4 w-4" /> {employee.phone}</div>}
-              <div className="flex items-center gap-1.5"><Calendar className="h-4 w-4" /> Joined {formatDate(employee.joinDate)}</div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-4">
+          <UserAvatar className="h-16 w-16 shrink-0" user={employee} textClassName="text-xl" />
+          <div className="min-w-0">
+            <h1 className="truncate text-2xl font-semibold tracking-tight">{employee.firstName} {employee.lastName}</h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">{[employee.designation || "No designation", role].join(" · ")}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              <span className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-background px-2 py-0.5 font-medium">
+                <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} /> {status.label}
+              </span>
+              <span className="rounded-md border border-border/70 bg-background px-2 py-0.5 text-muted-foreground">
+                {EMPLOYMENT_TYPE_LABELS[(employee.employmentType ?? "FULL_TIME") as EmploymentTypeValue]}
+              </span>
+              {employee.flexibleWfh && (
+                <span className="rounded-md border border-border/70 bg-background px-2 py-0.5 text-muted-foreground" title="Works from home without requests">Flexible WFH</span>
+              )}
             </div>
           </div>
-          
-          <div className="flex flex-col gap-2 min-w-[140px]">
-            <Badge variant="outline" className="w-fit self-start sm:self-end text-xs px-2.5 py-0.5">
-              {employee.role}
-            </Badge>
-            <Badge variant="secondary" className="w-fit self-start sm:self-end text-xs px-2.5 py-0.5 mt-1">
-              {employee.status}
-            </Badge>
-          </div>
         </div>
-        
-        {/* Actions Bar - Flat style */}
-        <div className="px-8 flex flex-wrap gap-3">
-          <Button variant="outline" onClick={() => setEditOpen(true)} className="gap-2 bg-background">
-            <Pencil className="h-4 w-4" /> Edit Profile
-          </Button>
-          {employee.status === "ACTIVE" && (
-            <>
-              <Button variant="outline" onClick={() => setPromoteOpen(true)} className="gap-2 border-primary/30 text-primary hover:bg-primary/5 bg-background">
-                <ArrowUpRight className="h-4 w-4" /> Promote / Transition
-              </Button>
-              <Button variant="outline" onClick={() => setOffboardOpen(true)} className="gap-2 border-amber-500/30 text-amber-600 hover:bg-amber-500/5 bg-background">
-                <UserMinus className="h-4 w-4" /> Offboard
-              </Button>
-            </>
+        <div className="flex flex-wrap gap-2">
+          {canEdit && (
+            <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-1.5">
+              <Pencil className="h-3.5 w-3.5" /> Edit Profile
+            </Button>
+          )}
+          {employee.status === "ACTIVE" && canEdit && (
+            <PromoteDialog
+              employee={{
+                ...employee,
+                teamIds: memberships.map((m) => m.team.id),
+                ledTeamIds: memberships.filter((m) => m.team.leadId === employee.id).map((m) => m.team.id),
+              }}
+              teams={teams}
+              canAssignRoles={canAssignRoles}
+            />
+          )}
+          {employee.status === "ACTIVE" && canOffboard && checklist && (
+            <OffboardDialog employeeId={employee.id} name={employee.firstName} checklist={checklist} />
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 px-2">
-        {/* Employee Codes - Flat design */}
-        <div className="space-y-6">
-          <div className="flex items-center gap-2 border-b border-border/40 pb-2">
-            <Shield className="h-5 w-5 text-primary" /> 
-            <h3 className="text-lg font-semibold tracking-tight">System Identifiers</h3>
-          </div>
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/20">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Panthar Code</p>
-                {employee.pantharCode ? (
-                  <div className="flex items-center gap-2">
-                    <p className="font-mono font-medium">{employee.pantharCode}</p>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => copy(employee.pantharCode)}><Copy className="h-3 w-3" /></Button>
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground italic">Not generated</p>
-                )}
-              </div>
-              {!employee.pantharCode && (
-                <Button variant="secondary" size="sm" onClick={() => handleStartGenerating("PANTHAR")} disabled={isPending}>
-                  Generate
-                </Button>
-              )}
-            </div>
-            
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/20">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">KavachX Code</p>
-                {employee.kavachXCode ? (
-                  <div className="flex items-center gap-2">
-                    <p className="font-mono font-medium">{employee.kavachXCode}</p>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => copy(employee.kavachXCode)}><Copy className="h-3 w-3" /></Button>
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground italic">Not generated</p>
-                )}
-              </div>
-              {!employee.kavachXCode && (
-                <Button variant="secondary" size="sm" onClick={() => handleStartGenerating("KAVACHX")} disabled={isPending}>
-                  Generate
-                </Button>
-              )}
-            </div>
-          </div>
-
-        {/* Employment Ledger - Flat design */}
-        <div className="space-y-6">
-          <div className="flex items-center gap-2 border-b border-border/40 pb-2">
-            <Calendar className="h-5 w-5 text-primary" /> 
-            <h3 className="text-lg font-semibold tracking-tight">Employment Ledger</h3>
-          </div>
-          
-          <div className="relative pl-6 before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-px before:bg-border/60 space-y-6">
-              {employee.employmentRecords?.map((record: any, index: number) => (
-                <div key={record.id} className="relative group">
-                  <div className="absolute -left-6 top-1.5 flex items-center justify-center w-3 h-3 rounded-full bg-primary/20 border border-primary shadow z-10" />
-                  <div className="bg-muted/10 p-4 rounded-xl border border-border/40 hover:border-primary/30 hover:bg-primary/5 transition-all">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-semibold text-sm">{record.designation || "Employee"}</span>
-                      <span className="text-[10px] text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded whitespace-nowrap">
-                        {formatDate(record.startDate)} - {record.endDate ? formatDate(record.endDate) : 'Present'}
-                      </span>
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Main column */}
+        <div className="space-y-6 lg:col-span-2">
+          <Panel title="Employment History" description="Roles, promotions and transfers, newest first">
+            {records.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No records yet.</p>
+            ) : (
+              <ol className="relative space-y-5 border-l border-border/70 pl-5">
+                {records.map((r, i) => (
+                  <li key={r.id} className="relative">
+                    <span className={`absolute -left-[25px] top-1.5 h-2 w-2 rounded-full ring-4 ring-card ${i === 0 && !r.endDate ? "bg-foreground" : "bg-border"}`} />
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
+                      <p className="text-sm font-medium">
+                        {r.designation || "Employee"}
+                        {r.type && <span className="ml-2 text-xs font-normal text-muted-foreground">{LEDGER_LABELS[r.type] ?? r.type}</span>}
+                      </p>
+                      <p className="text-xs tabular-nums text-muted-foreground">
+                        {formatDate(r.startDate)} – {r.endDate ? formatDate(r.endDate) : "Present"}
+                      </p>
                     </div>
-                    {record.reason && (
-                      <p className="text-[10px] text-muted-foreground/70 mt-1 italic">Reason: {record.reason}</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {employee.employmentRecords?.length === 0 && (
-                <div className="text-sm text-muted-foreground p-4">No records found.</div>
-              )}
+                    {r.reason && <p className="mt-0.5 text-xs text-muted-foreground">{r.reason}</p>}
+                  </li>
+                ))}
+              </ol>
+            )}
+          </Panel>
+          {leave}
+        </div>
+
+        {/* Sidebar */}
+        <div className="space-y-6">
+          <Panel title="Details">
+            <dl className="space-y-3 text-sm">
+              <Fact label="Email">
+                <span className="flex min-w-0 items-center gap-1">
+                  <span className="truncate">{employee.email}</span>
+                  <button type="button" onClick={() => copy(employee.email)} aria-label="Copy email" className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground">
+                    <Copy className="h-3 w-3" />
+                  </button>
+                </span>
+              </Fact>
+              {employee.phone && <Fact label="Phone">{employee.phone}</Fact>}
+              <Fact label="Joined">
+                {formatDate(employee.joinDate)}
+                <span className="ml-1.5 text-xs text-muted-foreground">{tenure(employee.joinDate, now)}</span>
+              </Fact>
+              <Fact label="Access">{role}</Fact>
+              <Fact label="Teams">
+                {memberships.length === 0 ? (
+                  <span className="text-muted-foreground">None yet</span>
+                ) : (
+                  <span className="flex flex-wrap justify-end gap-1">
+                    {memberships.map((m) => (
+                      <Link key={m.team.id} href={`/teams/${m.team.id}`} className="rounded-md border border-border/70 px-1.5 py-0.5 text-xs hover:bg-muted">
+                        {m.team.name}{m.team.leadId === employee.id ? " · Lead" : ""}
+                      </Link>
+                    ))}
+                  </span>
+                )}
+              </Fact>
+            </dl>
+          </Panel>
+
+          <Panel title="Employee Codes">
+            <div className="space-y-3">
+              <CodeRow label="Panthar" code={employee.pantharCode} canGenerate={canEdit} disabled={isPending} onCopy={copy} onGenerate={() => handleStartGenerating("PANTHAR")} />
+              <CodeRow label="KavachX" code={employee.kavachXCode} canGenerate={canEdit} disabled={isPending} onCopy={copy} onGenerate={() => handleStartGenerating("KAVACHX")} />
             </div>
+          </Panel>
+
+          {access ? (
+            <Panel title="Permissions" description="Company-wide access beyond their own work">
+              <EmployeeAccessPanel
+                employeeId={employee.id}
+                employeeName={employee.firstName}
+                presets={access.presets}
+                assignedPresetIds={access.assignedPresetIds}
+                personalPermissions={access.personalPermissions}
+              />
+            </Panel>
+          ) : fullAccess ? (
+            <Panel title="Permissions">
+              <p className="text-sm text-muted-foreground">{role}s have every permission.</p>
+            </Panel>
+          ) : null}
         </div>
       </div>
 
@@ -248,80 +320,42 @@ export function EmployeeProfileClient({ employee, availableRoles, isAdmin, isMan
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-muted-foreground">Date of Joining</label>
-              <Input type="date" value={editingEmp.joinDate} onChange={e => setEditingEmp({...editingEmp, joinDate: e.target.value})} />
+              <DatePicker value={editingEmp.joinDate} onChange={(v) => setEditingEmp({ ...editingEmp, joinDate: v })} aria-label="Date of joining" />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">Role (Note: Use Promote to track history)</label>
-              <Select value={editingEmp.role} onValueChange={(v) => setEditingEmp({...editingEmp, role: v})}>
+              <label className="text-xs font-semibold text-muted-foreground">Employment Type</label>
+              <Select value={editingEmp.employmentType} onValueChange={(v) => setEditingEmp({...editingEmp, employmentType: v as EmploymentTypeValue})}>
                 <SelectTrigger><SelectValue/></SelectTrigger>
                 <SelectContent>
-                  {availableRoles.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                  {(Object.keys(EMPLOYMENT_TYPE_LABELS) as EmploymentTypeValue[]).map(t => <SelectItem key={t} value={t}>{EMPLOYMENT_TYPE_LABELS[t]}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-            <Button className="w-full" onClick={handleUpdate} disabled={isPending}>{isPending ? "Saving..." : "Save Changes"}</Button>
+            {canAssignRoles && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Access Role</label>
+                <Select value={editingEmp.role} onValueChange={(v) => setEditingEmp({...editingEmp, role: v as AccessRole})}>
+                  <SelectTrigger><SelectValue/></SelectTrigger>
+                  <SelectContent>
+                    {ACCESS_ROLES.map(r => <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {canSetFlexibleWfh && (
+              <label className="flex items-start gap-3 rounded-lg border border-border/70 px-3 py-2.5">
+                <Switch checked={editingEmp.flexibleWfh} onCheckedChange={(v) => setEditingEmp({ ...editingEmp, flexibleWfh: v })} className="mt-0.5" />
+                <span className="text-sm">
+                  <span className="font-medium">Can work from home without asking</span>
+                  <span className="block text-xs text-muted-foreground">Clock in from anywhere: at the office it records Present, elsewhere WFH. No WFH requests needed. They&apos;re notified, and it&apos;s in the Audit log.</span>
+                </span>
+              </label>
+            )}
+            <Button className="w-full" onClick={handleUpdate} disabled={isPending}>{isPending ? "Saving…" : "Save Changes"}</Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Promote Modal */}
-      <Dialog open={promoteOpen} onOpenChange={setPromoteOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Promote / Transition Role</DialogTitle></DialogHeader>
-          <div className="space-y-4 pt-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">New Role</label>
-              <Select value={promoteData.newRole} onValueChange={(v) => setPromoteData({...promoteData, newRole: v})}>
-                <SelectTrigger><SelectValue/></SelectTrigger>
-                <SelectContent>
-                  {availableRoles.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">New Designation</label>
-              <Input value={promoteData.newDesignation} onChange={e => setPromoteData({...promoteData, newDesignation: e.target.value})} placeholder="e.g. Senior Employee" />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">Effective Start Date</label>
-              <Input type="date" value={promoteData.startDate} onChange={e => setPromoteData({...promoteData, startDate: e.target.value})} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">Reason / Notes</label>
-              <Input value={promoteData.reason} onChange={e => setPromoteData({...promoteData, reason: e.target.value})} />
-            </div>
-            <Button className="w-full" onClick={handlePromote} disabled={isPending}>{isPending ? "Transitioning..." : "Confirm Transition"}</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Offboard Dialog */}
-      <AlertDialog open={offboardOpen} onOpenChange={setOffboardOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Offboard Employee</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will suspend their login access, remove them from active teams, and mark them INACTIVE. Their historical data and tasks will be preserved.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">Effective End Date</label>
-              <Input type="date" value={offboardData.endDate} onChange={e => setOffboardData({...offboardData, endDate: e.target.value})} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">Reason</label>
-              <Input value={offboardData.reason} onChange={e => setOffboardData({...offboardData, reason: e.target.value})} placeholder="e.g. Resigned, End of Internship" />
-            </div>
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleOffboard} disabled={isPending} className="bg-amber-600 text-white hover:bg-amber-700">
-              {isPending ? "Offboarding..." : "Confirm Offboard"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Generate Code Dialog */}
       <Dialog open={codeType !== null} onOpenChange={(v) => !v && setCodeType(null)}>
@@ -336,9 +370,9 @@ export function EmployeeProfileClient({ employee, availableRoles, isAdmin, isMan
               </div>
             ) : (
                <div className="space-y-4">
-                 <div className="bg-primary/5 text-primary text-sm p-4 rounded-md font-medium tracking-wide border border-primary/20 flex flex-col gap-1">
+                 <div className="flex flex-col gap-1 rounded-lg border border-border/70 bg-muted/40 p-4 text-sm font-medium">
                    <span className="text-xs text-muted-foreground uppercase">Generated Preview</span>
-                   <span className="font-bold text-xl">
+                   <span className="font-mono text-xl font-semibold">
                      {codeType === "PANTHAR" ? "PTHUB" : "KAVACHX"}-
                      {String(new Date(employee.joinDate).getDate()).padStart(2, "0")}
                      {String(new Date(employee.joinDate).getMonth() + 1).padStart(2, "0")}
@@ -347,7 +381,7 @@ export function EmployeeProfileClient({ employee, availableRoles, isAdmin, isMan
                    </span>
                  </div>
                  <Button onClick={handleGenerateCode} disabled={isPending} className="w-full">
-                   {isPending ? "Saving..." : "Confirm & Save"}
+                   {isPending ? "Saving…" : "Save Code"}
                  </Button>
                </div>
             )}

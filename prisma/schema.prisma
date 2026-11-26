@@ -14,6 +14,20 @@ datasource db {
 // ENUMS
 // ─────────────────────────────────────────────
 
+/// Access level only. Job titles live in `designation`; what someone leads
+/// (team, project) and their presets/personal grants add scoped powers.
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  MEMBER
+}
+
+enum EmploymentType {
+  FULL_TIME
+  INTERN
+  CONTRACT
+}
+
 enum EmployeeStatus {
   ACTIVE
   ON_LEAVE
@@ -21,12 +35,13 @@ enum EmployeeStatus {
 }
 
 enum TaskStatus {
-  BACKLOG
+  BACKLOG // legacy: moved to TODO, no longer used
   TODO
   IN_PROGRESS
   REVIEW
   TESTING
   DONE
+  CANCELLED // off the board; kept with a reason instead of deleting
 }
 
 enum TaskPriority {
@@ -51,6 +66,8 @@ enum ProjectStatus {
 // CORE MODELS
 // ─────────────────────────────────────────────
 
+/// Legacy: role permission lists from before roles became the `Role` enum.
+/// No longer read by the app; kept until a later release drops it.
 model SystemRole {
   name        String   @id // e.g. "ADMIN", "MANAGER", "EMPLOYEE", "INTERN"
   permissions String[]
@@ -68,7 +85,10 @@ model Employee {
   firstName   String
   lastName    String
   avatarUrl   String?
-  role        String         @default("EMPLOYEE")
+  role           Role           @default(MEMBER)
+  employmentType EmploymentType @default(FULL_TIME)
+  /// Can work from home without a request: clock-in at the office records Present, anywhere else WFH.
+  flexibleWfh    Boolean        @default(false)
   status      EmployeeStatus @default(ACTIVE)
   designation String?        // e.g. "Senior Frontend Engineer"
   phone       String?
@@ -79,12 +99,16 @@ model Employee {
   kavachXCode String?        @unique
 
   // ── Team relation ──
+  /// Legacy single-team column, no longer used by the app (kept so nothing is dropped).
+  /// Teams come only from teamMemberships; a person can be in none or many.
   teamId      String?
   team        Team?          @relation("TeamMembers", fields: [teamId], references: [id])
+  teamMemberships TeamMembership[]
   leadOfTeams Team[]         @relation("TeamLead")
 
   // ── Task relations ──
   assignedTasks Task[] @relation("TaskAssignees")
+  ownedTasks    Task[] @relation("TaskOwner")
   createdTasks  Task[] @relation("TaskCreator")
 
   // ── Project relations ──
@@ -97,12 +121,23 @@ model Employee {
   // ── Comments & audit ──
   comments  Comment[]
   auditLogs AuditLog[]
+  announcements Announcement[]
 
   // ── Employment Records ──
   employmentRecords EmploymentRecord[]
 
   // ── Per-user permission overrides ──
   employeePermissions EmployeePermission[]
+  accessPresets       EmployeeAccessPreset[]
+
+  // ── Attendance & leave ──
+  officeId          String?            // null = the default office
+  office            Office?            @relation(fields: [officeId], references: [id])
+  attendance        Attendance[]
+  attendanceEvents  AttendanceEvent[]
+  leaveBalances     LeaveBalance[]
+  requests          Request[]          @relation("RequestEmployee")
+  decidedRequests   Request[]          @relation("RequestDecider")
   
   exitDate DateTime? // Null means currently active
 
@@ -124,7 +159,10 @@ model Team {
 
   leadId  String
   lead    Employee @relation("TeamLead", fields: [leadId], references: [id])
+  /// Legacy relation for Employee.teamId; unused. Use memberships.
   members Employee[] @relation("TeamMembers")
+  /// Everyone in the team (a person can be in several teams).
+  memberships TeamMembership[]
 
   projects Project[]
 
@@ -141,6 +179,8 @@ model Project {
   status      ProjectStatus @default(PLANNING)
   priority    TaskPriority  @default(MEDIUM)
   progress    Int           @default(0) // 0–100
+  key         String?       @unique // short code for task IDs, e.g. "JNV" → JNV-24
+  taskCounter Int           @default(0) // last task number used
 
   startDate DateTime?
   endDate   DateTime?
@@ -178,7 +218,8 @@ model Task {
   id             String       @id @default(cuid())
   title          String
   description    String?
-  status         TaskStatus   @default(BACKLOG)
+  status         TaskStatus   @default(TODO)
+  number         Int?         // per-project number: shown as "<project key>-<number>" 
   priority       TaskPriority @default(MEDIUM)
   order          Float        @default(0)
   storyPoints    Int?
@@ -188,12 +229,19 @@ model Task {
   dueDate        DateTime?
   completedAt    DateTime?
   completionNote String?      // required to move to DONE
-  prLink         String?      // required to move to DONE
-  blockers       String?
+  prLink         String?      // legacy, hidden
+  blockers       String?      // legacy, hidden
+  cancelledAt    DateTime?
+  cancelReason   String?
 
-  projectId  String
-  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  // Null for General tasks (ID "GEN-n"): seen only by their creator, assignees,
+  // admins and people with task:update.
+  projectId  String?
+  project    Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   assignees  Employee[] @relation("TaskAssignees")
+  // The one person accountable; always also an assignee.
+  ownerId    String?
+  owner      Employee? @relation("TaskOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   
   // Subtask hierarchy
   parentId   String?
@@ -221,6 +269,8 @@ model Task {
   @@index([updatedAt])
   @@index([status])
   @@index([status, dueDate])
+  @@index([ownerId])
+  @@unique([projectId, number])
 }
 
 model Comment {
@@ -263,12 +313,26 @@ model Notification {
   @@index([isRead])
 }
 
+/// What an employment-ledger entry records.
+enum EmploymentEvent {
+  JOINED
+  PROMOTION
+  TRANSFER
+  TITLE_CHANGE
+  REHIRED
+  EXITED
+}
+
 model EmploymentRecord {
   id          String    @id @default(cuid())
   employeeId  String
   employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   
   designation String?   // e.g., "Frontend Intern", "Senior Developer"
+  /// Null on entries written before event types existed.
+  type        EmploymentEvent?
+  teamId      String?   // team at the time of the entry
+  changedById String?   // who recorded it
   
   startDate   DateTime  @default(now())
   endDate     DateTime? // Null means currently active role
@@ -319,4 +383,287 @@ model AuditLog {
   @@index([entity, entityId, createdAt])
   @@index([actorId, createdAt])
   @@index([createdAt])
+}
+
+// ── Access presets ──
+// A named, editable list of permissions (e.g. "HR"). Admins assign presets to
+// people; editing a preset changes access for everyone who has it.
+model AccessPreset {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  permissions String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members EmployeeAccessPreset[]
+}
+
+model EmployeeAccessPreset {
+  employeeId String
+  employee   Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  presetId   String
+  preset     AccessPreset @relation(fields: [presetId], references: [id], onDelete: Cascade)
+  grantedBy  String
+  grantedAt  DateTime     @default(now())
+
+  @@id([employeeId, presetId])
+  @@index([presetId])
+}
+
+// ─────────────────────────────────────────────
+// ATTENDANCE & LEAVE
+// Dates are calendar days in the office timezone (`@db.Date`); clock times are
+// UTC timestamps. Super Admins are not tracked.
+// ─────────────────────────────────────────────
+
+/// What a weekday or a calendar day is by default.
+enum DayKind {
+  OFFICE
+  WFH
+  OFF
+  HOLIDAY
+}
+
+/// What happens to a clock-in after the office's late cut-off.
+enum LateOutcome {
+  HALF_DAY
+  LATE
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  HALF_DAY
+  ABSENT
+  ON_LEAVE
+  WFH
+  HOLIDAY
+  WEEKLY_OFF
+}
+
+enum AttendanceEventType {
+  CHECK_IN
+  CHECK_OUT
+  ADMIN_FIX
+  REVIEW
+}
+
+enum RequestKind {
+  LEAVE
+  WFH
+  ATTENDANCE_FIX
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum HalfDayPart {
+  FIRST_HALF
+  SECOND_HALF
+}
+
+model Office {
+  id           String      @id @default(cuid())
+  name         String
+  address      String?
+  latitude     Float
+  longitude    Float
+  radiusMeters Int         @default(100)
+  timezone     String      @default("Asia/Kolkata")
+  workStart    String      @default("10:00") // HH:mm office hours, office time
+  workEnd      String      @default("19:00")
+  lateAfter    String      @default("11:00") // clock-in after this is late
+  /// Unused (an "earliest clock-in" rule was tried and removed). Kept so nothing is dropped.
+  earliestClockIn String?
+  lateOutcome  LateOutcome @default(HALF_DAY)
+  /// Fewer worked minutes than this on an office day = Half Day. Null = off.
+  minFullDayMinutes Int?
+  /// Kind of each weekday, Sunday first (7 values).
+  weekPattern  DayKind[]
+  isDefault    Boolean     @default(false)
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  employees    Employee[]
+  calendarDays CalendarDay[]
+  attendance   Attendance[]
+}
+
+/// A dated exception to the week pattern: a holiday, or e.g. a Saturday that
+/// is an office day. officeId null = every office.
+model CalendarDay {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  kind        DayKind
+  name        String?
+  officeId    String?
+  office      Office?  @relation(fields: [officeId], references: [id], onDelete: Cascade)
+  createdById String
+  createdAt   DateTime @default(now())
+
+  @@unique([date, officeId])
+  @@index([date])
+}
+
+model Attendance {
+  id             String           @id @default(cuid())
+  employeeId     String
+  employee       Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  officeId       String?
+  office         Office?          @relation(fields: [officeId], references: [id])
+  date           DateTime         @db.Date
+  status         AttendanceStatus
+  dayKind        DayKind          @default(OFFICE) // what the day was when recorded
+
+  checkInAt      DateTime?
+  checkOutAt     DateTime?
+  workMinutes    Int?
+  checkInLocation  Json?          // { lat, lng, accuracy, distanceMeters, inside }
+  checkOutLocation Json?
+
+  isLate          Boolean         @default(false)
+  /// No clock-out by midnight: the day closed without hours.
+  missedCheckout  Boolean         @default(false)
+  /// Clocked out before office end; how many minutes early.
+  leftEarly       Boolean         @default(false)
+  earlyMinutes    Int?
+  /// Minutes after office end (every worked minute on an off day or holiday).
+  overtimeMinutes Int?
+  /// Clocked in from outside the office while a WFH request for the day was still pending.
+  /// Approving it confirms WFH; rejecting it makes the day Absent.
+  awaitingWfh     Boolean         @default(false)
+  /// An approver excused the late arrival (kept for the record; isLate is cleared).
+  lateExcused     Boolean         @default(false)
+  /// Late half day waiting for an approver to confirm or excuse it.
+  reviewStatus   RequestStatus?
+  reviewedById   String?
+  reviewedAt     DateTime?
+  note           String?
+
+  events         AttendanceEvent[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([employeeId, date])
+  @@index([date, status])
+}
+
+model AttendanceEvent {
+  id           String              @id @default(cuid())
+  attendanceId String
+  attendance   Attendance          @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  employeeId   String
+  employee     Employee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type         AttendanceEventType
+  at           DateTime
+  location     Json?
+  actorId      String?             // who did it, when not the employee
+  note         String?
+  createdAt    DateTime            @default(now())
+
+  @@index([attendanceId])
+  @@index([employeeId, at])
+}
+
+model LeaveType {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  /// Days per year; null = no limit (e.g. Unpaid).
+  yearlyDays   Float?
+  isPaid       Boolean  @default(true)
+  isActive     Boolean  @default(true)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  balances     LeaveBalance[]
+  requests     Request[]
+}
+
+model LeaveBalance {
+  id          String    @id @default(cuid())
+  employeeId  String
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveTypeId String
+  leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+  year        Int
+  allowed     Float     @default(0)
+  adjusted    Float     @default(0) // manual +/- by HR
+  used        Float     @default(0)
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([employeeId, leaveTypeId, year])
+  @@index([leaveTypeId, year])
+}
+
+model Request {
+  id           String         @id @default(cuid())
+  employeeId   String
+  employee     Employee       @relation("RequestEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  kind         RequestKind
+  leaveTypeId  String?
+  leaveType    LeaveType?     @relation(fields: [leaveTypeId], references: [id])
+  startDate    DateTime       @db.Date
+  endDate      DateTime       @db.Date
+  halfDay      HalfDayPart?
+  days         Float          @default(0) // working days counted against the balance
+  reason       String
+  status       RequestStatus  @default(PENDING)
+  decidedById  String?
+  decidedBy    Employee?      @relation("RequestDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt    DateTime?
+  decisionNote String?
+  /// The approver excused lateness on the request's days, including clock-ins after approval.
+  excuseLate   Boolean        @default(false)
+  /// ATTENDANCE_FIX only: the corrected times, and where they worked (OFFICE or WFH).
+  workMode     DayKind?
+  fixCheckIn   DateTime?
+  fixCheckOut  DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([status, createdAt])
+  @@index([employeeId, startDate])
+}
+
+// ── Team membership ──
+// A person can be in no team or several; all memberships are equal.
+model TeamMembership {
+  teamId     String
+  team       Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  joinedAt   DateTime @default(now())
+
+  @@id([teamId, employeeId])
+  @@index([employeeId])
+}
+
+// ── Announcements ──
+// Posts shown on the dashboard. teamIds empty = everyone; otherwise only those teams.
+model Announcement {
+  id        String    @id @default(cuid())
+  title     String
+  body      String
+  authorId  String
+  author    Employee  @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  teamIds   String[]
+  pinned    Boolean   @default(false)
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([createdAt])
+}
+
+/// Counters for task IDs that don't belong to a project ("GEN" → GEN-1, GEN-2…).
+model TaskSequence {
+  key  String @id
+  last Int    @default(0)
 }

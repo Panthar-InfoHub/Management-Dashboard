@@ -1,12 +1,13 @@
 "use client";
+import { errorMessage } from "@/lib/errors";
 
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Shield, ShieldAlert, ShieldCheck, Check } from "lucide-react";
-import { grantPermissionAction, revokePermissionAction } from "@/lib/actions/permission.actions";
+import { Shield, ShieldCheck } from "lucide-react";
+import { grantProjectPermissionAction as grantPermissionAction, revokeProjectPermissionAction as revokePermissionAction } from "@/lib/actions/access.actions";
 
 // The subset of permissions that make sense to scope to a project
 const PROJECT_SCOPED_PERMS = [
@@ -20,8 +21,8 @@ interface MemberPermissionsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projectId: string;
-  member: any; // ProjectMember with nested employee
-  delegatedPerms: any[]; // List of permissions for this project
+  member: { employeeId: string; employee?: { firstName: string } | null } | null;
+  delegatedPerms: { employeeId: string; permission: string }[];
 }
 
 export function MemberPermissionsDialog({ 
@@ -34,19 +35,20 @@ export function MemberPermissionsDialog({
   const [isPending, startTransition] = useTransition();
 
   // Find permissions that belong to this member
-  const memberPerms = delegatedPerms.filter(p => p.employeeId === member.employeeId);
+  const employeeId = member?.employeeId ?? "";
+  const memberPerms = delegatedPerms.filter(p => p.employeeId === employeeId);
   const activePermIds = memberPerms.map(p => p.permission);
 
   const togglePermission = (permission: string) => {
     startTransition(() => {
       if (activePermIds.includes(permission)) {
-        revokePermissionAction({ employeeId: member.employeeId, permission, projectId })
+        revokePermissionAction({ employeeId, permission, projectId })
           .then(() => toast.success(`Revoked ${permission}`))
-          .catch((e: any) => toast.error(e.message));
+          .catch((e) => toast.error(errorMessage(e)));
       } else {
-        grantPermissionAction({ employeeId: member.employeeId, permission, projectId })
+        grantPermissionAction({ employeeId, permission, projectId })
           .then(() => toast.success(`Granted ${permission}`))
-          .catch((e: any) => toast.error(e.message));
+          .catch((e) => toast.error(errorMessage(e)));
       }
     });
   };

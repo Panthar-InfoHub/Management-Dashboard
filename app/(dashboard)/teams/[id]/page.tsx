@@ -1,4 +1,4 @@
-import { getTeamById } from "@/lib/queries/team.queries";
+import { getTeamById, getTeamRecentTasks } from "@/lib/queries/team.queries";
 import { getEmployees } from "@/lib/queries/employee.queries";
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -7,21 +7,19 @@ import { TeamDetailClient } from "@/components/teams/team-detail-client";
 
 export default async function TeamDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [team, allEmployees, employee, canUpdateGlobal, canDelete, tasks] = await Promise.all([
+  // Read the signed-in user first: that makes this a request-time render, so the clock below is allowed.
+  const employee = await getCurrentEmployee();
+  const now = new Date();
+  const open = { notIn: ["DONE", "CANCELLED"] as ("DONE" | "CANCELLED")[] };
+  const [team, allEmployees, canUpdateGlobal, canDelete, tasks, openCount, overdueCount, doneWeek] = await Promise.all([
     getTeamById(id),
     getEmployees(),
-    getCurrentEmployee(),
     checkPermission("team:update"),
     checkPermission("team:delete"),
-    db.task.findMany({
-      where: { project: { teamId: id } },
-      include: {
-        assignees: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
-        project: { select: { name: true, id: true } }
-      },
-      orderBy: { updatedAt: "desc" },
-      take: 20
-    })
+    getTeamRecentTasks(id),
+    db.task.count({ where: { project: { teamId: id }, status: open } }),
+    db.task.count({ where: { project: { teamId: id }, status: open, dueDate: { lt: now } } }),
+    db.task.count({ where: { project: { teamId: id }, status: "DONE", completedAt: { gte: new Date(now.getTime() - 7 * 86400000) } } }),
   ]);
   const canEdit = canUpdateGlobal || team?.leadId === employee.id;
 
@@ -35,5 +33,6 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
     tasks={JSON.parse(JSON.stringify(tasks))}
     canEdit={canEdit}
     canDelete={canDelete}
+    stats={{ open: openCount, overdue: overdueCount, doneWeek }}
   />;
 }

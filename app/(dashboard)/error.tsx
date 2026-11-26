@@ -1,4 +1,5 @@
 "use client";
+import { publicMessage } from "@/lib/errors";
 
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ export default function DashboardError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const safeMessage = publicMessage(error) ?? "";
   useEffect(() => {
     console.error("[Dashboard Error Boundary Caught]:", error);
   }, [error]);
@@ -21,12 +23,10 @@ export default function DashboardError({
         <AlertCircle className="h-6 w-6 text-red-500" />
       </div>
       <h2 className="text-lg font-semibold text-foreground mb-1">
-        Unable to load dashboard data
+        This page didn&apos;t load
       </h2>
       <p className="text-sm text-muted-foreground max-w-md mb-6">
-        {error.message && !error.message.includes("digest")
-          ? error.message
-          : "An unexpected error occurred while loading this section. Please try again."}
+        {safeMessage || "Something went wrong on our side. Try again in a moment."}
       </p>
       <Button onClick={() => reset()} variant="outline" size="sm" className="gap-2 text-xs">
         <RefreshCw className="h-3.5 w-3.5" />

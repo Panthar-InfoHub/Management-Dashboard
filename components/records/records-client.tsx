@@ -1,13 +1,22 @@
 "use client";
+import type { Prisma } from "@/lib/generated/prisma";
+import type { Jsonify } from "@/lib/types";
+
+type RecordRow = Jsonify<Prisma.EmploymentRecordGetPayload<{
+  include: { employee: { select: { id: true; firstName: true; lastName: true; avatarUrl: true; email: true } } };
+}>>;
+
+const LEDGER_LABELS: Record<string, string> = {
+  JOINED: "Joined", PROMOTION: "Promotion", TRANSFER: "Transfer", TITLE_CHANGE: "Title change", REHIRED: "Rehired", EXITED: "Left",
+};
 
 import { useState } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import { cn } from "@/lib/utils";
 
 // Role colors removed as we don't display role anymore
 
@@ -20,7 +29,7 @@ const formatDate = (dateString: string | Date) => {
   return `${day} ${month} ${year}`;
 };
 
-export function RecordsClient({ records }: { records: any[] }) {
+export function RecordsClient({ records }: { records: RecordRow[] }) {
   const [searchQuery, setSearchQuery] = useState("");
 
   const filtered = records.filter(r => 
@@ -66,10 +75,7 @@ export function RecordsClient({ records }: { records: any[] }) {
                 <TableRow key={record.id} className="hover:bg-muted/30">
                   <TableCell>
                     <Link href={`/employees/${record.employeeId}`} className="flex items-center gap-3 min-w-0 group cursor-pointer">
-                      <Avatar className="h-9 w-9 border border-border/40 group-hover:border-primary/50 transition-colors">
-                        <AvatarImage src={record.employee.avatarUrl} />
-                        <AvatarFallback className="bg-primary/5 text-sm font-medium">{record.employee.firstName[0]}{record.employee.lastName[0]}</AvatarFallback>
-                      </Avatar>
+                      <UserAvatar className="h-9 w-9 border border-border/40 group-hover:border-primary/50 transition-colors" user={record.employee} textClassName="text-sm" />
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors truncate">
                           {record.employee.firstName} {record.employee.lastName}
@@ -79,7 +85,10 @@ export function RecordsClient({ records }: { records: any[] }) {
                     </Link>
                   </TableCell>
                   <TableCell>
-                    <span className="text-sm font-medium">{record.designation || "Employee"}</span>
+                    <span className="flex items-center gap-2 text-sm font-medium">
+                      {record.designation || "Employee"}
+                      {record.type && <span className="rounded border border-border/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{LEDGER_LABELS[record.type] ?? record.type}</span>}
+                    </span>
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col gap-1 text-xs text-muted-foreground whitespace-nowrap">
@@ -88,7 +97,7 @@ export function RecordsClient({ records }: { records: any[] }) {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <span className="text-xs text-foreground truncate max-w-[150px] block" title={record.reason}>
+                    <span className="text-xs text-foreground truncate max-w-[150px] block" title={record.reason ?? undefined}>
                       {record.reason || "—"}
                     </span>
                   </TableCell>

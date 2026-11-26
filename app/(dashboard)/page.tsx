@@ -1,156 +1,213 @@
-import { OverviewBlocks } from "@/components/dashboard/overview-blocks";
-import { PriorityPanels } from "@/components/dashboard/priority-panels";
-import { ProjectsSummary } from "@/components/dashboard/projects-summary";
-import { DashboardHeaderActions } from "@/components/dashboard/dashboard-header-actions";
-import { getCurrentEmployee } from "@/lib/auth";
-import {
-  getDashboardOverview, getTaskRadar, getAttentionProjects, getDashboardProjectsSummary, getDashboardChartsData, getCompletionTrend,
-} from "@/lib/queries/dashboard.queries";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Suspense } from "react";
+import Link from "next/link";
 import dynamic from "next/dynamic";
-import { DashboardBodySkeleton } from "./dashboard-skeleton";
+import { Plus } from "lucide-react";
+import { getCurrentEmployee, type AuthEmployee } from "@/lib/auth";
+import { tracksAttendance } from "@/lib/access";
+import { getMyToday, getTodayBoard } from "@/lib/attendance/queries";
+import { minutesOfDay } from "@/lib/attendance/calendar";
+import { getAnnouncements } from "@/lib/queries/announcement.queries";
+import {
+  getAttentionTasks, getKpis, getPendingApprovals, getProjectHealth, getStageBreakdown, getThroughput, getWorkload, isOrgView,
+} from "@/lib/queries/dashboard.queries";
+import { Button } from "@/components/ui/button";
+import { Panel, PageHeader } from "@/components/ui/panel";
+import { Skeleton } from "@/components/ui/skeleton";
+import { BlockBoundary } from "@/components/ui/block-boundary";
+import { ClockCard } from "@/components/attendance/clock-card";
+import { AnnouncementCard } from "@/components/announcements/announcement-card";
+import { KpiStrip } from "@/components/dashboard/kpi-strip";
+import { AttentionList, ProjectHealthList, StageBreakdown, StatList, WorkloadBars } from "@/components/dashboard/dashboard-blocks";
 
-// recharts is a large client-only dependency used exclusively by this section;
-// splitting it into its own chunk keeps it out of the initial dashboard bundle.
-const DashboardCharts = dynamic(() =>
-  import("@/components/dashboard/dashboard-charts").then((mod) => mod.DashboardCharts)
-);
+// recharts is only needed for the throughput chart; keep it in its own chunk.
+const ThroughputPanel = dynamic(() => import("@/components/dashboard/throughput-chart").then((m) => m.ThroughputPanel), {
+  loading: () => <Skeleton className="h-[392px] w-full rounded-xl lg:col-span-2" />,
+});
 
-function PriorityPanelsSkeleton() {
+const TZ = "Asia/Kolkata";
+
+// ─── Skeletons sized like the real blocks, so nothing jumps when data lands ───
+
+function PanelSkeleton({ rows = 4, className }: { rows?: number; className?: string }) {
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      {[1, 2].map((i) => (
-        <div key={i} className="rounded-xl border border-border/40 bg-card shadow-sm">
-          <div className="space-y-2 border-b border-border/40 p-5">
-            <Skeleton className="h-4 w-32" />
-          </div>
-          <div className="space-y-3 p-4">
-            {[1, 2, 3].map((j) => (
-              <div key={j} className="flex items-center gap-3">
-                <Skeleton className="h-2 w-2 rounded-full" />
-                <div className="w-full space-y-1.5">
-                  <Skeleton className="h-3 w-2/3" />
-                  <Skeleton className="h-2.5 w-1/3" />
-                </div>
-                <Skeleton className="h-4 w-14 shrink-0" />
-              </div>
-            ))}
-          </div>
+    <div className={`rounded-xl border border-border/70 bg-card p-5 ${className ?? ""}`}>
+      <Skeleton className="mb-4 h-4 w-32" />
+      <div className="space-y-3">{Array.from({ length: rows }, (_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
+    </div>
+  );
+}
+
+function KpiSkeleton() {
+  return (
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      {Array.from({ length: 5 }, (_, i) => (
+        <div key={i} className="space-y-2 rounded-xl border border-border/70 bg-card p-4">
+          <Skeleton className="h-3 w-20" /><Skeleton className="h-8 w-14" /><Skeleton className="h-3 w-24" />
         </div>
       ))}
     </div>
   );
 }
 
-function ChartsSkeleton() {
+// ─── Blocks: each fetches its own data and streams in on its own ───
+
+async function Kpis({ employee }: { employee: AuthEmployee }) {
+  return <KpiStrip k={await getKpis(employee)} />;
+}
+
+async function Throughput({ employee }: { employee: AuthEmployee }) {
+  const [{ weekly, daily }, org] = await Promise.all([getThroughput(employee), isOrgView(employee)]);
+  return <ThroughputPanel weekly={weekly} daily={daily} scope={org ? "All tasks" : "Your tasks"} />;
+}
+
+async function Stages({ employee }: { employee: AuthEmployee }) {
+  const [stages, approvals] = await Promise.all([getStageBreakdown(employee), getPendingApprovals(employee)]);
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      <div className="h-[320px] space-y-4 rounded-xl border border-border/40 bg-card p-4 shadow-sm lg:col-span-2">
-        <div className="flex items-center gap-2">
-          <Skeleton className="h-9 w-9 rounded-xl" />
-          <Skeleton className="h-4 w-32" />
-        </div>
-        <Skeleton className="h-[240px] w-full rounded-md" />
-      </div>
-      <div className="h-[320px] space-y-4 rounded-xl border border-border/40 bg-card p-4 shadow-sm">
-        <div className="flex items-center gap-2">
-          <Skeleton className="h-9 w-9 rounded-xl" />
-          <Skeleton className="h-4 w-28" />
-        </div>
-        <Skeleton className="h-[240px] w-full rounded-md" />
-      </div>
+    <div className="flex flex-col gap-4">
+      <Panel title="Open Work by Stage" action={{ href: "/tasks", label: "Board" }}>
+        <StageBreakdown stages={stages} />
+      </Panel>
+      {approvals && (
+        <Panel title="Waiting for Your Approval" action={{ href: "/approvals", label: "Open" }} bodyClassName="pb-1">
+          <StatList items={[
+            { label: "Leave requests", value: approvals.leave, href: "/approvals" },
+            { label: "Work from home", value: approvals.wfh, href: "/approvals" },
+            { label: "Attendance fixes", value: approvals.fixes, href: "/approvals" },
+          ]} />
+        </Panel>
+      )}
     </div>
   );
 }
 
-function ProjectsSummarySkeleton() {
+async function Attention({ employee }: { employee: AuthEmployee }) {
+  const tasks = await getAttentionTasks(employee);
   return (
-    <div className="space-y-4 rounded-xl border border-border/40 bg-card p-4 shadow-sm">
-      <Skeleton className="h-5 w-40" />
-      <div className="space-y-3">
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="space-y-2 rounded-lg border border-border/40 p-3">
-            <div className="flex items-center justify-between">
-              <Skeleton className="h-3.5 w-1/3" />
-              <Skeleton className="h-5 w-5 rounded-full" />
-            </div>
-            <Skeleton className="h-1.5 w-full rounded-full" />
-          </div>
-        ))}
-      </div>
-    </div>
+    <Panel title="Needs Attention" description="Overdue or due in the next 7 days" action={{ href: "/tasks?view=list&due=OVERDUE,WEEK", label: "All" }}>
+      <AttentionList tasks={tasks} />
+    </Panel>
   );
 }
 
-async function DashboardPriorityPanels({ employee, isAdmin }: { employee: any, isAdmin: boolean }) {
-  const [taskRadar, attentionProjects] = await Promise.all([
-    getTaskRadar(employee),
-    getAttentionProjects(employee)
-  ]);
-  return <PriorityPanels isAdmin={isAdmin} taskRadar={taskRadar} attentionProjects={attentionProjects} />;
+async function Health({ employee }: { employee: AuthEmployee }) {
+  const projects = await getProjectHealth(employee);
+  return (
+    <Panel title="Project Health" description="Most urgent first" action={{ href: "/projects", label: "Projects" }}>
+      <ProjectHealthList projects={projects} />
+    </Panel>
+  );
 }
 
-async function DashboardChartsSection({ employee }: { employee: any }) {
-  const [chartData, completionTrend] = await Promise.all([
-    getDashboardChartsData(employee),
-    getCompletionTrend(employee)
-  ]);
-  if (!chartData) return null;
-  return <DashboardCharts chartData={chartData} completionTrend={completionTrend} />;
+async function Workload({ employee }: { employee: AuthEmployee }) {
+  const rows = await getWorkload(employee);
+  if (!rows) return null;
+  return (
+    <Panel title="Workload by Owner" description="Open tasks each person owns">
+      <WorkloadBars rows={rows} />
+    </Panel>
+  );
 }
 
-async function DashboardProjectsSummary({ employee }: { employee: any }) {
-  const projectsSummary = await getDashboardProjectsSummary(employee);
-  return <ProjectsSummary projects={projectsSummary} />;
+async function TeamToday({ employee }: { employee: AuthEmployee }) {
+  if (!(await isOrgView(employee))) return null;
+  const board = await getTodayBoard(employee);
+  if (!board) return null;
+  const rows = board.rows;
+  type Row = (typeof rows)[number];
+  const count = (fn: (r: Row) => boolean) => rows.filter(fn).length;
+  const working = (r: Row) => !["WEEKLY_OFF", "HOLIDAY"].includes(r.status ?? "");
+  return (
+    <Panel title="Team Today" description={board.scope} action={{ href: "/attendance/today", label: "Details" }} bodyClassName="pb-1">
+      <StatList items={[
+        { label: "Clocked in", value: count((r) => !!r.checkIn) },
+        { label: "Working from home", value: count((r) => r.status === "WFH") },
+        { label: "Late", value: count((r) => r.isLate) },
+        { label: "On leave", value: count((r) => r.status === "ON_LEAVE" || !!r.leave) },
+        { label: "Not clocked in yet", value: count((r) => working(r) && !r.checkIn && r.status !== "ON_LEAVE" && !r.leave), tone: "critical" },
+      ]} />
+    </Panel>
+  );
 }
 
-async function DashboardHeaderAsync() {
+async function Announcements({ employee }: { employee: AuthEmployee }) {
+  const posts = await getAnnouncements(employee, { limit: 2 });
+  if (posts.length === 0) return null;
+  return (
+    <Panel title="Announcements" action={{ href: "/announcements", label: "All" }}>
+      <div className="grid gap-3 md:grid-cols-2">{posts.map((a) => <AnnouncementCard key={a.id} a={a} compact />)}</div>
+    </Panel>
+  );
+}
+
+async function Clock({ employee }: { employee: AuthEmployee }) {
+  if (!tracksAttendance(employee.role)) return null;
+  const today = await getMyToday(employee);
+  return today ? <ClockCard today={today} /> : null;
+}
+
+// ─── Page ───
+
+async function Dashboard() {
   const employee = await getCurrentEmployee();
-  const overview = await getDashboardOverview(employee);
-
+  const org = await isOrgView(employee);
   const now = new Date();
-  const greeting = now.getHours() < 12 ? "Good morning" : now.getHours() < 17 ? "Good afternoon" : "Good evening";
+  const hour = Math.floor(minutesOfDay(TZ, now) / 60);
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
   return (
     <>
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight text-foreground">
-            {greeting}, {employee.firstName}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {overview.isAdmin
-              ? "Here's what's happening across your organization today."
-              : "Here's what's on your plate today."}
-          </p>
-        </div>
-        <DashboardHeaderActions isAdmin={overview.isAdmin} />
+      <PageHeader
+        eyebrow={now.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: TZ })}
+        title={`${greeting}, ${employee.firstName}`}
+        description={org ? "How work is moving across the company." : "Your work at a glance."}
+        actions={
+          <>
+            {org && <Button asChild variant="outline" size="sm"><Link href="/projects/new">New Project</Link></Button>}
+            <Button asChild size="sm" className="gap-1.5"><Link href="/tasks/new"><Plus className="h-3.5 w-3.5" /> New Task</Link></Button>
+          </>
+        }
+      />
+
+      <BlockBoundary label="Attendance"><Suspense fallback={<Skeleton className="h-[84px] w-full rounded-xl" />}><Clock employee={employee} /></Suspense></BlockBoundary>
+      <BlockBoundary label="Summary"><Suspense fallback={<KpiSkeleton />}><Kpis employee={employee} /></Suspense></BlockBoundary>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <BlockBoundary label="Throughput" className="lg:col-span-2"><Suspense fallback={<Skeleton className="h-[392px] w-full rounded-xl lg:col-span-2" />}><Throughput employee={employee} /></Suspense></BlockBoundary>
+        <BlockBoundary label="Open work"><Suspense fallback={<PanelSkeleton rows={4} />}><Stages employee={employee} /></Suspense></BlockBoundary>
       </div>
 
-      <OverviewBlocks overview={overview} />
-      
-      <Suspense fallback={<PriorityPanelsSkeleton />}>
-        <DashboardPriorityPanels employee={employee} isAdmin={overview.isAdmin} />
-      </Suspense>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <BlockBoundary label="Needs Attention"><Suspense fallback={<PanelSkeleton rows={6} />}><Attention employee={employee} /></Suspense></BlockBoundary>
+        <BlockBoundary label="Project Health"><Suspense fallback={<PanelSkeleton rows={6} />}><Health employee={employee} /></Suspense></BlockBoundary>
+      </div>
 
-      <Suspense fallback={<ChartsSkeleton />}>
-        <DashboardChartsSection employee={employee} />
-      </Suspense>
+      {org && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <BlockBoundary label="Workload"><Suspense fallback={<PanelSkeleton rows={6} />}><Workload employee={employee} /></Suspense></BlockBoundary>
+          <BlockBoundary label="Team Today"><Suspense fallback={<PanelSkeleton rows={5} />}><TeamToday employee={employee} /></Suspense></BlockBoundary>
+        </div>
+      )}
 
-      <Suspense fallback={<ProjectsSummarySkeleton />}>
-        <DashboardProjectsSummary employee={employee} />
-      </Suspense>
+      <BlockBoundary label="Announcements"><Suspense fallback={null}><Announcements employee={employee} /></Suspense></BlockBoundary>
+    </>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <>
+      <div className="space-y-2"><Skeleton className="h-3 w-40" /><Skeleton className="h-7 w-64" /><Skeleton className="h-4 w-56" /></div>
+      <KpiSkeleton />
+      <div className="grid gap-4 lg:grid-cols-3"><PanelSkeleton rows={5} className="lg:col-span-2" /><PanelSkeleton rows={4} /></div>
     </>
   );
 }
 
 export default function DashboardPage() {
-  // Instantly return the static page shell
   return (
-    <div className="space-y-8 p-6">
-      <Suspense fallback={<DashboardBodySkeleton />}>
-        <DashboardHeaderAsync />
+    <div className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-6">
+      <Suspense fallback={<DashboardSkeleton />}>
+        <Dashboard />
       </Suspense>
     </div>
   );

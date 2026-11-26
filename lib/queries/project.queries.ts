@@ -1,3 +1,5 @@
+import { Prisma } from "@/lib/generated/prisma";
+import { UserError } from "@/lib/errors";
 import { computeProgress } from "@/lib/projects/progress";
 import { db } from "@/lib/db";
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
@@ -18,25 +20,40 @@ export async function getProjectsList() {
   const projects = await db.project.findMany({
     where: whereClause,
     include: {
-      team: { select: { name: true } },
+      team: { select: { id: true, name: true } },
       lead: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
-      members: { 
-        include: { employee: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } } } 
+      members: {
+        include: { employee: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } } }
       },
-      tasks: { select: { status: true } }
     },
     orderBy: { updatedAt: "desc" }
   });
 
-  // Calculate computed progress based on tasks
-  return projects.map((p: any) => {
-    const totalTasks = p.tasks.length;
-    const completedTasks = p.tasks.filter((t: any) => t.status === "DONE").length;
-    const computedProgress = computeProgress(completedTasks, totalTasks);
+  // Task counts for every project in one grouped query (not every task row).
+  const now = new Date();
+  const ids = projects.map((p) => p.id);
+  const counts = ids.length
+    ? await db.$queryRaw<{ projectId: string; total: number; done: number; open: number; overdue: number }[]>`
+        SELECT t."projectId",
+          COUNT(*) FILTER (WHERE t.status <> 'CANCELLED')::int AS total,
+          COUNT(*) FILTER (WHERE t.status = 'DONE')::int AS done,
+          COUNT(*) FILTER (WHERE t.status::text IN ('TODO','IN_PROGRESS','REVIEW','TESTING'))::int AS open,
+          COUNT(*) FILTER (WHERE t.status::text IN ('TODO','IN_PROGRESS','REVIEW','TESTING') AND t."dueDate" < ${now})::int AS overdue
+        FROM "Task" t WHERE t."projectId" IN (${Prisma.join(ids)}) GROUP BY t."projectId"`
+    : [];
+  const byId = new Map(counts.map((c) => [c.projectId, c]));
 
+  return projects.map((p) => {
+    const c = byId.get(p.id);
+    const totalTasks = Number(c?.total ?? 0);
+    const completedTasks = Number(c?.done ?? 0);
     return {
       ...p,
-      computedProgress
+      totalTasks,
+      completedTasks,
+      openTasks: Number(c?.open ?? 0),
+      overdueTasks: Number(c?.overdue ?? 0),
+      computedProgress: computeProgress(completedTasks, totalTasks),
     };
   });
 }
@@ -54,7 +71,8 @@ export async function getProjectById(projectId: string) {
       },
       tasks: {
         include: {
-          assignees: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } }
+          assignees: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
+          owner: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
         },
         orderBy: { updatedAt: "desc" }
       },
@@ -67,15 +85,15 @@ export async function getProjectById(projectId: string) {
   if (!project) return null;
 
   // Verify access
-  if (employee.role !== "ADMIN" && employee.role !== "MANAGER" && project.leadId !== employee.id) {
+  if (project.leadId !== employee.id && !(await checkPermission("project:update", project.id))) {
     const isMember = project.members.some(m => m.employeeId === employee.id);
     if (!isMember) {
-      throw new Error("FORBIDDEN: Requires higher permission level");
+      throw new UserError("FORBIDDEN: Requires higher permission level");
     }
   }
 
   const totalTasks = project.tasks.length;
-  const completedTasks = project.tasks.filter((t: any) => t.status === "DONE").length;
+  const completedTasks = project.tasks.filter((t) => t.status === "DONE").length;
   const computedProgress = computeProgress(completedTasks, totalTasks);
 
   return {
@@ -83,3 +101,7 @@ export async function getProjectById(projectId: string) {
     computedProgress
   };
 }
+
+export type ProjectDetail = NonNullable<Awaited<ReturnType<typeof getProjectById>>>;
+export type ProjectMemberRow = ProjectDetail["members"][number];
+export type ProjectTaskRow = ProjectDetail["tasks"][number];

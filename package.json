@@ -14,7 +14,8 @@
     "db:reset": "prisma migrate reset",
     "postinstall": "prisma generate",
     "db:backup": "node scripts/db-backup.mjs",
-    "db:restore": "node scripts/db-restore.mjs"
+    "db:restore": "node scripts/db-restore.mjs",
+    "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.5.19",
@@ -25,6 +26,8 @@
     "cmdk": "^1.1.1",
     "date-fns": "^4.4.0",
     "dotenv": "^17.4.2",
+    "exceljs": "^4.4.0",
+    "leaflet": "^1.9.4",
     "lucide-react": "^1.24.0",
     "next": "16.4.6",
     "next-themes": "^0.4.6",
@@ -43,6 +46,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/leaflet": "^1.9.23",
     "@types/node": "^20",
     "@types/pg": "^8.20.0",
     "@types/react": "^19",

@@ -10,7 +10,7 @@ export default function DashboardNotFound() {
       </div>
       <h2 className="text-xl font-semibold">Not Found</h2>
       <p className="text-sm text-muted-foreground max-w-md">
-        The page or resource you're looking for doesn't exist or has been removed.
+        The page or resource you&apos;re looking for doesn&apos;t exist or has been removed.
       </p>
       <Button variant="outline" asChild className="mt-2">
         <Link href="/">

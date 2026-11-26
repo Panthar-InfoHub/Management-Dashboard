@@ -1,4 +1,5 @@
 "use server";
+import { UserError } from "@/lib/errors";
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
@@ -9,9 +10,9 @@ const MAX_COMMENT_LENGTH = 5000;
 
 function cleanContent(content: string) {
   const text = content?.trim() ?? "";
-  if (!text) throw new Error("Comment can't be empty.");
+  if (!text) throw new UserError("Comment can't be empty.");
   if (text.length > MAX_COMMENT_LENGTH) {
-    throw new Error(`Comment is too long. Keep it under ${MAX_COMMENT_LENGTH} characters.`);
+    throw new UserError(`Comment is too long. Keep it under ${MAX_COMMENT_LENGTH} characters.`);
   }
   return text;
 }
@@ -29,14 +30,14 @@ async function getTaskForCommenter(taskId: string, employeeId: string) {
       project: { select: { members: { select: { employeeId: true } } } },
     },
   });
-  if (!task) throw new Error("Task not found");
+  if (!task) throw new UserError("Task not found");
 
   const involved =
     task.creatorId === employeeId ||
     task.assignees.some((a) => a.id === employeeId) ||
-    task.project.members.some((m) => m.employeeId === employeeId);
-  if (!involved && !(await checkPermission("task:update", task.projectId))) {
-    throw new Error("You do not have permission to comment on this task.");
+    (task.project?.members.some((m) => m.employeeId === employeeId) ?? false);
+  if (!involved && !(await checkPermission("task:update", task.projectId ?? undefined))) {
+    throw new UserError("You do not have permission to comment on this task.");
   }
   return task;
 }
@@ -76,8 +77,8 @@ export async function updateCommentAction(commentId: string, content: string) {
   const employee = await getCurrentEmployee();
 
   const existing = await db.comment.findUnique({ where: { id: commentId }, select: { authorId: true, taskId: true, content: true } });
-  if (!existing) throw new Error("Comment not found");
-  if (existing.authorId !== employee.id) throw new Error("You can only edit your own comments.");
+  if (!existing) throw new UserError("Comment not found");
+  if (existing.authorId !== employee.id) throw new UserError("You can only edit your own comments.");
 
   const comment = await db.comment.update({
     where: { id: commentId },
@@ -96,11 +97,11 @@ export async function deleteCommentAction(commentId: string) {
     where: { id: commentId },
     select: { authorId: true, taskId: true, task: { select: { projectId: true } } },
   });
-  if (!existing) throw new Error("Comment not found");
+  if (!existing) throw new UserError("Comment not found");
 
   const isAuthor = existing.authorId === employee.id;
-  if (!isAuthor && !(await checkPermission("task:delete", existing.task.projectId))) {
-    throw new Error("You can only delete your own comments.");
+  if (!isAuthor && !(await checkPermission("task:delete", existing.task.projectId ?? undefined))) {
+    throw new UserError("You can only delete your own comments.");
   }
 
   await db.comment.delete({ where: { id: commentId } });

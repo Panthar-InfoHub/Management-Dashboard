@@ -1,18 +1,27 @@
 "use client";
+import { DatePicker } from "@/components/ui/date-picker";
+import { format } from "date-fns";
+import { errorMessage } from "@/lib/errors";
+
+import { ConfirmAction } from "@/components/ui/confirm-action";
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { UserAvatar } from "@/components/ui/user-avatar";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { LeadPicker, MembersDialog, type Person } from "@/components/teams/team-dialogs";
+import type { ProjectDetail, ProjectMemberRow, ProjectTaskRow } from "@/lib/queries/project.queries";
+
+const titleCase = (v: string) => v.toLowerCase().split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Calendar, CheckSquare, Clock, ChevronRight, ChevronDown, Plus, Users, Flag, TrendingUp, Settings2, Check } from "lucide-react";
+import { ChevronRight, ChevronDown, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { updateProjectAction, manageProjectMembersAction, updateProjectStatusAction, updateProjectPriorityAction, deleteProjectAction } from "@/lib/actions/project.actions";
 
@@ -20,13 +29,15 @@ import { MemberPermissionsDialog } from "./member-permissions-dialog";
 
 const statusColors: Record<string, string> = { ACTIVE: "bg-blue-500/10 text-blue-600 border-blue-500/20", PLANNING: "bg-purple-500/10 text-purple-600 border-purple-500/20", PAUSED: "bg-orange-500/10 text-orange-600 border-orange-500/20", COMPLETED: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20", ARCHIVED: "bg-gray-500/10 text-gray-600 border-gray-500/20" };
 const priorityColors: Record<string, string> = { CRITICAL: "bg-red-500/10 text-red-600 border-red-500/20", HIGH: "bg-orange-500/10 text-orange-600 border-orange-500/20", MEDIUM: "bg-blue-500/10 text-blue-600 border-blue-500/20", LOW: "bg-gray-500/10 text-gray-600 border-gray-500/20" };
-const taskStatusColors: Record<string, string> = { BACKLOG: "bg-gray-500/10 text-gray-600 border-gray-500/20", TODO: "bg-slate-500/10 text-slate-600 border-slate-500/20", IN_PROGRESS: "bg-blue-500/10 text-blue-600 border-blue-500/20", REVIEW: "bg-purple-500/10 text-purple-600 border-purple-500/20", TESTING: "bg-amber-500/10 text-amber-600 border-amber-500/20", DONE: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" };
+const taskStatusColors: Record<string, string> = { CANCELLED: "bg-gray-500/10 text-gray-500 border-gray-500/20 line-through", TODO: "bg-slate-500/10 text-slate-600 border-slate-500/20", IN_PROGRESS: "bg-blue-500/10 text-blue-600 border-blue-500/20", REVIEW: "bg-purple-500/10 text-purple-600 border-purple-500/20", TESTING: "bg-amber-500/10 text-amber-600 border-amber-500/20", DONE: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" };
 
-export function ProjectDetailClient({ project, allEmployees = [], allTeams = [], canEdit = true, canDelete = false, canDelegate = false }: { project: any, allEmployees: any[], allTeams: any[], canEdit?: boolean, canDelete?: boolean, canDelegate?: boolean }) {
+const toKey = (d: string | Date | null | undefined) => (d ? format(new Date(d), "yyyy-MM-dd") : "");
+
+export function ProjectDetailClient({ project, allEmployees = [], allTeams = [], canEdit = true, canDelete = false, canDelegate = false, openEdit = false }: { project: ProjectDetail, allEmployees: Person[], allTeams: { id: string; name: string }[], canEdit?: boolean, canDelete?: boolean, canDelegate?: boolean, openEdit?: boolean }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
-  const completedTasks = project.tasks.filter((t: any) => t.status === "DONE").length;
+  const completedTasks = project.tasks.filter((t: ProjectTaskRow) => t.status === "DONE").length;
   const totalTasks = project.tasks.length;
   
   const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
@@ -37,7 +48,7 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
     setExpandedTasks(prev => ({ ...prev, [taskId]: !prev[taskId] }));
   };
 
-  const tasksByParent = project.tasks.reduce((acc: any, t: any) => {
+  const tasksByParent = project.tasks.reduce((acc: Record<string, ProjectTaskRow[]>, t: ProjectTaskRow) => {
     if (t.parentId) {
       if (!acc[t.parentId]) acc[t.parentId] = [];
       acc[t.parentId].push(t);
@@ -45,17 +56,23 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
     return acc;
   }, {});
 
-  const topLevelTasks = project.tasks.filter((t: any) => !t.parentId);
+  const topLevelTasks = project.tasks.filter((t: ProjectTaskRow) => !t.parentId);
   
   // Edit Project State
-  const [editOpen, setEditOpen] = useState(false);
+  // Read the clock once, not on every render.
+  const [now] = useState(() => Date.now());
+  // ?edit=1 (from the projects list) opens Edit Project straight away.
+  const [editOpen, setEditOpen] = useState(() => canEdit && openEdit);
   const [editData, setEditData] = useState({ 
     name: project.name, 
     description: project.description || "", 
     leadId: project.leadId,
     teamId: project.teamId,
     status: project.status,
-    priority: project.priority
+    priority: project.priority,
+    key: project.key ?? "",
+    startDate: toKey(project.startDate),
+    endDate: toKey(project.endDate),
   });
 
   const handleOpenEdit = () => {
@@ -65,7 +82,10 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
       leadId: project.leadId,
       teamId: project.teamId,
       status: project.status,
-      priority: project.priority
+      priority: project.priority,
+      key: project.key ?? "",
+      startDate: toKey(project.startDate),
+      endDate: toKey(project.endDate),
     });
     setEditOpen(true);
   };
@@ -73,486 +93,344 @@ export function ProjectDetailClient({ project, allEmployees = [], allTeams = [],
   const handleUpdateProject = () => {
     if (!editData.name || !editData.leadId || !editData.teamId) return;
     startTransition(() => {
-      updateProjectAction(project.id, editData).then(() => {
+      updateProjectAction(project.id, { ...editData, startDate: editData.startDate || null, endDate: editData.endDate || null }).then(() => {
+        toast.success(`${editData.name} saved`);
         setEditOpen(false);
-      }).catch((err: any) => toast.error(err.message || "Failed to update project"));
+      }).catch((err) => toast.error(errorMessage(err, "Failed to update project")));
     });
   };
 
   // Permission Delegation State
   const [permOpen, setPermOpen] = useState(false);
-  const [selectedMember, setSelectedMember] = useState<any>(null);
+  const [selectedMember, setSelectedMember] = useState<ProjectMemberRow | null>(null);
 
-  const handleOpenPermissions = (member: any) => {
+  const handleOpenPermissions = (member: ProjectMemberRow) => {
     setSelectedMember(member);
     setPermOpen(true);
   };
 
-  // Manage Members State
   const [manageOpen, setManageOpen] = useState(false);
-  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
-
-  const handleOpenManage = () => {
-    // Only pre-select members that are not the lead
-    setSelectedMemberIds(project.members.filter((m: any) => m.employeeId !== project.leadId).map((m: any) => m.employeeId));
-    setManageOpen(true);
-  };
-
-  const handleManageMembers = () => {
-    startTransition(() => {
-      // Ensure the lead is ALWAYS part of the project members
-      const finalMemberIds = Array.from(new Set([...selectedMemberIds, project.leadId]));
-      manageProjectMembersAction(project.id, finalMemberIds).then(() => {
-        setManageOpen(false);
-      }).catch((err: any) => toast.error(err.message || "Failed to manage members"));
-    });
-  };
-
-  const toggleMember = (id: string) => {
-    if (selectedMemberIds.includes(id)) {
-      setSelectedMemberIds(selectedMemberIds.filter(mid => mid !== id));
-    } else {
-      setSelectedMemberIds([...selectedMemberIds, id]);
-    }
-  };
+  const handleOpenManage = () => setManageOpen(true);
 
   const handleQuickStatusChange = (newStatus: string) => {
     if (newStatus === project.status) return;
     startTransition(() => {
-      updateProjectStatusAction(project.id, newStatus).catch((err: any) => toast.error(err.message || "Failed to update status"));
+      updateProjectStatusAction(project.id, newStatus).catch((err) => toast.error(errorMessage(err, "Failed to update status")));
     });
   };
 
   const handleQuickPriorityChange = (newPriority: string) => {
     if (newPriority === project.priority) return;
     startTransition(() => {
-      updateProjectPriorityAction(project.id, newPriority).catch((err: any) => toast.error(err.message || "Failed to update priority"));
+      updateProjectPriorityAction(project.id, newPriority).catch((err) => toast.error(errorMessage(err, "Failed to update priority")));
     });
   };
 
-  const handleDeleteProject = () => {
-    if (!confirm("Are you sure you want to delete this project? This action cannot be undone and will delete all associated tasks.")) return;
-    startTransition(() => {
-      deleteProjectAction(project.id).then(() => {
-        toast.success("Project deleted successfully");
-        router.push("/projects");
-      }).catch((err: any) => toast.error(err.message || "Failed to delete project"));
-    });
+  const handleDeleteProject = async () => {
+    await deleteProjectAction(project.id);
+    router.push("/projects");
+    return `Project ${project.name} deleted`;
   };
+
+  const openTasks = project.tasks.filter((t: ProjectTaskRow) => !["DONE", "CANCELLED"].includes(t.status));
+  const overdueTasks = openTasks.filter((t: ProjectTaskRow) => t.dueDate && new Date(t.dueDate).getTime() < now).length;
+  const daysLeft = project.endDate ? Math.ceil((new Date(project.endDate).getTime() - now) / 86400000) : null;
+  const fmt = (d: string | Date) => new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  const TASK_LABEL: Record<string, string> = { TODO: "To Do", IN_PROGRESS: "In Progress", REVIEW: "Review", TESTING: "Testing", DONE: "Done", CANCELLED: "Cancelled" };
+  const STATUS_LABEL: Record<string, string> = { ACTIVE: "Active", PLANNING: "Planning", PAUSED: "Paused", COMPLETED: "Completed", ARCHIVED: "Archived" };
+  const PRIORITY_LABEL: Record<string, string> = { CRITICAL: "Critical", HIGH: "High", MEDIUM: "Medium", LOW: "Low" };
 
   return (
-    <div className="h-full flex flex-col bg-background selection:bg-primary/10">
-      {/* Vercel-like Breadcrumb & Actions Bar */}
-      <div className="px-6 py-5 border-b border-border/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sticky top-0 bg-background/90 backdrop-blur-md z-10">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground min-w-0">
-          <Link href="/projects" className="hover:text-foreground transition-colors shrink-0">Projects</Link>
-          <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-          <span className="text-foreground font-medium truncate">{project.name}</span>
+    <div className="min-h-full bg-muted/20">
+      <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
+        {/* Header (not sticky: it scrolls away with the page) */}
+        <div className="space-y-3">
+          <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Link href="/projects" className="hover:text-foreground">Projects</Link>
+            <ChevronRight className="h-3 w-3" />
+            {project.team && <><Link href={`/teams/${project.team.id}`} className="hover:text-foreground">{project.team.name}</Link><ChevronRight className="h-3 w-3" /></>}
+            <span className="text-foreground">{project.name}</span>
+          </nav>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <h1 className="text-2xl font-semibold tracking-tight">
+                {project.key && <span className="mr-2 font-mono text-base font-normal text-muted-foreground">{project.key}</span>}
+                {project.name}
+              </h1>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger disabled={!canEdit} className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card px-2.5 py-1 text-xs font-medium focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-default">
+                    <span className={cn("h-1.5 w-1.5 rounded-full", statusColors[project.status]?.split(" ")[0])} />
+                    {STATUS_LABEL[project.status] ?? project.status} {canEdit && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    {Object.keys(statusColors).map((st) => <DropdownMenuItem key={st} onClick={() => handleQuickStatusChange(st)} className="text-xs">{STATUS_LABEL[st] ?? st}</DropdownMenuItem>)}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <DropdownMenu>
+                  <DropdownMenuTrigger disabled={!canEdit} className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card px-2.5 py-1 text-xs font-medium focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-default">
+                    {PRIORITY_LABEL[project.priority]} priority {canEdit && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    {Object.keys(priorityColors).map((pr) => <DropdownMenuItem key={pr} onClick={() => handleQuickPriorityChange(pr)} className="text-xs">{PRIORITY_LABEL[pr]}</DropdownMenuItem>)}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              {canEdit && <Button variant="outline" size="sm" onClick={handleOpenManage}>Members</Button>}
+              {canEdit && <Button variant="outline" size="sm" onClick={handleOpenEdit}>Edit Project</Button>}
+              <Button size="sm" asChild className="gap-1.5"><Link href={`/tasks/new?project=${project.id}`}><Plus className="h-3.5 w-3.5" /> Add Task</Link></Button>
+              {canDelete && (
+                <ConfirmAction
+                  trigger={<Button size="sm" variant="ghost" className="text-red-600 hover:bg-red-500/10 hover:text-red-700 dark:text-red-400">Delete</Button>}
+                  title={`Delete project ${project.name}?`}
+                  description="All of its tasks are deleted too. This can't be undone."
+                  confirmLabel="Delete Project"
+                  pendingLabel="Deleting…"
+                  destructive
+                  onConfirm={handleDeleteProject}
+                />
+              )}
+            </div>
+          </div>
         </div>
-        {canEdit && (
-          <div className="flex flex-wrap sm:flex-nowrap gap-3 w-full sm:w-auto">
-            <Button variant="outline" size="sm" onClick={handleOpenManage} className="h-8 shadow-none gap-2 flex-1 sm:flex-initial">
-              <Users className="h-4 w-4 shrink-0" /> <span className="truncate">Manage Members</span>
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleOpenEdit} className="h-8 shadow-none gap-2 flex-1 sm:flex-initial">
-              <Settings2 className="h-4 w-4 shrink-0" /> <span className="truncate">Edit Project</span>
-            </Button>
-            <Button size="sm" asChild className="h-8 shadow-none gap-1.5 flex-1 sm:flex-initial">
-              <Link href={`/tasks/new?project=${project.id}`}>
-                <Plus className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">Add Task</span>
-              </Link>
-            </Button>
-            {canDelete && (
-              <Button size="sm" variant="destructive" onClick={handleDeleteProject} className="h-8 shadow-none">
-                Delete
-              </Button>
-            )}
+
+        {/* Headline numbers */}
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="rounded-xl border border-border/70 bg-card shadow-[0_2px_2px_rgba(0,0,0,0.04)] p-4">
+            <p className="text-xs font-medium text-muted-foreground">Progress</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums">{project.computedProgress}%</p>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-foreground/75" style={{ width: `${project.computedProgress}%` }} /></div>
           </div>
-        )}
-      </div>
+          <div className="rounded-xl border border-border/70 bg-card shadow-[0_2px_2px_rgba(0,0,0,0.04)] p-4">
+            <p className="text-xs font-medium text-muted-foreground">Open Tasks</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums">{openTasks.length}</p>
+            <p className="text-xs text-muted-foreground">{completedTasks} of {totalTasks} done</p>
+          </div>
+          <div className="rounded-xl border border-border/70 bg-card shadow-[0_2px_2px_rgba(0,0,0,0.04)] p-4">
+            <p className="text-xs font-medium text-muted-foreground">Overdue</p>
+            <p className={cn("mt-1 text-2xl font-semibold tabular-nums", overdueTasks > 0 && "text-red-600 dark:text-red-400")}>{overdueTasks}</p>
+            <p className="text-xs text-muted-foreground">{overdueTasks ? "past their due date" : "nothing late"}</p>
+          </div>
+          <div className="rounded-xl border border-border/70 bg-card shadow-[0_2px_2px_rgba(0,0,0,0.04)] p-4">
+            <p className="text-xs font-medium text-muted-foreground">Deadline</p>
+            <p className={cn("mt-1 text-2xl font-semibold tabular-nums", daysLeft !== null && daysLeft < 0 && openTasks.length > 0 && !["COMPLETED", "ARCHIVED"].includes(project.status) && "text-red-600 dark:text-red-400")}>
+              {daysLeft === null ? "—" : openTasks.length === 0 && totalTasks > 0 ? "Done" : daysLeft < 0 ? `${Math.abs(daysLeft)}d late` : `${daysLeft}d left`}
+            </p>
+            <p className="text-xs text-muted-foreground">{project.endDate ? fmt(project.endDate) : canEdit ? "None yet · add one in Edit Project" : "No deadline"}</p>
+          </div>
+        </div>
 
-      <div className="flex-1 overflow-y-auto px-8 py-8">
-        <div className="max-w-6xl mx-auto grid md:grid-cols-[1fr_300px] gap-12 items-start">
-          
-          {/* Main Content Area */}
-          <div className="space-y-10">
-            <div>
-              <h1 className="text-3xl font-semibold tracking-tight text-foreground mb-4">{project.name}</h1>
-              <div className="flex items-center gap-4 mb-8">
-                <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                  Status:
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Badge variant="outline" className={cn("px-2 py-0.5 rounded-full shadow-none cursor-pointer hover:opacity-80 transition-opacity", statusColors[project.status])}>
-                        {project.status.replace("_", " ")} <ChevronDown className="h-3 w-3 ml-1 inline" />
-                      </Badge>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      {Object.keys(statusColors).map(status => (
-                        <DropdownMenuItem key={status} onClick={() => handleQuickStatusChange(status)} className="text-xs">
-                          {status.replace("_", " ")}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-                
-                <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                  Priority:
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Badge variant="outline" className={cn("px-2 py-0.5 rounded-full shadow-none cursor-pointer hover:opacity-80 transition-opacity", priorityColors[project.priority])}>
-                        {project.priority} <ChevronDown className="h-3 w-3 ml-1 inline" />
-                      </Badge>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      {Object.keys(priorityColors).map(priority => (
-                        <DropdownMenuItem key={priority} onClick={() => handleQuickPriorityChange(priority)} className="text-xs">
-                          {priority}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="min-w-0 space-y-6">
+            <section className="rounded-xl border border-border/70 bg-card shadow-[0_2px_2px_rgba(0,0,0,0.04)] p-5">
+              <h2 className="mb-2 text-sm font-semibold">About</h2>
+              <p className="whitespace-pre-wrap text-sm text-foreground/90">{project.description || <span className="text-muted-foreground">No description yet.</span>}</p>
+            </section>
 
-              <div className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground leading-relaxed">
-                {project.description ? (
-                  <p className="whitespace-pre-wrap text-[15px]">{project.description}</p>
-                ) : (
-                  <p className="italic">No description provided.</p>
-                )}
-              </div>
-            </div>
-
-            {/* Progress Section */}
-            <div className="pt-8 border-t border-border/40">
-              <h3 className="text-sm font-medium flex items-center gap-2 mb-4 text-foreground">
-                <TrendingUp className="h-4 w-4 text-muted-foreground" /> Overall Progress
-              </h3>
-              <div className="bg-muted/20 border border-border/40 rounded-xl p-5">
-                <div className="flex items-end justify-between mb-3">
-                  <div>
-                    <span className="text-3xl font-bold tracking-tight">{project.computedProgress}%</span>
-                    <p className="text-xs text-muted-foreground mt-1">{completedTasks} of {totalTasks} tasks completed</p>
-                  </div>
-                </div>
-                <Progress value={project.computedProgress} className="h-2 bg-muted-foreground/10" />
-              </div>
-            </div>
-
-            {/* Tasks Section */}
-            <div className="pt-8 border-t border-border/40">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-sm font-medium flex items-center gap-2 text-foreground">
-                  <CheckSquare className="h-4 w-4 text-muted-foreground" /> Project Tasks
-                </h3>
-                <Link href={`/tasks?project=${project.id}`} className="text-xs text-primary hover:underline">View All on Board</Link>
-              </div>
-
+            <section className="rounded-xl border border-border/70 bg-card shadow-[0_2px_2px_rgba(0,0,0,0.04)]">
+              <header className="flex items-center justify-between px-5 pt-4 pb-3">
+                <h2 className="text-sm font-semibold">Tasks <span className="font-normal text-muted-foreground">· {topLevelTasks.length}</span></h2>
+                <Link href={`/tasks?project=${project.id}`} className="text-xs font-medium text-muted-foreground hover:text-foreground">Open board →</Link>
+              </header>
               {project.tasks.length > 0 ? (
-                <div className="border border-border/40 rounded-lg bg-background flex flex-col">
-                  <div className="divide-y divide-border/40 overflow-y-auto max-h-[400px]">
-                    {(() => {
-                      const renderTree = (tasks: any[], depth = 0) => {
-                        return tasks.map(task => {
-                          const children = tasksByParent[task.id] || [];
-                          const isExpanded = expandedTasks[task.id];
-                          const hasChildren = children.length > 0;
-                          
-                          return (
-                            <div key={task.id} className="flex flex-col border-b border-border/20 last:border-0">
-                              <div 
-                                className="p-4 hover:bg-muted/20 transition-colors flex items-center justify-between group cursor-pointer"
-                                style={{ paddingLeft: `${Math.max(1, depth * 1.5) + 0.5}rem` }}
-                                onMouseEnter={() => router.prefetch(`/tasks/${task.id}`)}
-                                onClick={(e) => {
-                                  if (hasChildren) {
-                                    toggleTask(task.id, e);
-                                  } else {
-                                    router.push(`/tasks/${task.id}`);
-                                  }
-                                }}
-                              >
-                                <div className="space-y-1.5 flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    {hasChildren && (
-                                      <div 
-                                        className="h-5 w-5 flex items-center justify-center rounded hover:bg-muted shrink-0 text-muted-foreground transition-colors"
-                                      >
-                                        {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                                      </div>
-                                    )}
-                                    {!hasChildren && depth > 0 && <div className="h-5 w-5 shrink-0" />}
-                                    <Link href={`/tasks/${task.id}`} className="text-sm font-medium group-hover:text-primary transition-colors block truncate" onClick={e => e.stopPropagation()}>
-                                      {task.title}
-                                    </Link>
-                                  </div>
-                                  <div className="flex items-center gap-3 text-xs text-muted-foreground pl-7">
-                                    <Badge variant="outline" className={cn("text-[9px] px-1.5 py-0 shadow-none rounded-sm", taskStatusColors[task.status])}>
-                                      {task.status.replace("_", " ")}
-                                    </Badge>
-                                    {task.dueDate && (
-                                      <span className="flex items-center gap-1.5">
-                                        <Clock className="h-3 w-3" />
-                                        {new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="flex -space-x-2 shrink-0">
-                                  {task.assignees?.map((a: any) => (
-                                    <Avatar key={a.id} className="h-7 w-7 border-2 border-background">
-                                      <AvatarImage src={a.avatarUrl} />
-                                      <AvatarFallback className="text-[9px] bg-primary/10">{a.firstName.charAt(0)}</AvatarFallback>
-                                    </Avatar>
-                                  ))}
-                                </div>
-                              </div>
-                              {hasChildren && isExpanded && (
-                                <div className="flex flex-col w-full bg-muted/5">
-                                  {renderTree(children, depth + 1)}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        });
-                      };
-                      return renderTree(topLevelTasks);
-                    })()}
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-lg border border-dashed border-border/40 p-8 text-center bg-muted/10">
-                  <p className="text-sm text-muted-foreground">No tasks have been created for this project yet.</p>
-                  <Button variant="link" asChild className="mt-2 text-primary h-auto p-0">
-                    <Link href={`/tasks/new?project=${project.id}`}>Create the first task</Link>
-                  </Button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Right Sidebar (Metadata) */}
-          <div className="space-y-8">
-            
-            {/* Leadership */}
-            <div>
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">Leadership</h3>
-              <div className="space-y-4">
-                <div>
-                  <span className="text-xs text-muted-foreground mb-2 block">Project Lead</span>
-                  <div className="flex items-center gap-3 bg-muted/20 border border-border/40 rounded-lg p-3">
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage src={project.lead.avatarUrl} />
-                      <AvatarFallback className="bg-primary/10 text-xs">{project.lead.firstName.charAt(0)}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-sm font-medium leading-none text-foreground">{project.lead.firstName} {project.lead.lastName}</p>
-                    </div>
-                  </div>
-                </div>
-                <div>
-                  <span className="text-xs text-muted-foreground mb-2 block">Owning Team</span>
-                  <div className="flex items-center gap-3 bg-muted/20 border border-border/40 rounded-lg p-3">
-                    <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center">
-                      <Users className="h-4 w-4 text-primary" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium leading-none text-foreground">{project.team?.name || "No Team"}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Properties */}
-            <div>
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Properties</h3>
-              <div className="space-y-4 bg-muted/10 p-4 rounded-lg border border-border/40">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground flex items-center gap-2"><Calendar className="h-3.5 w-3.5" /> Start Date</span>
-                  <span className="font-medium text-xs bg-background border border-border/50 px-2 py-0.5 rounded">{project.startDate ? new Date(project.startDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground flex items-center gap-2"><Flag className="h-3.5 w-3.5" /> Deadline</span>
-                  <span className="font-medium text-xs bg-background border border-border/50 px-2 py-0.5 rounded">{project.endDate ? new Date(project.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Project Members */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Project Members</h3>
-                <span className="text-xs font-medium bg-background border border-border/50 px-2 py-0.5 rounded">{project.members.length}</span>
-              </div>
-              
-              {project.members.length > 0 ? (
-                <div className="border border-border/40 rounded-lg bg-background flex flex-col">
-                  <div className="divide-y divide-border/40 overflow-y-auto max-h-[300px]">
-                    {project.members.map((m: any) => (
-                      <div key={m.id} className="flex items-center gap-3 p-3 hover:bg-muted/30 transition-colors group">
-                        <Avatar className="h-8 w-8">
-                          <AvatarImage src={m.employee.avatarUrl} />
-                          <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
-                            {m.employee.firstName.charAt(0)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-foreground truncate">{m.employee.firstName} {m.employee.lastName}</p>
-                          {m.employeeId === project.leadId && (
-                            <Badge variant="secondary" className="text-[9px] mt-0.5 h-4 px-1.5 leading-none bg-primary/10 text-primary border-primary/20">Lead</Badge>
-                          )}
-                        </div>
-                        {canDelegate && m.employeeId !== project.leadId && (
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={() => handleOpenPermissions(m)}
-                            title="Manage Permissions"
-                          >
-                            <Settings2 className="h-3.5 w-3.5 text-muted-foreground" />
-                          </Button>
-                        )}
+                <ul className="max-h-[560px] divide-y divide-border/60 overflow-y-auto border-t border-border/60">
+                  {topLevelTasks.map((task: ProjectTaskRow) => {
+                    const children = tasksByParent[task.id] || [];
+                    const expanded = expandedTasks[task.id];
+                    const owner = task.owner ?? task.assignees?.[0];
+                    const late = task.dueDate && !["DONE", "CANCELLED"].includes(task.status) && new Date(task.dueDate).getTime() < now;
+                    const row = (t: ProjectTaskRow, sub = false) => (
+                      <div className={cn("flex items-center gap-3 px-5 py-2.5 hover:bg-muted/40", sub && "pl-12")} onMouseEnter={() => router.prefetch(`/tasks/${t.id}`)}>
+                        <span className={cn("h-2 w-2 shrink-0 rounded-full", taskStatusColors[t.status]?.split(" ")[0])} title={TASK_LABEL[t.status]} />
+                        <span className="w-16 shrink-0 font-mono text-xs text-muted-foreground">{project.key && t.number ? `${project.key}-${t.number}` : ""}</span>
+                        <Link href={`/tasks/${t.id}`} className={cn("min-w-0 flex-1 truncate text-sm hover:underline", ["DONE", "CANCELLED"].includes(t.status) && "text-muted-foreground line-through")}>{t.title}</Link>
+                        <span className="hidden w-24 text-xs text-muted-foreground sm:block">{TASK_LABEL[t.status]}</span>
+                        <span className={cn("hidden w-16 text-right text-xs tabular-nums sm:block", late ? "font-medium text-red-600 dark:text-red-400" : "text-muted-foreground")}>
+                          {t.dueDate ? new Date(t.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "—"}
+                        </span>
+                        {(t.owner ?? t.assignees?.[0]) ? <UserAvatar className="h-6 w-6 shrink-0" user={t.owner ?? t.assignees[0]} textClassName="text-[9px]" /> : <span className="h-6 w-6 shrink-0" />}
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    );
+                    void owner;
+                    return (
+                      <li key={task.id}>
+                        <div className="flex items-center">
+                          {children.length > 0 ? (
+                            <button type="button" onClick={(e) => toggleTask(task.id, e)} aria-expanded={!!expanded} aria-label={expanded ? "Hide subtasks" : "Show subtasks"} className="ml-2 flex h-6 shrink-0 items-center gap-0.5 rounded px-1 text-[11px] text-muted-foreground hover:bg-muted">
+                              {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}{children.length}
+                            </button>
+                          ) : <span className="ml-2 w-8 shrink-0" />}
+                          <div className="min-w-0 flex-1">{row(task)}</div>
+                        </div>
+                        {expanded && children.map((c: ProjectTaskRow) => <div key={c.id} className="border-t border-border/40 bg-muted/20">{row(c, true)}</div>)}
+                      </li>
+                    );
+                  })}
+                </ul>
               ) : (
-                <div className="rounded-lg border border-dashed border-border/40 p-4 text-center bg-muted/10">
-                  <p className="text-xs text-muted-foreground">No members assigned.</p>
+                <div className="border-t border-border/60 px-5 py-10 text-center">
+                  <p className="text-sm text-muted-foreground">No tasks yet.</p>
+                  <Button asChild variant="outline" size="sm" className="mt-3"><Link href={`/tasks/new?project=${project.id}`}>Add the First Task</Link></Button>
                 </div>
               )}
-            </div>
-
+            </section>
           </div>
+
+          <aside className="space-y-4 lg:sticky lg:top-6">
+            <section className="rounded-xl border border-border/70 bg-card shadow-[0_2px_2px_rgba(0,0,0,0.04)] p-5">
+              <h2 className="mb-3 text-xs font-semibold tracking-wider text-muted-foreground uppercase">Details</h2>
+              <dl className="space-y-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-muted-foreground">Lead</dt>
+                  <dd className="flex items-center gap-2 font-medium"><UserAvatar className="h-5 w-5" user={project.lead} textClassName="text-[8px]" />{project.lead.firstName} {project.lead.lastName}</dd>
+                </div>
+                <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Team</dt><dd className="font-medium">{project.team ? <Link href={`/teams/${project.team.id}`} className="hover:underline">{project.team.name}</Link> : "—"}</dd></div>
+                <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Start</dt><dd className="font-medium">{project.startDate ? fmt(project.startDate) : "Not set"}</dd></div>
+                <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Deadline</dt><dd className="font-medium">{project.endDate ? fmt(project.endDate) : "No deadline"}</dd></div>
+                <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Task IDs</dt><dd className="font-mono font-medium">{project.key ? `${project.key}-n` : "—"}</dd></div>
+                <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Created</dt><dd className="font-medium">{fmt(project.createdAt)}</dd></div>
+              </dl>
+            </section>
+
+            <section className="rounded-xl border border-border/70 bg-card shadow-[0_2px_2px_rgba(0,0,0,0.04)]">
+              <header className="flex items-center justify-between px-5 pt-4 pb-3">
+                <h2 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Members · {project.members.length}</h2>
+                {canEdit && <button type="button" onClick={handleOpenManage} className="text-xs font-medium text-muted-foreground hover:text-foreground">Manage</button>}
+              </header>
+              {project.members.length > 0 ? (
+                <ul className="max-h-[320px] divide-y divide-border/60 overflow-y-auto border-t border-border/60">
+                  {project.members.map((m: ProjectMemberRow) => (
+                    <li key={m.id} className="group flex items-center gap-3 px-5 py-2.5">
+                      <UserAvatar className="h-7 w-7" user={m.employee} textClassName="text-[10px]" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">{m.employee.firstName} {m.employee.lastName}</span>
+                        {m.employeeId === project.leadId && <span className="text-[11px] font-medium">Lead</span>}
+                      </span>
+                      {canDelegate && m.employeeId !== project.leadId && (
+                        <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100" onClick={() => handleOpenPermissions(m)}>
+                          Access
+                        </Button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="border-t border-border/60 px-5 py-6 text-center text-sm text-muted-foreground">No members yet.</p>
+              )}
+            </section>
+          </aside>
         </div>
       </div>
 
       {/* Edit Project Modal */}
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+      <Dialog open={editOpen} onOpenChange={(v) => !isPending && setEditOpen(v)}>
+        <DialogContent className="flex max-h-[90vh] flex-col gap-0 p-0 sm:max-w-2xl">
+          <DialogHeader className="border-b border-border/60 px-6 py-4">
             <DialogTitle>Edit Project</DialogTitle>
+            <DialogDescription>Details, ownership and timeline.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 pt-4 max-h-[70vh] overflow-y-auto pr-2">
-            <div className="space-y-1.5 flex flex-col">
-              <label className="text-xs font-semibold text-muted-foreground">Project Name</label>
-              <Input value={editData.name} onChange={e => setEditData({ ...editData, name: e.target.value })} />
-            </div>
-            
-            <div className="space-y-1.5 flex flex-col">
-              <label className="text-xs font-semibold text-muted-foreground">Description</label>
-              <Input value={editData.description} onChange={e => setEditData({ ...editData, description: e.target.value })} />
-            </div>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5 flex flex-col">
-                <label className="text-xs font-semibold text-muted-foreground">Project Lead</label>
-                <Select value={editData.leadId} onValueChange={val => setEditData({ ...editData, leadId: val })}>
-                  <SelectTrigger><SelectValue placeholder="Select lead" /></SelectTrigger>
-                  <SelectContent>
-                    {allEmployees.map(e => (
-                      <SelectItem key={e.id} value={e.id}>{e.firstName} {e.lastName}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5 flex flex-col">
-                <label className="text-xs font-semibold text-muted-foreground">Owning Team</label>
-                <Select value={editData.teamId} onValueChange={val => setEditData({ ...editData, teamId: val })}>
-                  <SelectTrigger><SelectValue placeholder="Select team" /></SelectTrigger>
-                  <SelectContent>
-                    {allTeams.map(t => (
-                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5 flex flex-col">
-                <label className="text-xs font-semibold text-muted-foreground">Status</label>
-                <Select value={editData.status} onValueChange={val => setEditData({ ...editData, status: val })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {Object.keys(statusColors).map(status => (
-                      <SelectItem key={status} value={status}>{status.replace("_", " ")}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5 flex flex-col">
-                <label className="text-xs font-semibold text-muted-foreground">Priority</label>
-                <Select value={editData.priority} onValueChange={val => setEditData({ ...editData, priority: val })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {Object.keys(priorityColors).map(priority => (
-                      <SelectItem key={priority} value={priority}>{priority}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-          </div>
-          <DialogFooter className="pt-4 border-t border-border/40 mt-2">
-            <Button variant="outline" onClick={() => setEditOpen(false)} className="w-full sm:w-auto">Cancel</Button>
-            <Button onClick={handleUpdateProject} disabled={isPending || !editData.name || !editData.leadId || !editData.teamId} className="w-full sm:w-auto">
-              {isPending ? "Saving..." : "Save Changes"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Manage Members Modal */}
-      <Dialog open={manageOpen} onOpenChange={setManageOpen}>
-        <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Manage Project Members</DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 overflow-y-auto py-4 space-y-2 pr-2">
-            {allEmployees.filter(emp => emp.id !== project.leadId).map(emp => {
-              const isSelected = selectedMemberIds.includes(emp.id);
-              
-              return (
-                <div 
-                  key={emp.id} 
-                  onClick={() => toggleMember(emp.id)}
-                  className={cn(
-                    "flex items-center gap-3 p-3 rounded-lg border transition-all cursor-pointer",
-                    isSelected ? "border-primary/50 bg-primary/5" : "border-transparent hover:bg-muted/50"
-                  )}
-                >
-                  <div className={cn(
-                    "flex items-center justify-center w-4 h-4 rounded-sm border shrink-0 transition-colors",
-                    isSelected ? "bg-primary border-primary text-primary-foreground" : "border-border/50 bg-background"
-                  )}>
-                    {isSelected && <Check className="h-3 w-3" />}
-                  </div>
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src={emp.avatarUrl} />
-                    <AvatarFallback className="text-xs">{emp.firstName.charAt(0)}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{emp.firstName} {emp.lastName}</p>
-                    <p className="text-[10px] text-muted-foreground truncate">{emp.designation || emp.email}</p>
-                  </div>
+          <form
+            id="edit-project"
+            className="flex-1 space-y-6 overflow-y-auto px-6 py-5"
+            onSubmit={(e) => { e.preventDefault(); handleUpdateProject(); }}
+          >
+            <section className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-[1fr_8rem]">
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-project-name">Project Name</Label>
+                  <Input id="edit-project-name" value={editData.name} onChange={e => setEditData({ ...editData, name: e.target.value })} maxLength={120} disabled={isPending} />
                 </div>
-              );
-            })}
-          </div>
-          <DialogFooter className="pt-4 border-t border-border/40">
-            <Button variant="outline" onClick={() => setManageOpen(false)} className="w-full sm:w-auto">Cancel</Button>
-            <Button onClick={handleManageMembers} disabled={isPending} className="w-full sm:w-auto">
-              {isPending ? "Saving..." : "Save"}
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-project-key">Task Key</Label>
+                  <Input id="edit-project-key" className="font-mono uppercase" value={editData.key} onChange={e => setEditData({ ...editData, key: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6) })} disabled={isPending} />
+                </div>
+              </div>
+              {editData.key !== (project.key ?? "") && (
+                <p className="-mt-2 text-xs text-amber-700 dark:text-amber-400">Every task ID in this project changes to {editData.key || "…"}-number.</p>
+              )}
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-project-desc">Description <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                <Textarea id="edit-project-desc" rows={3} value={editData.description} onChange={e => setEditData({ ...editData, description: e.target.value })} placeholder="What this project delivers" disabled={isPending} />
+              </div>
+            </section>
+
+            <section className="space-y-4 border-t border-border/60 pt-5">
+              <h3 className="text-xs font-medium text-muted-foreground">Ownership</h3>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>Project Lead</Label>
+                  <LeadPicker value={editData.leadId} people={allEmployees} onChange={(v) => setEditData({ ...editData, leadId: v })} disabled={isPending} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Owning Team</Label>
+                  <Select value={editData.teamId} onValueChange={val => setEditData({ ...editData, teamId: val })} disabled={isPending}>
+                    <SelectTrigger className="h-[52px] w-full"><SelectValue placeholder="Choose a team" /></SelectTrigger>
+                    <SelectContent>
+                      {allTeams.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </section>
+
+            <section className="space-y-4 border-t border-border/60 pt-5">
+              <h3 className="text-xs font-medium text-muted-foreground">Status & Timeline</h3>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>Status</Label>
+                  <Select value={editData.status} onValueChange={val => setEditData({ ...editData, status: val as typeof editData.status })} disabled={isPending}>
+                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Object.keys(statusColors).map(st => <SelectItem key={st} value={st}>{titleCase(st)}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Priority</Label>
+                  <Select value={editData.priority} onValueChange={val => setEditData({ ...editData, priority: val as typeof editData.priority })} disabled={isPending}>
+                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Object.keys(priorityColors).map(pr => <SelectItem key={pr} value={pr}>{titleCase(pr)}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-project-start">Start Date</Label>
+                  <DatePicker id="edit-project-start" value={editData.startDate} max={editData.endDate || undefined} onChange={(v) => setEditData({ ...editData, startDate: v })} placeholder="Not set" clearable />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-project-end">Deadline</Label>
+                  <DatePicker id="edit-project-end" value={editData.endDate} min={editData.startDate || undefined} onChange={(v) => setEditData({ ...editData, endDate: v })} placeholder="No deadline" clearable />
+                </div>
+              </div>
+            </section>
+          </form>
+          <DialogFooter className="m-0 rounded-b-xl border-t border-border/60 px-6 py-3">
+            <Button type="button" variant="ghost" onClick={() => setEditOpen(false)} disabled={isPending}>Cancel</Button>
+            <Button type="submit" form="edit-project" disabled={isPending || !editData.name.trim() || !editData.leadId || !editData.teamId}>
+              {isPending ? "Saving…" : "Save Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {manageOpen && (
+        <MembersDialog
+          open
+          onOpenChange={setManageOpen}
+          title="Manage Members"
+          description={`Who works on ${project.name}. Only members can be assigned its tasks. The lead always stays.`}
+          people={allEmployees}
+          members={project.members.map((m: { employee: Person }) => m.employee)}
+          leadId={project.leadId}
+          onSave={async (ids) => {
+            await manageProjectMembersAction(project.id, ids);
+            return `${project.name} members updated`;
+          }}
+        />
+      )}
 
       {/* Member Permissions Dialog */}
       <MemberPermissionsDialog 

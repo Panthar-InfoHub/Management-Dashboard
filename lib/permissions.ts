@@ -1,80 +1,83 @@
-// ── Centralized Dynamic Permission System ──
-import { db } from "@/lib/db";
-export { type Permission, ALL_PERMISSIONS } from "./permission-list";
-import { type Permission as LocalPermission } from "./permission-list";
+// ── Permission resolution ──
+// A person has a permission when any of these says yes:
+//   1. Their role is ADMIN or SUPER_ADMIN (all permissions).
+//   2. One of their access presets lists it (e.g. "HR").
+//   3. A personal grant gives it: company-wide, or for one project; not expired.
+//   4. For one project: they lead the project or the team that owns it, and the
+//      permission is a lead power (tasks + editing that project).
 import { cache } from "react";
-import { getRolePermissions } from "@/lib/queries/reference.queries";
+import { cacheLife, cacheTag } from "next/cache";
+import { db } from "@/lib/db";
+import { CACHE_TAGS, accessTagFor } from "@/lib/cache/tags";
+import { isAdminRole } from "@/lib/access";
+import { ALL_PERMISSIONS, isPermission, type Permission } from "./permission-list";
 
-// ─── Internal: request-scoped cache for role records ───
+export { type Permission, ALL_PERMISSIONS } from "./permission-list";
 
-/** Role permissions: cached across requests (tag "roles"), and deduped
- *  per request so several `hasPermission()` calls share one lookup. */
-const getRolePermissionsCached = cache(getRolePermissions);
+type Actor = { id: string; role: string };
 
-/** Fetch per-user permission overrides, cached per-request. */
-const getUserPermissionsCached = cache(async (employeeId: string) => {
-  const now = new Date();
-  const perms = await db.employeePermission.findMany({
-    where: {
-      employeeId,
-      OR: [
-        { expiresAt: null },
-        { expiresAt: { gt: now } },
-      ],
-    },
-    select: { permission: true, projectId: true },
-  });
-  return perms;
-});
+/** Powers a project lead (or the lead of the project's team) has on that project. */
+const LEAD_PERMISSIONS = new Set<Permission>(["task:create", "task:update", "task:delete", "task:assign", "project:update"]);
 
-// ─── Core Check Functions ───
+/** Presets + personal grants for one person. Cached across requests; access changes call updateTag. */
+async function loadAccess(employeeId: string) {
+  "use cache";
+  cacheTag(CACHE_TAGS.access, accessTagFor(employeeId));
+  cacheLife("hours");
 
-/** Check if a role has a specific permission.
- *  Resolution order: ADMIN bypass → role permissions → global user override → project-scoped user override.
- *  The employeeId is optional; when provided, user-level grants are also checked. */
-export async function hasPermission(
-  roleName: string,
-  permission: LocalPermission,
-  employeeId?: string,
-  projectId?: string,
-): Promise<boolean> {
-  // ADMINs always have every permission — no DB lookup needed.
-  if (roleName === "ADMIN") return true;
+  const [presets, grants] = await Promise.all([
+    db.employeeAccessPreset.findMany({
+      where: { employeeId },
+      select: { preset: { select: { permissions: true } } },
+    }),
+    db.employeePermission.findMany({
+      where: { employeeId },
+      select: { permission: true, projectId: true, expiresAt: true },
+    }),
+  ]);
 
-  const rolePermissions = await getRolePermissionsCached(roleName);
-  if (rolePermissions?.includes(permission as string)) return true;
+  return {
+    presetPermissions: [...new Set(presets.flatMap((p) => p.preset.permissions))],
+    grants: grants.map((g) => ({ permission: g.permission, projectId: g.projectId, expiresAt: g.expiresAt?.toISOString() ?? null })),
+  };
+}
 
-  // Check per-user overrides (if employeeId available)
-  if (employeeId) {
-    const userPerms = await getUserPermissionsCached(employeeId);
-    
-    // Check for a global override first (projectId is null)
-    const hasGlobalOverride = userPerms.some((p) => p.permission === permission && p.projectId === null);
-    if (hasGlobalOverride) return true;
+const getAccess = cache(loadAccess);
 
-    // Check for a project-scoped override if a projectId context was provided
-    if (projectId) {
-      const hasProjectOverride = userPerms.some((p) => p.permission === permission && p.projectId === projectId);
-      if (hasProjectOverride) return true;
-    }
+const getProjectLeads = cache(async (projectId: string) =>
+  db.project.findUnique({
+    where: { id: projectId },
+    select: { leadId: true, team: { select: { leadId: true } } },
+  })
+);
+
+function activeGrants(access: Awaited<ReturnType<typeof loadAccess>>) {
+  const now = Date.now();
+  return access.grants.filter((g) => !g.expiresAt || Date.parse(g.expiresAt) > now);
+}
+
+export async function hasPermission(actor: Actor, permission: Permission, projectId?: string): Promise<boolean> {
+  if (isAdminRole(actor.role)) return true;
+
+  const access = await getAccess(actor.id);
+  if (access.presetPermissions.includes(permission)) return true;
+
+  const grants = activeGrants(access).filter((g) => g.permission === permission);
+  if (grants.some((g) => g.projectId === null)) return true;
+  if (projectId && grants.some((g) => g.projectId === projectId)) return true;
+
+  if (projectId && LEAD_PERMISSIONS.has(permission)) {
+    const leads = await getProjectLeads(projectId);
+    if (leads && (leads.leadId === actor.id || leads.team?.leadId === actor.id)) return true;
   }
 
   return false;
 }
 
-/** Throw if the role lacks the permission. Use in Server Actions / API routes. */
-export async function requirePermission(
-  roleName: string,
-  permission: LocalPermission,
-  employeeId?: string,
-): Promise<void> {
-  const has = await hasPermission(roleName, permission, employeeId);
-  if (!has) {
-    throw new Error(`Forbidden: requires "${permission}"`);
-  }
-}
-
-/** Get all permissions for a given role */
-export async function getPermissionsForRole(roleName: string): Promise<string[]> {
-  return (await getRolePermissionsCached(roleName)) ?? [];
+/** Company-wide permissions (presets + global grants). Used to show or hide UI. */
+export async function getEffectivePermissions(actor: Actor): Promise<Permission[]> {
+  if (isAdminRole(actor.role)) return ALL_PERMISSIONS;
+  const access = await getAccess(actor.id);
+  const global = activeGrants(access).filter((g) => g.projectId === null).map((g) => g.permission);
+  return [...new Set([...access.presetPermissions, ...global])].filter(isPermission);
 }

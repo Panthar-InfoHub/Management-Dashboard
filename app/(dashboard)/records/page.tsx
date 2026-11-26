@@ -1,17 +1,17 @@
 import { Suspense } from "react";
-import { getCurrentEmployee } from "@/lib/auth";
-import { notFound, redirect } from "next/navigation";
+import { checkPermission } from "@/lib/auth";
+import { redirect } from "next/navigation";
 import { RecordsClient } from "@/components/records/records-client";
 import { db } from "@/lib/db";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function RecordsPage() {
   return (
-    <div className="space-y-6 p-6 md:p-8 max-w-7xl mx-auto selection:bg-primary/10">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-border/40">
+    <div className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Employment Records</h1>
-          <p className="text-sm text-muted-foreground">Company-wide ledger of roles, promotions, and offboarding.</p>
+          <h1 className="text-2xl font-semibold tracking-tight">Employment Records</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Company-wide ledger of roles, promotions, and offboarding.</p>
         </div>
       </div>
       <Suspense fallback={<RecordsLoading />}>
@@ -32,9 +32,7 @@ function RecordsLoading() {
 }
 
 async function RecordsDataAsync() {
-  const currentEmployee = await getCurrentEmployee();
-  
-  if (currentEmployee.role !== "ADMIN" && currentEmployee.role !== "MANAGER") {
+  if (!(await checkPermission("employee:view-all"))) {
     redirect("/employees");
   }
 
