@@ -5,7 +5,9 @@ import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { SWProvider } from "@/components/providers/sw-provider";
 import { OfflineOverlay } from "@/components/providers/offline-overlay";
-import NextTopLoader from "nextjs-toploader";
+import Image from "next/image";
+import { SplashDismiss } from "@/components/providers/splash-dismiss";
+import { splashStartupImages } from "@/lib/pwa/splash";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -26,6 +28,7 @@ export const metadata: Metadata = {
     capable: true,
     statusBarStyle: "default",
     title: "Panthar",
+    startupImage: splashStartupImages,
   },
   icons: {
     icon: "/icon-192.png",
@@ -34,7 +37,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#09090b",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
   width: "device-width",
   initialScale: 1,
   // Lets the bottom bar sit above the iPhone home indicator (safe-area insets).
@@ -53,11 +59,16 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full bg-background text-foreground">
+        {/* Launch screen for the installed app, in the static shell so it shows
+            with the first bytes; SplashDismiss hides it once the app is running. */}
+        <div id="app-splash" aria-hidden="true">
+          <Image src="/images/black_logo.webp" alt="" width={88} height={88} priority />
+        </div>
         <ClerkProvider>
           <ThemeProvider>
             <SWProvider />
+            <SplashDismiss />
             <OfflineOverlay />
-            <NextTopLoader color="#6366f1" height={3} showSpinner={false} />
             {children}
             <Toaster />
           </ThemeProvider>

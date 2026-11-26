@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { connection } from "next/server";
 import { getTeams } from "@/lib/queries/team.queries";
 import { TeamsClient } from "@/components/teams/teams-client";
 import { checkPermission, getCurrentEmployee } from "@/lib/auth";
@@ -16,8 +17,7 @@ export default function TeamsPage() {
 }
 
 async function TeamsDataAsync() {
-  // Reading the signed-in user first marks this as request-time data; the rest
-  // then runs in parallel.
+  await connection();
   await getCurrentEmployee();
   const [canCreate, teams, employees] = await Promise.all([
     checkPermission("team:create"),

@@ -1,6 +1,8 @@
 // Monthly attendance as an Excel file: a Summary sheet, a Daily grid sheet and
 // a Detail sheet (one row per person per day). Needs attendance:export; the
-// people included follow the same scope as Team Attendance.
+// people included follow the same scope as Team Attendance. Daily-update
+// status is always included; the update text only for people who may read
+// everyone's updates (update:view-all).
 import ExcelJS from "exceljs";
 import { getCurrentEmployee } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
@@ -8,6 +10,7 @@ import { getTeamMonth } from "@/lib/attendance/queries";
 import { fromDateKey, WEEKDAYS } from "@/lib/attendance/calendar";
 import { ATTENDANCE_STATUS_LABELS, type AttendanceStatusValue, to12h } from "@/lib/attendance/rules";
 import { audit } from "@/lib/audit";
+import { db } from "@/lib/db";
 
 const CODES: Record<AttendanceStatusValue, string> = {
   PRESENT: "P", LATE: "L", HALF_DAY: "HD", ABSENT: "A", ON_LEAVE: "LV", WFH: "W", HOLIDAY: "H", WEEKLY_OFF: "OFF",
@@ -32,6 +35,19 @@ export async function GET(request: Request) {
   const data = await getTeamMonth(viewer, month, url.searchParams.get("team"));
   if (!data) return new Response("No attendance you can view.", { status: 403 });
 
+  const withText = await hasPermission(viewer, "update:view-all");
+  const texts = new Map<string, string>();
+  if (withText && data.dateKeys.length) {
+    const rows = await db.dailyUpdate.findMany({
+      where: { employeeId: { in: data.people.map((p) => p.employee.id) }, date: { gte: fromDateKey(data.dateKeys[0]), lte: fromDateKey(data.dateKeys[data.dateKeys.length - 1]) } },
+      select: { employeeId: true, date: true, body: true, tasks: { select: { title: true } } },
+    });
+    for (const r of rows) {
+      const tasks = r.tasks.length ? `\n\nTasks: ${r.tasks.map((t) => t.title).join(", ")}` : "";
+      texts.set(`${r.employeeId}|${r.date.toISOString().slice(0, 10)}`, r.body + tasks);
+    }
+  }
+
   const wb = new ExcelJS.Workbook();
   wb.creator = "Panthar Teams";
   wb.created = new Date();
@@ -53,6 +69,8 @@ export async function GET(request: Request) {
     { header: "Missed Checkout", key: "missed", width: 16 },
     { header: "Worked (h)", key: "worked", width: 11 },
     { header: "Overtime (h)", key: "overtime", width: 12 },
+    { header: "Daily Updates", key: "updates", width: 13 },
+    { header: "Updates Missing", key: "updatesMissing", width: 15 },
   ];
   summary.getRow(1).font = header;
 
@@ -81,6 +99,8 @@ export async function GET(request: Request) {
     { header: "Left Early (min)", key: "early", width: 15 },
     { header: "Overtime (min)", key: "overtime", width: 14 },
     { header: "Missed Checkout", key: "missed", width: 15 },
+    { header: "Daily Update", key: "update", width: 13 },
+    ...(withText ? [{ header: "Update Text", key: "updateText", width: 70 }] : []),
   ];
   detail.getRow(1).font = header;
 
@@ -96,6 +116,8 @@ export async function GET(request: Request) {
       missed: days.filter((d) => d.missedCheckout).length,
       worked: hours(days.reduce((n, d) => n + (d.workMinutes ?? 0), 0)),
       overtime: hours(days.reduce((n, d) => n + (d.overtimeMinutes ?? 0), 0)),
+      updates: days.filter((d) => d.update === "ADDED").length,
+      updatesMissing: days.filter((d) => d.update === "MISSING").length,
     });
 
     daily.addRow({ name: employee.name, ...Object.fromEntries(days.map((d) => [d.dateKey, d.status ? CODES[d.status as AttendanceStatusValue] : ""])) });
@@ -114,6 +136,8 @@ export async function GET(request: Request) {
         early: d.earlyMinutes ?? "",
         overtime: d.overtimeMinutes ?? "",
         missed: d.missedCheckout ? "Yes" : "",
+        update: d.update === "ADDED" ? "Added" : d.update === "MISSING" ? "Missing" : "",
+        ...(withText ? { updateText: texts.get(`${employee.id}|${d.dateKey}`) ?? "" } : {}),
       });
     }
   }
@@ -121,6 +145,7 @@ export async function GET(request: Request) {
   // Legend under the daily grid.
   daily.addRow({});
   daily.addRow({ name: "Codes: " + (Object.keys(CODES) as AttendanceStatusValue[]).map((s) => `${CODES[s]} = ${ATTENDANCE_STATUS_LABELS[s]}`).join(", ") });
+  if (withText) detail.getColumn("updateText").alignment = { wrapText: true, vertical: "top" };
   for (const ws of [summary, daily, detail]) ws.views = [{ state: "frozen", xSplit: ws === detail ? 0 : 1, ySplit: 1 }];
 
   const buffer = await wb.xlsx.writeBuffer();

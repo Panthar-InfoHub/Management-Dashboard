@@ -13,9 +13,10 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { LinkPending } from "@/components/ui/link-pending";
 import {
   LayoutDashboard, FolderKanban, Users, UserCircle,
-  FileText, Bell, Settings, ClipboardCheck, ListTodo, CalendarClock, Plane, Inbox, ScrollText, Megaphone,
+  FileText, Bell, Settings, ClipboardCheck, ListTodo, CalendarClock, CalendarDays, NotebookPen, Plane, Inbox, ScrollText, Megaphone,
   PanelLeftClose, PanelLeft, type LucideIcon,
 } from "lucide-react";
 
@@ -25,12 +26,14 @@ const navItems: NavItem[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
   { label: "Announcements", href: "/announcements", icon: Megaphone },
   { label: "My Tasks", href: "/tasks/my", icon: ListTodo },
+  { label: "Daily Updates", href: "/updates", icon: NotebookPen },
   { label: "Tasks", href: "/tasks", icon: ClipboardCheck },
   { label: "Projects", href: "/projects", icon: FolderKanban },
   { label: "Teams", href: "/teams", icon: Users },
   { label: "Members", href: "/employees", icon: UserCircle },
   { label: "Attendance", href: "/attendance", icon: CalendarClock },
   { label: "Leave", href: "/leave", icon: Plane },
+  { label: "Calendar", href: "/calendar", icon: CalendarDays },
   { label: "Approvals", href: "/approvals", icon: Inbox },
   { label: "Records", href: "/records", icon: FileText },
 ];
@@ -71,7 +74,7 @@ function NavItemLink({ item, active, collapsed, onNavigate }: { item: NavItem; a
       onClick={onNavigate}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors",
+        "group relative flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors",
         active
           ? "bg-accent text-accent-foreground"
           : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
@@ -79,11 +82,13 @@ function NavItemLink({ item, active, collapsed, onNavigate }: { item: NavItem; a
       )}
     >
       <item.icon className={cn("h-4 w-4 shrink-0", active && "text-foreground")} />
+      {collapsed && <LinkPending className="absolute right-1 top-1 size-2" />}
       {!collapsed && (
         <>
           <span className="truncate">{item.label}</span>
+          <LinkPending className="ml-auto" />
           {item.badge && (
-            <Badge variant="secondary" className="ml-auto h-5 min-w-5 justify-center rounded-full px-1.5 text-[10px] font-medium">
+            <Badge variant="secondary" className="h-5 min-w-5 justify-center rounded-full px-1.5 text-[10px] font-medium">
               {item.badge}
             </Badge>
           )}

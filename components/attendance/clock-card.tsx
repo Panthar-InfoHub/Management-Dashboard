@@ -16,6 +16,7 @@ import { DAY_KIND_LABELS } from "@/lib/attendance/calendar";
 import { formatDuration, type AttendanceStatusValue, type GeoPoint, to12h } from "@/lib/attendance/rules";
 import type { getMyToday } from "@/lib/attendance/queries";
 import { errorMessage } from "@/lib/utils";
+import { UpdateDialog } from "@/components/updates/update-dialog";
 
 type Today = NonNullable<Awaited<ReturnType<typeof getMyToday>>>;
 
@@ -35,6 +36,8 @@ export function ClockCard({ today }: { today: Today }) {
   // Clock-in refused for location: show why, with a way to ask for WFH right here.
   const [blocked, setBlocked] = useState<string | null>(null);
   const [wfhOpen, setWfhOpen] = useState(false);
+  // After clocking out, offer to add today's update (optional).
+  const [updateOpen, setUpdateOpen] = useState(false);
   const [wfhReason, setWfhReason] = useState("");
   const { record, office } = today;
   const needsLocation = today.dayKind === "OFFICE";
@@ -86,6 +89,8 @@ export function ClockCard({ today }: { today: Today }) {
   const clockOut = async () => {
     const location = await readLocation(5_000);
     const res = await clockOutAction({ location });
+    // Clocked out either way; a message is only a heads-up (e.g. counts as a half day).
+    setUpdateOpen(true);
     if (res.message) {
       toast.warning(res.message);
       return;
@@ -166,6 +171,8 @@ export function ClockCard({ today }: { today: Today }) {
           </form>
         </DialogContent>
       </Dialog>
+
+      <UpdateDialog open={updateOpen} onOpenChange={setUpdateOpen} dateKey={today.dateKey} />
 
       {fullDayLeave && !isIn ? null : isIn ? (
         <ConfirmAction

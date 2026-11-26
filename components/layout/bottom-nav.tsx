@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { CalendarClock, ClipboardCheck, FolderKanban, Inbox, LayoutDashboard, ListTodo, Menu, Plane, type LucideIcon } from "lucide-react";
 import { useAccess } from "@/hooks/use-access";
 import { cn } from "@/lib/utils";
+import { LinkPending } from "@/components/ui/link-pending";
 
 type Tab = { label: string; href: string; icon: LucideIcon };
 
@@ -49,11 +50,12 @@ export function BottomNav({ onMore }: { onMore: () => void }) {
                 href={href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex h-16 flex-col items-center justify-center gap-1 text-[11px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50",
+                  "relative flex h-16 flex-col items-center justify-center gap-1 text-[11px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50",
                   active ? "text-foreground" : "text-muted-foreground"
                 )}
               >
                 <Icon className={cn("h-5 w-5", active && "stroke-[2.25]")} />
+                <LinkPending className="absolute top-2.5 right-[calc(50%-18px)] size-2" />
                 {label}
               </Link>
             </li>

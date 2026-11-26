@@ -4,6 +4,7 @@ import { UserError } from "@/lib/errors";
 // Every server-side function that needs "who is this user + what can they do?"
 // should call getCurrentEmployee().
 
+import { connection } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { hasPermission, type Permission } from "@/lib/permissions";
@@ -23,6 +24,7 @@ import { VIEW_AS_ENABLED, getViewAsEmployee } from "@/lib/dev/view-as";
  * Includes Just-In-Time (JIT) syncing if the webhook hasn't fired yet.
  */
 async function resolveSignedInEmployee(): Promise<AuthEmployee> {
+  await connection();
   const { userId } = await auth();
 
   if (!userId) {

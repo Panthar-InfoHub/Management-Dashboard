@@ -27,6 +27,7 @@ function tooltip(d: Day) {
   if (d.reviewPending) parts.push("pending review");
   if (d.awaitingWfh) parts.push("awaiting WFH approval");
   if (d.lateExcused) parts.push("late excused");
+  if (d.update) parts.push(d.update === "ADDED" ? "daily update added" : "no daily update");
   return parts.join(" · ");
 }
 
@@ -46,6 +47,7 @@ export function TeamMonthGrid({ data }: { data: TeamMonth }) {
         <li className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-red-500" /> Missed checkout</li>
         <li className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Overtime</li>
         <li className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-foreground/50" /> Awaiting WFH or late excused</li>
+        <li className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full border border-foreground/60" /> No daily update</li>
         {data.canEdit && <li className="text-foreground">Click a day to edit it</li>}
       </ul>
 
@@ -69,16 +71,18 @@ export function TeamMonthGrid({ data }: { data: TeamMonth }) {
                 <th key={s} className="border-b border-l border-border/40 px-2 py-1 text-center font-medium" title={ATTENDANCE_STATUS_LABELS[s]}>{CODES[s]}</th>
               ))}
               <th className="border-b border-border/40 px-2 py-1 text-center font-medium">OT</th>
+              <th className="border-b border-border/40 px-2 py-1 text-center font-medium" title="Daily updates added, of days worked">Upd</th>
             </tr>
           </thead>
           <tbody>
             {data.people.length === 0 && (
-              <tr><td colSpan={data.dateKeys.length + 8} className="px-3 py-6 text-center text-muted-foreground">No one here yet. Add people to the team to see them.</td></tr>
+              <tr><td colSpan={data.dateKeys.length + 9} className="px-3 py-6 text-center text-muted-foreground">No one here yet. Add people to the team to see them.</td></tr>
             )}
             {data.people.map(({ employee, days }) => {
               const counts = new Map<string, number>();
-              let overtime = 0;
+              let overtime = 0, worked = 0, added = 0;
               for (const d of days) {
+                if (d.update) { worked++; if (d.update === "ADDED") added++; }
                 if (d.status) counts.set(d.status, (counts.get(d.status) ?? 0) + 1);
                 overtime += d.overtimeMinutes ?? 0;
               }
@@ -97,6 +101,7 @@ export function TeamMonthGrid({ data }: { data: TeamMonth }) {
                         {d.missedCheckout && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-red-500" />}
                         {!d.missedCheckout && d.overtimeMinutes ? <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-emerald-500" /> : null}
                         {(d.awaitingWfh || d.lateExcused) && <span className="absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-foreground/50" />}
+                        {d.update === "MISSING" && <span className="absolute -bottom-0.5 -left-0.5 h-1.5 w-1.5 rounded-full border border-foreground/60 bg-background" />}
                       </span>
                     ) : (
                       <span className="inline-flex h-7 items-center text-muted-foreground/40">·</span>
@@ -118,6 +123,7 @@ export function TeamMonthGrid({ data }: { data: TeamMonth }) {
                     <td key={s} className="border-b border-l border-border/40 px-2 text-center tabular-nums">{counts.get(s) ?? 0}</td>
                   ))}
                   <td className="border-b border-border/40 px-2 text-center tabular-nums">{overtime ? formatDuration(overtime) : "0"}</td>
+                  <td className="border-b border-border/40 px-2 text-center tabular-nums" title={`${added} of ${worked} days worked have a daily update`}>{added}/{worked}</td>
                 </tr>
               );
             })}

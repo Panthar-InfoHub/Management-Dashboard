@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { connection } from "next/server";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { Plus } from "lucide-react";
@@ -148,6 +149,7 @@ async function Clock({ employee }: { employee: AuthEmployee }) {
 // ─── Page ───
 
 async function Dashboard() {
+  await connection();
   const employee = await getCurrentEmployee();
   const org = await isOrgView(employee);
   const now = new Date();

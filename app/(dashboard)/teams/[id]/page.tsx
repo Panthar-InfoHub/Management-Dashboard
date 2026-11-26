@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { getTeamById, getTeamRecentTasks } from "@/lib/queries/team.queries";
 import { getEmployees } from "@/lib/queries/employee.queries";
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
@@ -7,7 +8,7 @@ import { TeamDetailClient } from "@/components/teams/team-detail-client";
 
 export default async function TeamDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  // Read the signed-in user first: that makes this a request-time render, so the clock below is allowed.
+  await connection();
   const employee = await getCurrentEmployee();
   const now = new Date();
   const open = { notIn: ["DONE", "CANCELLED"] as ("DONE" | "CANCELLED")[] };

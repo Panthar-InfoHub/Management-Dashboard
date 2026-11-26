@@ -1,5 +1,10 @@
 const CACHE_NAME = 'panthar-offline-v1';
 const OFFLINE_URL = '/offline.html';
+// Build files under /_next/static/ have a content hash in their name and never
+// change, so they're served from the device after the first visit. That makes
+// the installed app start faster. Capped so old builds don't pile up.
+const STATIC_CACHE = 'panthar-static-v1';
+const STATIC_LIMIT = 400;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -23,13 +28,37 @@ self.addEventListener('activate', (event) => {
       if ('navigationPreload' in self.registration) {
         await self.registration.navigationPreload.enable();
       }
+      // Drop caches from older versions of this worker.
+      const keep = [CACHE_NAME, STATIC_CACHE];
+      for (const key of await caches.keys()) {
+        if (!keep.includes(key)) await caches.delete(key);
+      }
       // Tell the active service worker to take control of the page immediately
       self.clients.claim();
     })()
   );
 });
 
+async function cacheFirstStatic(request) {
+  const cache = await caches.open(STATIC_CACHE);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  const response = await fetch(request);
+  if (response.ok) {
+    await cache.put(request, response.clone());
+    const keys = await cache.keys();
+    for (const old of keys.slice(0, Math.max(0, keys.length - STATIC_LIMIT))) await cache.delete(old);
+  }
+  return response;
+}
+
 self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  if (event.request.method === 'GET' && url.origin === self.location.origin && url.pathname.startsWith('/_next/static/')) {
+    event.respondWith(cacheFirstStatic(event.request));
+    return;
+  }
+
   // We only want to call event.respondWith() if this is a navigation request
   // for an HTML page.
   const isNavigate = event.request.mode === 'navigate';

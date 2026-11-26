@@ -156,3 +156,43 @@
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* Launch screen for the installed app only (a browser tab never shows it).
+   Hidden by SplashDismiss once the app starts; the 6s animation is a fallback
+   in case scripts never run. */
+#app-splash {
+  display: none;
+}
+@media (display-mode: standalone) {
+  #app-splash {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--background);
+    animation: app-splash-out 0ms linear 6s forwards;
+  }
+  #app-splash[data-done] {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 200ms cubic-bezier(0.175, 0.885, 0.32, 1.1), visibility 0s linear 200ms;
+  }
+}
+.dark #app-splash img {
+  filter: invert(1);
+}
+@media (prefers-reduced-motion: reduce) {
+  #app-splash[data-done] {
+    transition: none;
+  }
+}
+@keyframes app-splash-out {
+  to {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+}

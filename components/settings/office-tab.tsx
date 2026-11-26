@@ -183,7 +183,7 @@ export function OfficeTab({ office }: { office: OfficeSettings }) {
       <section className="space-y-4">
         <div>
           <h3 className="text-sm font-medium">Working Week</h3>
-          <p className="text-xs text-muted-foreground">The default for each weekday. Change a single date in the Calendar tab.</p>
+          <p className="text-xs text-muted-foreground">The default for each weekday. Change a single date on the Calendar page.</p>
         </div>
         <div className="grid gap-3 sm:grid-cols-4">
           {WEEKDAYS.map((day, i) => (

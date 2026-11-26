@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { connection } from "next/server";
 import Link from "next/link";
 import { CalendarClock, Users } from "lucide-react";
 import { getCurrentEmployee } from "@/lib/auth";
@@ -11,6 +11,7 @@ import { RequestDialog } from "@/components/leave/request-dialog";
 import { MyRequests } from "@/components/leave/my-requests";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ParamsSuspense } from "@/components/ui/params-suspense";
 import { EmptyState } from "@/components/ui/empty-state";
 
 type Params = { month?: string; fix?: string };
@@ -22,9 +23,9 @@ export default function AttendancePage({ searchParams }: { searchParams: Promise
         <h1 className="text-2xl font-semibold tracking-tight">My Attendance</h1>
         <p className="mt-1 text-sm text-muted-foreground">Your days, times and hours. Ask for WFH or fix a day from here.</p>
       </div>
-      <Suspense fallback={<AttendanceSkeleton />}>
+      <ParamsSuspense fallback={<AttendanceSkeleton />}>
         <AttendanceBody searchParams={searchParams} />
-      </Suspense>
+      </ParamsSuspense>
     </div>
   );
 }
@@ -40,6 +41,7 @@ function AttendanceSkeleton() {
 }
 
 async function AttendanceBody({ searchParams }: { searchParams: Promise<Params> }) {
+  await connection();
   const [me, params] = await Promise.all([getCurrentEmployee(), searchParams]);
   const scope = await getAttendanceScope(me);
   const teamLink = scope && (

@@ -1,5 +1,6 @@
 import { STATUS_META, StatusIcon } from "@/components/tasks/task-icons";
 import { Suspense } from "react";
+import { connection } from "next/server";
 import Link from "next/link";
 import { LayoutGrid, Plus } from "lucide-react";
 import { getMyTasks } from "@/lib/queries/task.queries";
@@ -64,6 +65,7 @@ function TaskRow({ task, meId }: { task: Row; meId: string }) {
 }
 
 async function MyTasksBody() {
+  await connection();
   const { meId, assigned, toReview } = await getMyTasks();
   const today = todayKey(TZ);
   const groups = new Map<DueBucket, Row[]>(DUE_BUCKETS.map((b) => [b.id, []]));

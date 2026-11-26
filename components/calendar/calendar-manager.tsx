@@ -10,7 +10,10 @@ import { Badge } from "@/components/ui/badge";
 import { ConfirmAction } from "@/components/ui/confirm-action";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { deleteCalendarDayAction, deleteCalendarDaysAction, upsertCalendarDayAction } from "@/lib/actions/attendance-settings.actions";
-import { ImportHolidaysDialog } from "@/components/settings/import-holidays-dialog";
+import { ImportHolidaysDialog } from "@/components/calendar/import-holidays-dialog";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { suggestDayAnnouncement } from "@/lib/attendance/day-announcement";
 import { DAY_KIND_LABELS, WEEKDAYS, fromDateKey, type DayKindValue } from "@/lib/attendance/calendar";
 import { cn, errorMessage } from "@/lib/utils";
 
@@ -45,7 +48,11 @@ function groupRuns(rows: CalendarRow[]) {
   return groups;
 }
 
-export function CalendarTab({ days, currentYear }: { days: CalendarRow[]; currentYear: number }) {
+/**
+ * Holidays and special days. Everyone can see them; people with leave:manage
+ * can change them, and with announcement:manage also announce the change.
+ */
+export function CalendarManager({ days, currentYear, canManage, canAnnounce }: { days: CalendarRow[]; currentYear: number; canManage: boolean; canAnnounce: boolean }) {
   const [isPending, startTransition] = useTransition();
   const rows = days;
   const [form, setForm] = useState<{ date: string; endDate: string; kind: DayKindValue; name: string }>({ date: "", endDate: "", kind: "HOLIDAY", name: "" });
@@ -54,15 +61,26 @@ export function CalendarTab({ days, currentYear }: { days: CalendarRow[]; curren
   const span = several && form.date && form.endDate && form.endDate >= form.date
     ? Math.round((fromDateKey(form.endDate).getTime() - fromDateKey(form.date).getTime()) / 86_400_000) + 1
     : 1;
-  const ready = !!form.date && (!several || (!!form.endDate && form.endDate >= form.date)) && (form.kind !== "HOLIDAY" || !!form.name.trim());
+  // Announcement text follows the form until the person edits it.
+  const [announce, setAnnounce] = useState(false);
+  const [titleEdit, setTitleEdit] = useState<string | null>(null);
+  const [bodyEdit, setBodyEdit] = useState<string | null>(null);
+  const suggested = form.date ? suggestDayAnnouncement({ ...form, endDate: several ? form.endDate : null }) : { title: "", body: "" };
+  const title = titleEdit ?? suggested.title;
+  const body = bodyEdit ?? suggested.body;
+  const ready =
+    !!form.date && (!several || (!!form.endDate && form.endDate >= form.date)) && (form.kind !== "HOLIDAY" || !!form.name.trim()) &&
+    (!announce || (!!title.trim() && !!body.trim()));
 
   const add = () => {
     startTransition(async () => {
       try {
-        const res = await upsertCalendarDayAction({ ...form, endDate: several ? form.endDate : null });
+        const res = await upsertCalendarDayAction({ ...form, endDate: several ? form.endDate : null, announce: announce ? { title, body } : null });
         const what = form.kind === "HOLIDAY" ? `Holiday “${form.name}”` : DAY_KIND_LABELS[form.kind];
-        toast.success(res.days > 1 ? `${what} added for ${res.days} days` : form.kind === "HOLIDAY" ? `${what} added` : `${formatDay(form.date)} set to ${what}`);
+        const saved = res.days > 1 ? `${what} added for ${res.days} days` : form.kind === "HOLIDAY" ? `${what} added` : `${formatDay(form.date)} set to ${what}`;
+        toast.success(res.notified != null ? `${saved} and announced to ${res.notified} ${res.notified === 1 ? "person" : "people"}` : saved);
         setForm((f) => ({ ...f, date: "", endDate: "", name: "" }));
+        setAnnounce(false); setTitleEdit(null); setBodyEdit(null);
       } catch (err) {
         toast.error(errorMessage(err, "Day not saved. Try again."));
       }
@@ -73,15 +91,17 @@ export function CalendarTab({ days, currentYear }: { days: CalendarRow[]; curren
     <div className="max-w-3xl space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-medium">Holidays and Special Days</h3>
+          <h2 className="text-sm font-medium">Holidays and Special Days</h2>
           <p className="text-xs text-muted-foreground">
-            A date here overrides the working week. Example: make one Saturday an office day, or add a holiday.
+            {canManage
+              ? "A date here overrides the working week. Example: make one Saturday an office day, or add a holiday."
+              : "Days that differ from the normal working week: holidays, work-from-home days and extra office days."}
           </p>
         </div>
-        <ImportHolidaysDialog currentYear={currentYear} />
+        {canManage && <ImportHolidaysDialog currentYear={currentYear} />}
       </div>
 
-      <form
+      {canManage && <form
         className="space-y-4 rounded-xl border border-border/70 bg-card p-4 shadow-[0_2px_2px_rgba(0,0,0,0.04)]"
         onSubmit={(e) => { e.preventDefault(); add(); }}
       >
@@ -127,16 +147,49 @@ export function CalendarTab({ days, currentYear }: { days: CalendarRow[]; curren
           </div>
         </div>
 
+        {canAnnounce && (
+          <div className="space-y-3 border-t border-border/60 pt-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <label htmlFor="cal-announce" className="text-sm font-medium">Announce to Everyone</label>
+                <p className="text-xs text-muted-foreground">Posts an announcement, notifies everyone in the app and by email, and keeps it pinned until the last day ends.</p>
+              </div>
+              <Switch id="cal-announce" checked={announce} onCheckedChange={setAnnounce} disabled={isPending} />
+            </div>
+            {announce && (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <label htmlFor="cal-ann-title" className="text-xs font-semibold text-muted-foreground">Title</label>
+                  <Input id="cal-ann-title" value={title} maxLength={120} onChange={(e) => setTitleEdit(e.target.value)} placeholder="Pick a date to get a suggested title" disabled={isPending} />
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <label htmlFor="cal-ann-body" className="text-xs font-semibold text-muted-foreground">Message</label>
+                    {(titleEdit !== null || bodyEdit !== null) && (
+                      <button type="button" className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline" onClick={() => { setTitleEdit(null); setBodyEdit(null); }} disabled={isPending}>
+                        Use Suggested Text
+                      </button>
+                    )}
+                  </div>
+                  <Textarea id="cal-ann-body" value={body} maxLength={4000} rows={4} onChange={(e) => setBodyEdit(e.target.value)} placeholder="Pick a date to get a suggested message" disabled={isPending} />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground">
             {several && span > 1 ? `${span} days, weekends included. Dates already set are replaced.` : "Weekly offs stay as they are unless you set them here."}
           </p>
-          <Button type="submit" disabled={isPending || !ready}>{several && span > 1 ? `Add ${span} Days` : "Add Day"}</Button>
+          <Button type="submit" disabled={isPending || !ready}>
+            {isPending ? "Saving…" : `${several && span > 1 ? `Add ${span} Days` : "Add Day"}${announce ? " and Announce" : ""}`}
+          </Button>
         </div>
-      </form>
+      </form>}
 
       {groups.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No holidays or special days yet. Add the first one above, or import public holidays.</p>
+        <p className="text-sm text-muted-foreground">{canManage ? "No holidays or special days yet. Add the first one above, or import public holidays." : "No holidays or special days yet."}</p>
       ) : (
         <ul className="divide-y divide-border/40 rounded-xl border border-border/70 bg-card shadow-[0_2px_2px_rgba(0,0,0,0.04)]">
           {groups.map((g) => {
@@ -155,7 +208,7 @@ export function CalendarTab({ days, currentYear }: { days: CalendarRow[]; curren
                     {g.rows.length > 1 && <span className="shrink-0 text-xs text-muted-foreground">· {g.rows.length} days</span>}
                   </span>
                 </div>
-                <ConfirmAction
+                {canManage && <ConfirmAction
                   trigger={
                     <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground" aria-label={`Remove ${when}`}>
                       <Trash2 className="h-3.5 w-3.5" />
@@ -171,7 +224,7 @@ export function CalendarTab({ days, currentYear }: { days: CalendarRow[]; curren
                     else await deleteCalendarDaysAction(g.rows.map((x) => x.id));
                     return `${when} back to the weekly default`;
                   }}
-                />
+                />}
               </li>
             );
           })}

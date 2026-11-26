@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { connection } from "next/server";
 import { Megaphone, Plus } from "lucide-react";
 import { getCurrentEmployee } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
@@ -22,6 +23,7 @@ export default function AnnouncementsPage() {
 }
 
 async function AnnouncementsBody() {
+  await connection();
   const me = await getCurrentEmployee();
   const canManage = await hasPermission(me, "announcement:manage");
   const [posts, teams] = await Promise.all([

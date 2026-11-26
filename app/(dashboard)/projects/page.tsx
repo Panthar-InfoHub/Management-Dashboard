@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { connection } from "next/server";
 import { getProjectsList } from "@/lib/queries/project.queries";
 import { ProjectsClient } from "@/components/projects/projects-client";
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
@@ -16,6 +17,7 @@ export default function ProjectsPage() {
 }
 
 async function ProjectsDataAsync() {
+  await connection();
   const [canCreate, canEditAll, me, projects] = await Promise.all([
     checkPermission("project:create"),
     checkPermission("project:update"),

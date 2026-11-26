@@ -13,12 +13,15 @@ import { parseHolidayIcs } from "@/lib/attendance/holiday-ics";
 import { todayKey, toDateKey } from "@/lib/attendance/calendar";
 import { proratedAllowance } from "@/lib/leave/rules";
 import { LEAVE_TRACKING_START } from "@/lib/leave/policy";
+import { hasPermission } from "@/lib/permissions";
+import { cleanAnnouncement, publishAnnouncement } from "@/lib/announcements/publish";
 
 const DAY_KINDS: DayKindValue[] = ["OFFICE", "WFH", "OFF", "HOLIDAY"];
 
 function done(tag: string) {
   updateTag(tag);
   revalidatePath("/settings");
+  revalidatePath("/calendar");
 }
 
 // ─── Office (Admins only) ───
@@ -97,7 +100,11 @@ const MAX_RANGE_DAYS = 31;
  * Set one day, or a run of days (e.g. a Diwali break), company-wide. Each date
  * in the range gets its own row, so single days can still be removed later.
  */
-export async function upsertCalendarDayAction(data: { date: string; endDate?: string | null; kind: DayKindValue; name?: string | null }) {
+/**
+ * Set a date (or range) to a kind of day. With `announce`, also post an
+ * announcement to everyone (in-app and email), pinned until the last day ends.
+ */
+export async function upsertCalendarDayAction(data: { date: string; endDate?: string | null; kind: DayKindValue; name?: string | null; announce?: { title: string; body: string } | null }) {
   const actor = await requireAuth("leave:manage");
   if (!DAY_KINDS.includes(data.kind)) throw new UserError("Choose Holiday, Office day, WFH or Off.");
   const name = data.name?.trim() || null;
@@ -109,6 +116,14 @@ export async function upsertCalendarDayAction(data: { date: string; endDate?: st
   if (end < start) throw new UserError("The last day is before the first day.");
   const dates = eachDateKey(start, end);
   if (dates.length > MAX_RANGE_DAYS) throw new UserError(`A range can be at most ${MAX_RANGE_DAYS} days. Split it into two.`);
+
+  // Check the announcement before changing the calendar, so a problem with it saves nothing.
+  let announcement: Awaited<ReturnType<typeof cleanAnnouncement>> | null = null;
+  if (data.announce) {
+    if (!(await hasPermission(actor, "announcement:manage"))) throw new UserError("You can't post announcements. Turn off Announce to Everyone, or ask an admin.");
+    if (end < todayKey("Asia/Kolkata")) throw new UserError("These dates have passed, so there's nothing to announce. Turn off Announce to Everyone.");
+    announcement = await cleanAnnouncement({ title: data.announce.title, body: data.announce.body, teamIds: [], pinned: true, expiresOn: end });
+  }
 
   const existing = await db.calendarDay.findMany({
     where: { officeId: null, date: { gte: fromDateKey(start), lte: fromDateKey(end) } },
@@ -126,7 +141,8 @@ export async function upsertCalendarDayAction(data: { date: string; endDate?: st
   done(CACHE_TAGS.calendar);
   // A new holiday inside approved or pending leave gives those days back.
   await recomputeRequestDays(start, end);
-  return { success: true, days: dates.length };
+  const notified = announcement ? (await publishAnnouncement(actor.id, announcement)).notified : null;
+  return { success: true, days: dates.length, notified };
 }
 
 /** Remove several calendar days at once (a whole range from the list). */

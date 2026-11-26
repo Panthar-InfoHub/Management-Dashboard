@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { dayKindFor, eachDateKey, fromDateKey, minutesOfDay, parseHHmm, todayKey, type WeekPattern } from "../lib/attendance/calendar";
 import { checkGeofence, checkoutFlags, clockInKind, distanceMeters, formatTime, to12h, isSessionExpired, statusForCheckIn, statusForDay, statusForEmptyDay, workedMinutes } from "../lib/attendance/rules";
+import { extractPunchPoint, parsePunchAction, parsePunchTimestamp } from "../lib/attendance/punch";
 
 const week: WeekPattern = ["OFF", "OFFICE", "OFFICE", "OFFICE", "OFFICE", "OFFICE", "WFH"];
 const office = { latitude: 25.45637, longitude: 78.5322, radiusMeters: 100 };
@@ -123,4 +124,27 @@ test("times are shown in 12-hour form", () => {
   assert.equal(to12h("00:05"), "12:05 AM");
   assert.equal(to12h("12:00"), "12:00 PM");
   assert.equal(to12h(null), "");
+});
+
+test("punch helpers: timestamp, action, and lat/lng extraction ignore accuracy", () => {
+  const fallback = new Date("2026-11-26T04:00:00Z");
+  assert.equal(parsePunchTimestamp(undefined, fallback).getTime(), fallback.getTime());
+  assert.equal(parsePunchTimestamp("2026-11-26T10:05:00+05:30").toISOString(), "2026-11-26T04:35:00.000Z");
+  assert.equal(parsePunchTimestamp(1795667700).toISOString(), "2026-11-26T04:35:00.000Z");
+  assert.throws(() => parsePunchTimestamp("not-a-date"));
+
+  assert.equal(parsePunchAction(undefined), "AUTO");
+  assert.equal(parsePunchAction("in"), "CHECK_IN");
+  assert.equal(parsePunchAction("check_out"), "CHECK_OUT");
+  assert.throws(() => parsePunchAction("unknown"));
+
+  const fromTop = extractPunchPoint({ lat: 25.4564, lng: 78.5322, accuracy: 9999 });
+  assert.deepEqual(fromTop, { lat: 25.4564, lng: 78.5322, accuracy: null });
+  assert.equal(checkGeofence(fromTop, office).ok, true);
+
+  const fromNested = extractPunchPoint({ location: { lat: 25.47, lng: 78.5322, accuracy: 500 } });
+  assert.deepEqual(fromNested, { lat: 25.47, lng: 78.5322, accuracy: null });
+  assert.equal((checkGeofence(fromNested, office) as { reason: string }).reason, "outside");
+
+  assert.equal(extractPunchPoint({}), null);
 });
