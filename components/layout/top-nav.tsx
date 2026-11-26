@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 
 const SECTIONS: Record<string, string> = {
   "": "Dashboard", tasks: "Tasks", projects: "Projects", teams: "Teams", employees: "Members", attendance: "Attendance",
-  leave: "Leave", approvals: "Approvals", announcements: "Announcements", records: "Employment Records", audit: "Audit Log",
+  leave: "Leave", calendar: "Calendar", approvals: "Approvals", announcements: "Announcements", records: "Employment Records", audit: "Audit Log",
   settings: "Settings", notifications: "Notifications",
 };
 const SUBPAGES: Record<string, string> = { my: "My Tasks", new: "New", edit: "Edit", team: "Team Month", today: "Team Day" };
