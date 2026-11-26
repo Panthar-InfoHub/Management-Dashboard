@@ -4,7 +4,7 @@ import { DayFlags } from "@/components/attendance/day-flags";
 import { EditDayButton } from "@/components/attendance/edit-day-dialog";
 import { fromDateKey } from "@/lib/attendance/calendar";
 import { DAY_KIND_LABELS } from "@/lib/attendance/calendar";
-import { ATTENDANCE_STATUS_LABELS, formatDuration, type AttendanceStatusValue } from "@/lib/attendance/rules";
+import { ATTENDANCE_STATUS_LABELS, formatDuration, type AttendanceStatusValue, to12h } from "@/lib/attendance/rules";
 import type { getTodayBoard } from "@/lib/attendance/queries";
 
 type Board = NonNullable<Awaited<ReturnType<typeof getTodayBoard>>>;
@@ -27,13 +27,13 @@ export function TodayBoard({ board }: { board: Board }) {
 
   return (
     <div className="space-y-4">
-      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-6">
-        <div className="rounded-lg border border-border/40 p-3">
+      <dl className="grid grid-cols-3 gap-2 sm:grid-cols-6 sm:gap-3">
+        <div className="rounded-xl border border-border/70 p-3 bg-card shadow-[0_2px_2px_rgba(0,0,0,0.04)]">
           <dt className="text-xs text-muted-foreground">{board.isToday ? "Not in yet" : "Absent"}</dt>
           <dd className="text-xl font-semibold tabular-nums">{board.isToday ? notIn : counts.get("ABSENT") ?? 0}</dd>
         </div>
         {(["PRESENT", "WFH", "LATE", "HALF_DAY", "ON_LEAVE"] as AttendanceStatusValue[]).map((s) => (
-          <div key={s} className="rounded-lg border border-border/40 p-3">
+          <div key={s} className="rounded-xl border border-border/70 p-3 bg-card shadow-[0_2px_2px_rgba(0,0,0,0.04)]">
             <dt className="text-xs text-muted-foreground">{ATTENDANCE_STATUS_LABELS[s]}</dt>
             <dd className="text-xl font-semibold tabular-nums">{counts.get(s) ?? 0}</dd>
           </div>
@@ -43,7 +43,30 @@ export function TodayBoard({ board }: { board: Board }) {
       {rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">No one to show. Add members to your team to see their attendance here.</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border/40">
+        <>
+        {/* Phones: one line per person instead of a wide table. */}
+        <ul className="divide-y divide-border/60 rounded-xl border border-border/70 bg-card shadow-[0_2px_2px_rgba(0,0,0,0.04)] sm:hidden">
+          {rows.map((r) => (
+            <li key={r.employee.id} className="flex items-center gap-3 px-4 py-3">
+              <UserAvatar className="h-8 w-8 shrink-0" user={r.employee} textClassName="text-[10px]" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{r.employee.name}</p>
+                <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground tabular-nums">
+                  {!r.status && r.dayKind !== "OFFICE" && r.dayKind !== "WFH"
+                    ? <span>{DAY_KIND_LABELS[r.dayKind]}</span>
+                    : <AttendanceStatusBadge status={r.status as AttendanceStatusValue | null} />}
+                  {r.checkIn && <span>{to12h(r.checkIn)} – {r.checkOut ? to12h(r.checkOut) : r.missedCheckout ? "no clock-out" : "still in"}</span>}
+                  {r.workMinutes != null && <span>· {formatDuration(r.workMinutes)}</span>}
+                </p>
+                <DayFlags day={r} className="mt-1" />
+              </div>
+              {board.canEdit && r.employee.id !== board.viewerId && !(r.leave && !r.leave.halfDay) && (
+                <EditDayButton employeeId={r.employee.id} name={r.employee.name} date={board.dateKey} dateLabel={dateLabel} current={r} lateAfter={board.lateAfter} />
+              )}
+            </li>
+          ))}
+        </ul>
+        <div className="hidden overflow-x-auto rounded-xl border border-border/70 bg-card shadow-[0_2px_2px_rgba(0,0,0,0.04)] sm:block">
           <table className="w-full text-sm">
             <thead className="bg-muted/20 text-left text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
@@ -73,13 +96,13 @@ export function TodayBoard({ board }: { board: Board }) {
                       : <AttendanceStatusBadge status={r.status as AttendanceStatusValue | null} />}
                     <DayFlags day={r} className="ml-2" />
                   </td>
-                  <td className="px-4 py-2.5 font-mono text-xs tabular-nums">{r.checkIn ?? "—"}</td>
-                  <td className="px-4 py-2.5 font-mono text-xs tabular-nums">{r.checkOut ?? (r.checkIn && !r.missedCheckout ? "still in" : "—")}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs tabular-nums">{r.checkIn ? to12h(r.checkIn) : "—"}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs tabular-nums">{r.checkOut ? to12h(r.checkOut) : (r.checkIn && !r.missedCheckout ? "still in" : "—")}</td>
                   <td className="px-4 py-2.5 font-mono text-xs tabular-nums">{r.workMinutes != null ? formatDuration(r.workMinutes) : "—"}</td>
                   {board.canEdit && (
                     <td className="px-2 py-2.5 text-right">
                       {r.employee.id !== board.viewerId && !(r.leave && !r.leave.halfDay) && (
-                        <EditDayButton employeeId={r.employee.id} name={r.employee.name} date={board.dateKey} dateLabel={dateLabel} current={{ status: r.status, checkIn: r.checkIn, checkOut: r.checkOut }} />
+                        <EditDayButton employeeId={r.employee.id} name={r.employee.name} date={board.dateKey} dateLabel={dateLabel} current={r} lateAfter={board.lateAfter} />
                       )}
                     </td>
                   )}
@@ -88,6 +111,7 @@ export function TodayBoard({ board }: { board: Board }) {
             </tbody>
           </table>
         </div>
+        </>
       )}
     </div>
   );

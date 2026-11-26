@@ -6,15 +6,8 @@ import { db } from "@/lib/db";
 import { ProjectsBodySkeleton } from "./skeleton";
 
 export default function ProjectsPage() {
-  // Instantly render the page shell and stream the data
   return (
-    <div className="flex flex-col gap-6 p-6 h-[calc(100vh-64px)] min-w-0 overflow-hidden">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between shrink-0 gap-4">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Projects</h1>
-          <p className="text-sm text-muted-foreground">Manage and track all active projects across your organization.</p>
-        </div>
-      </div>
+    <div className="mx-auto w-full max-w-7xl p-4 sm:p-6">
       <Suspense fallback={<ProjectsBodySkeleton />}>
         <ProjectsDataAsync />
       </Suspense>

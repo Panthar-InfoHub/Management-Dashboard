@@ -10,15 +10,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function SettingsPage() {
   return (
-    <div className="space-y-6 p-6 h-full overflow-y-auto">
+    <div className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-6">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted-foreground">Manage your workspace preferences and configurations.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Manage your workspace preferences and configurations.</p>
       </div>
 
       <Suspense fallback={
         <div className="space-y-4">
-          <div className="rounded-xl border border-border/40 bg-card p-6 space-y-4">
+          <div className="rounded-xl border border-border/70 bg-card p-6 space-y-4">
             <Skeleton className="h-5 w-32" />
             <Skeleton className="h-4 w-full max-w-md" />
             <div className="space-y-3 pt-2">
@@ -58,5 +58,5 @@ async function SettingsDataAsync() {
     canManageLeave ? getLeaveTypes({ includeInactive: true }) : null,
   ]);
 
-  return <SettingsClient presets={presets} office={office} calendarDays={calendarDays} leaveTypes={leaveTypes} />;
+  return <SettingsClient presets={presets} office={office} calendarDays={calendarDays} leaveTypes={leaveTypes} currentYear={year} />;
 }

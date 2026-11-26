@@ -78,7 +78,7 @@ export function AccessPresetsTab({ presets }: { presets: PresetRow[] }) {
     <div className="space-y-6">
       <div className="grid gap-3 sm:grid-cols-3">
         {ROLE_SUMMARY.map((r) => (
-          <div key={r.name} className="rounded-lg border border-border/40 p-4">
+          <div key={r.name} className="rounded-xl border border-border/70 p-4 bg-card shadow-[0_2px_2px_rgba(0,0,0,0.04)]">
             <p className="text-sm font-medium">{r.name}</p>
             <p className="mt-1 text-xs text-muted-foreground">{r.text}</p>
           </div>
@@ -113,7 +113,7 @@ export function AccessPresetsTab({ presets }: { presets: PresetRow[] }) {
           </ul>
         </aside>
 
-        <section className="space-y-5 rounded-lg border border-border/40 p-5">
+        <section className="space-y-5 rounded-xl border border-border/70 p-5 bg-card shadow-[0_2px_2px_rgba(0,0,0,0.04)]">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <label htmlFor="preset-name" className="text-xs font-semibold text-muted-foreground">Name</label>

@@ -87,6 +87,8 @@ model Employee {
   avatarUrl   String?
   role           Role           @default(MEMBER)
   employmentType EmploymentType @default(FULL_TIME)
+  /// Can work from home without a request: clock-in at the office records Present, anywhere else WFH.
+  flexibleWfh    Boolean        @default(false)
   status      EmployeeStatus @default(ACTIVE)
   designation String?        // e.g. "Senior Frontend Engineer"
   phone       String?
@@ -533,6 +535,11 @@ model Attendance {
   earlyMinutes    Int?
   /// Minutes after office end (every worked minute on an off day or holiday).
   overtimeMinutes Int?
+  /// Clocked in from outside the office while a WFH request for the day was still pending.
+  /// Approving it confirms WFH; rejecting it makes the day Absent.
+  awaitingWfh     Boolean         @default(false)
+  /// An approver excused the late arrival (kept for the record; isLate is cleared).
+  lateExcused     Boolean         @default(false)
   /// Late half day waiting for an approver to confirm or excuse it.
   reviewStatus   RequestStatus?
   reviewedById   String?
@@ -569,8 +576,6 @@ model LeaveType {
   name         String   @unique
   /// Days per year; null = no limit (e.g. Unpaid).
   yearlyDays   Float?
-  /// Unused days that move to next year; 0 = none.
-  carryOverMax Float    @default(0)
   isPaid       Boolean  @default(true)
   isActive     Boolean  @default(true)
   sortOrder    Int      @default(0)
@@ -589,7 +594,6 @@ model LeaveBalance {
   leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
   year        Int
   allowed     Float     @default(0)
-  carriedOver Float     @default(0)
   adjusted    Float     @default(0) // manual +/- by HR
   used        Float     @default(0)
   updatedAt   DateTime  @updatedAt
@@ -615,6 +619,8 @@ model Request {
   decidedBy    Employee?      @relation("RequestDecider", fields: [decidedById], references: [id], onDelete: SetNull)
   decidedAt    DateTime?
   decisionNote String?
+  /// The approver excused lateness on the request's days, including clock-ins after approval.
+  excuseLate   Boolean        @default(false)
   /// ATTENDANCE_FIX only: the corrected times, and where they worked (OFFICE or WFH).
   workMode     DayKind?
   fixCheckIn   DateTime?

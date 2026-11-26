@@ -8,7 +8,7 @@ export default async function NewProjectPage() {
   const [employees, teams] = await Promise.all([
     db.employee.findMany({
       where: { status: "ACTIVE" },
-      select: { id: true, firstName: true, lastName: true },
+      select: { id: true, firstName: true, lastName: true, avatarUrl: true, designation: true, email: true },
       orderBy: { firstName: "asc" }
     }),
     db.team.findMany({

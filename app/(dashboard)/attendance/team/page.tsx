@@ -16,13 +16,13 @@ type Params = { month?: string; team?: string };
 
 export default function TeamAttendancePage({ searchParams }: { searchParams: Promise<Params> }) {
   return (
-    <div className="space-y-6 p-6">
+    <div className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-6">
       <div>
         <Link href="/attendance" className="mb-2 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-4 w-4" /> My Attendance
         </Link>
-        <h1 className="text-xl font-semibold tracking-tight">Team Attendance</h1>
-        <p className="text-sm text-muted-foreground">Everyone&apos;s month at a glance. Hover a cell for details; click a date to open that day, where admins and HR can edit it.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Team Attendance</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Everyone&apos;s month at a glance. Hover a cell for details. Admins and HR can click any day to correct it.</p>
       </div>
       <Suspense fallback={<Skeleton className="h-[520px] w-full rounded-lg" />}>
         <TeamMonthBody searchParams={searchParams} />

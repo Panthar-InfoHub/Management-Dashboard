@@ -47,7 +47,7 @@ export function OffboardDialog({ employeeId, name, checklist }: { employeeId: st
   return (
     <Dialog open={open} onOpenChange={(v) => !isPending && setOpen(v)}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="gap-2 border-amber-500/30 bg-background text-amber-600 hover:bg-amber-500/5">
+        <Button variant="outline" size="sm" className="gap-1.5 text-destructive hover:text-destructive">
           <UserMinus className="h-4 w-4" /> Offboard
         </Button>
       </DialogTrigger>
@@ -57,7 +57,7 @@ export function OffboardDialog({ employeeId, name, checklist }: { employeeId: st
           <DialogDescription>Their sign-in is removed and they leave their team and projects. Their history (tasks, attendance, leave, ledger) is kept.</DialogDescription>
         </DialogHeader>
 
-        <ul className="space-y-3 rounded-lg border border-border/40 p-4">
+        <ul className="space-y-3 rounded-xl border border-border/70 p-4 bg-card shadow-[0_2px_2px_rgba(0,0,0,0.04)]">
           <Item ok={!blocked}>
             {blocked ? (
               <>

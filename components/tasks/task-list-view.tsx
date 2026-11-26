@@ -1,4 +1,6 @@
 "use client";
+import type { Task as BoardRow } from "@/components/tasks/kanban-board";
+import { STATUS_META, StatusIcon } from "@/components/tasks/task-icons";
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
@@ -6,7 +8,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowDown, ArrowUp, X } from "lucide-react";
 import { format, isPast, isToday, endOfDay } from "date-fns";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -19,15 +20,14 @@ import { errorMessage } from "@/lib/errors";
 import { taskKey } from "@/lib/tasks/keys";
 import { cn } from "@/lib/utils";
 
-/* eslint-disable @typescript-eslint/no-explicit-any -- board tasks come untyped from the board */
-type Task = any;
+type Task = BoardRow;
 type Person = { id: string; firstName: string; lastName: string; avatarUrl?: string | null };
 
 const STATUS_ORDER = ["TODO", "IN_PROGRESS", "REVIEW", "TESTING", "DONE", "CANCELLED"];
-const STATUS_LABELS: Record<string, string> = { TODO: "To Do", IN_PROGRESS: "In Progress", REVIEW: "Review", TESTING: "Testing", DONE: "Done", CANCELLED: "Cancelled" };
+const STATUS_LABELS: Record<string, string> = Object.fromEntries(Object.entries(STATUS_META).map(([k, v]) => [k, v.label]));
 const PRIORITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
 const PRIORITY_LABELS: Record<string, string> = { CRITICAL: "Critical", HIGH: "High", MEDIUM: "Medium", LOW: "Low" };
-const PRIORITY_DOT: Record<string, string> = { CRITICAL: "bg-red-500", HIGH: "bg-orange-500", MEDIUM: "bg-blue-500", LOW: "bg-gray-400" };
+const PRIORITY_DOT: Record<string, string> = { CRITICAL: "bg-red-500", HIGH: "bg-orange-500", MEDIUM: "bg-transparent", LOW: "bg-transparent" };
 
 const SORTS = { id: "ID", title: "Task", status: "Status", priority: "Priority", owner: "Owner", due: "Due Date" } as const;
 type SortKey = keyof typeof SORTS;
@@ -80,8 +80,12 @@ export function TaskListView({ tasks, employees }: { tasks: Task[]; employees: P
   // Sort and grouping live in the URL, so a view can be shared.
   const setParam = (updates: Record<string, string | null>) => {
     const params = new URLSearchParams(searchParams.toString());
-    for (const [k, v] of Object.entries(updates)) v === null ? params.delete(k) : params.set(k, v);
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    for (const [k, v] of Object.entries(updates)) {
+      if (v === null) params.delete(k);
+      else params.set(k, v);
+    }
+    // Browser-only URL change: no server round trip for sorting or grouping.
+    window.history.replaceState(null, "", `${pathname}?${params.toString()}`);
   };
   const toggleSort = (key: SortKey) =>
     setParam(sort === key ? { sort: key, dir: dir === 1 ? "desc" : null } : { sort: key === "due" ? null : key, dir: null });
@@ -141,7 +145,7 @@ export function TaskListView({ tasks, employees }: { tasks: Task[]; employees: P
           <span className="px-1 text-xs font-medium">{chosen.length} selected</span>
           <Select value="" onValueChange={(v) => (v === "DONE" ? setDoneOpen(true) : apply({ kind: "status", status: v }, STATUS_LABELS[v]))} disabled={isPending}>
             <SelectTrigger size="sm" className="h-8 text-xs" aria-label="Set status"><SelectValue placeholder="Set Status" /></SelectTrigger>
-            <SelectContent>{STATUS_ORDER.slice(0, 5).map((s) => <SelectItem key={s} value={s}>{STATUS_LABELS[s]}</SelectItem>)}</SelectContent>
+            <SelectContent>{STATUS_ORDER.slice(0, 5).map((s) => <SelectItem key={s} value={s}><span className="flex items-center gap-2"><StatusIcon status={s} className="h-3.5 w-3.5" />{STATUS_LABELS[s]}</span></SelectItem>)}</SelectContent>
           </Select>
           <Select value="" onValueChange={(v) => apply({ kind: "priority", priority: v }, PRIORITY_LABELS[v])} disabled={isPending}>
             <SelectTrigger size="sm" className="h-8 text-xs" aria-label="Set priority"><SelectValue placeholder="Set Priority" /></SelectTrigger>
@@ -157,7 +161,40 @@ export function TaskListView({ tasks, employees }: { tasks: Task[]; employees: P
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-border/40 bg-background">
+      {/* Phones: a plain list (select, key, title, status, due, owner) instead of a wide table. */}
+      <div className="space-y-4 sm:hidden">
+        {groups.map((g) => (
+          <section key={g.label || "all"}>
+            {group !== "none" && <h3 className="mb-1.5 px-1 text-xs font-semibold text-muted-foreground">{g.label} · {g.rows.length}</h3>}
+            <ul className="divide-y divide-border/60 rounded-lg border border-border/70 bg-background">
+              {g.rows.map((task) => {
+                const owner = ownerOf(task);
+                const overdue = !!task.dueDate && task.status !== "DONE" && task.status !== "CANCELLED" && new Date(task.dueDate) < new Date(new Date().toDateString());
+                return (
+                  <li key={task.id} className="flex items-start gap-3 px-3 py-2.5">
+                    <Checkbox className="mt-1" aria-label={`Select ${task.title}`} checked={selected.has(task.id)} onCheckedChange={() => toggle(task.id)} />
+                    <Link href={`/tasks/${task.id}`} className="min-w-0 flex-1">
+                      <span className={cn("line-clamp-2 text-sm font-medium", task.status === "CANCELLED" && "line-through text-muted-foreground")}>{task.title}</span>
+                      <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                        {taskKey(task) && <span className="font-mono">{taskKey(task)}</span>}
+                        <span className="inline-flex items-center gap-1"><StatusIcon status={task.status} className="h-3 w-3" />{STATUS_LABELS[task.status] ?? task.status}</span>
+                        {task.dueDate && (
+                          <span className={cn(overdue && "font-medium text-red-600 dark:text-red-400")} suppressHydrationWarning>
+                            {overdue ? "Overdue · " : ""}{new Date(task.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                          </span>
+                        )}
+                      </span>
+                    </Link>
+                    {owner && <UserAvatar className="mt-0.5 h-6 w-6 shrink-0" user={owner} textClassName="text-[9px]" />}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ))}
+      </div>
+
+      <div className="hidden overflow-x-auto rounded-lg border border-border/70 bg-background sm:block">
         <Table className="min-w-[900px]">
           <TableHeader className="bg-muted/20">
             <TableRow>
@@ -216,7 +253,7 @@ function GroupRows({ label, rows, selected, onToggle }: { label: string | null; 
                 <span className="block truncate text-[11px] text-muted-foreground">{task.project?.name ?? "General"}{task.parent ? ` · ↳ ${task.parent.title}` : ""}</span>
               </Link>
             </TableCell>
-            <TableCell><Badge variant="outline" className={cn("text-[10px] shadow-none", task.status === "CANCELLED" && "line-through")}>{STATUS_LABELS[task.status] ?? task.status}</Badge></TableCell>
+            <TableCell><span className="inline-flex items-center gap-1.5 text-sm whitespace-nowrap"><StatusIcon status={task.status} className="h-3.5 w-3.5" />{STATUS_LABELS[task.status] ?? task.status}</span></TableCell>
             <TableCell>
               <span className="inline-flex items-center gap-1.5 text-xs"><span className={cn("h-1.5 w-1.5 rounded-full", PRIORITY_DOT[task.priority])} />{PRIORITY_LABELS[task.priority]}</span>
             </TableCell>

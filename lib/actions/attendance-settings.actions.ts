@@ -6,10 +6,13 @@ import { db } from "@/lib/db";
 import { getCurrentEmployee, requireAuth } from "@/lib/auth";
 import { isAdminRole } from "@/lib/access";
 import { CACHE_TAGS } from "@/lib/cache/tags";
-import { fromDateKey, parseHHmm, type DayKindValue, type WeekPattern } from "@/lib/attendance/calendar";
+import { eachDateKey, fromDateKey, parseHHmm, type DayKindValue, type WeekPattern } from "@/lib/attendance/calendar";
 import { audit } from "@/lib/audit";
 import { recalculateBalances, recomputeRequestDays } from "@/lib/leave/balances";
-import { todayKey } from "@/lib/attendance/calendar";
+import { parseHolidayIcs } from "@/lib/attendance/holiday-ics";
+import { todayKey, toDateKey } from "@/lib/attendance/calendar";
+import { proratedAllowance } from "@/lib/leave/rules";
+import { LEAVE_TRACKING_START } from "@/lib/leave/policy";
 
 const DAY_KINDS: DayKindValue[] = ["OFFICE", "WFH", "OFF", "HOLIDAY"];
 
@@ -88,23 +91,131 @@ export async function updateOfficeAction(officeId: string, data: {
 
 // ─── Calendar days: holidays and one-off overrides (leave:manage) ───
 
-export async function upsertCalendarDayAction(data: { date: string; kind: DayKindValue; name?: string | null }) {
+const MAX_RANGE_DAYS = 31;
+
+/**
+ * Set one day, or a run of days (e.g. a Diwali break), company-wide. Each date
+ * in the range gets its own row, so single days can still be removed later.
+ */
+export async function upsertCalendarDayAction(data: { date: string; endDate?: string | null; kind: DayKindValue; name?: string | null }) {
   const actor = await requireAuth("leave:manage");
   if (!DAY_KINDS.includes(data.kind)) throw new UserError("Choose Holiday, Office day, WFH or Off.");
-  const date = fromDateKey(data.date);
   const name = data.name?.trim() || null;
   if (data.kind === "HOLIDAY" && !name) throw new UserError("Give the holiday a name, e.g. Diwali.");
 
-  const existing = await db.calendarDay.findFirst({ where: { date, officeId: null }, select: { id: true } });
-  const day = existing
-    ? await db.calendarDay.update({ where: { id: existing.id }, data: { kind: data.kind, name } })
-    : await db.calendarDay.create({ data: { date, kind: data.kind, name, createdById: actor.id } });
+  const start = data.date;
+  const end = data.endDate || data.date;
+  fromDateKey(start); fromDateKey(end);
+  if (end < start) throw new UserError("The last day is before the first day.");
+  const dates = eachDateKey(start, end);
+  if (dates.length > MAX_RANGE_DAYS) throw new UserError(`A range can be at most ${MAX_RANGE_DAYS} days. Split it into two.`);
 
-  audit({ actorId: actor.id, entity: "CalendarDay", entityId: day.id, action: existing ? "update" : "create", changes: { date: data.date, kind: data.kind, name } });
+  const existing = await db.calendarDay.findMany({
+    where: { officeId: null, date: { gte: fromDateKey(start), lte: fromDateKey(end) } },
+    select: { id: true, date: true },
+  });
+  const byDate = new Map(existing.map((d) => [d.date.toISOString().slice(0, 10), d.id]));
+  await db.$transaction(dates.map((key) => {
+    const id = byDate.get(key);
+    return id
+      ? db.calendarDay.update({ where: { id }, data: { kind: data.kind, name } })
+      : db.calendarDay.create({ data: { date: fromDateKey(key), kind: data.kind, name, createdById: actor.id } });
+  }));
+
+  audit({ actorId: actor.id, entity: "CalendarDay", entityId: start, action: existing.length ? "update" : "create", changes: { from: start, to: end, days: dates.length, kind: data.kind, name } });
   done(CACHE_TAGS.calendar);
-  // A new holiday inside approved or pending leave gives that day back.
-  await recomputeRequestDays(data.date, data.date);
-  return { success: true };
+  // A new holiday inside approved or pending leave gives those days back.
+  await recomputeRequestDays(start, end);
+  return { success: true, days: dates.length };
+}
+
+/** Remove several calendar days at once (a whole range from the list). */
+export async function deleteCalendarDaysAction(ids: string[]) {
+  const actor = await requireAuth("leave:manage");
+  if (!Array.isArray(ids) || ids.length === 0) throw new UserError("Nothing to remove.");
+  const days = await db.calendarDay.findMany({ where: { id: { in: ids.slice(0, MAX_RANGE_DAYS * 2) } }, select: { id: true, date: true, kind: true, name: true } });
+  if (days.length === 0) throw new UserError("Those days were already removed.");
+  await db.calendarDay.deleteMany({ where: { id: { in: days.map((d) => d.id) } } });
+
+  const keys = days.map((d) => d.date.toISOString().slice(0, 10)).sort();
+  audit({ actorId: actor.id, entity: "CalendarDay", entityId: keys[0], action: "delete", changes: { dates: keys, kind: days[0].kind, name: days[0].name } });
+  done(CACHE_TAGS.calendar);
+  await recomputeRequestDays(keys[0], keys[keys.length - 1]);
+  return { removed: days.length };
+}
+
+// ─── Import public holidays (leave:manage) ───
+
+/** Google's public "Holidays in India" calendar: free, no account or key, nothing about us is sent. */
+const INDIA_HOLIDAYS_ICS = "https://calendar.google.com/calendar/ical/en.indian%23holiday%40group.v.calendar.google.com/public/basic.ics";
+
+/** A year's public holidays and observances, marked with any date already in the calendar. */
+export async function previewPublicHolidaysAction(year: number) {
+  await requireAuth("leave:manage");
+  const thisYear = Number(todayKey("Asia/Kolkata").slice(0, 4));
+  if (!Number.isInteger(year) || year < thisYear - 1 || year > thisYear + 3) {
+    throw new UserError(`Pick a year from ${thisYear - 1} to ${thisYear + 3}.`);
+  }
+
+  let text: string;
+  try {
+    // Holiday lists change rarely: keep a copy for a day.
+    const res = await fetch(INDIA_HOLIDAYS_ICS, { next: { revalidate: 86_400 } });
+    if (!res.ok) throw new Error(String(res.status));
+    text = await res.text();
+  } catch {
+    throw new UserError("Couldn't reach the public holiday calendar. Check the internet connection and try again, or add holidays by hand.");
+  }
+
+  const feed = parseHolidayIcs(text, year);
+  const existing = await db.calendarDay.findMany({
+    where: { officeId: null, date: { gte: fromDateKey(`${year}-01-01`), lte: fromDateKey(`${year}-12-31`) } },
+    select: { date: true, kind: true, name: true },
+  });
+  const byDate = new Map(existing.map((d) => [d.date.toISOString().slice(0, 10), d]));
+  return {
+    year,
+    holidays: feed.map((h) => {
+      const set = byDate.get(h.date);
+      return { ...h, existing: set ? { kind: set.kind as DayKindValue, name: set.name } : null };
+    }),
+  };
+}
+
+/**
+ * Add chosen holidays company-wide. Dates already in the calendar (a holiday or
+ * any other override) are left alone. Leave and WFH requests on those dates
+ * give the days back, as with adding a holiday by hand.
+ */
+export async function importHolidaysAction(items: { date: string; name: string }[]) {
+  const actor = await requireAuth("leave:manage");
+  if (!Array.isArray(items) || items.length === 0) throw new UserError("Tick at least one holiday.");
+  if (items.length > 100) throw new UserError("Import at most 100 days at a time.");
+
+  const clean = items.map((i) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(i.date)) throw new UserError("A holiday has an invalid date.");
+    const name = i.name?.trim().slice(0, 120);
+    if (!name) throw new UserError("Every holiday needs a name.");
+    return { date: i.date, name };
+  });
+  const unique = [...new Map(clean.map((i) => [i.date, i])).values()];
+
+  const taken = new Set(
+    (await db.calendarDay.findMany({ where: { officeId: null, date: { in: unique.map((i) => fromDateKey(i.date)) } }, select: { date: true } }))
+      .map((d) => d.date.toISOString().slice(0, 10))
+  );
+  const toAdd = unique.filter((i) => !taken.has(i.date));
+  if (toAdd.length > 0) {
+    await db.calendarDay.createMany({
+      data: toAdd.map((i) => ({ date: fromDateKey(i.date), kind: "HOLIDAY" as const, name: i.name, createdById: actor.id })),
+      skipDuplicates: true,
+    });
+    audit({ actorId: actor.id, entity: "CalendarDay", entityId: "import", action: "import", changes: { added: toAdd.map((i) => `${i.date} ${i.name}`) } });
+    done(CACHE_TAGS.calendar);
+    const dates = toAdd.map((i) => i.date).sort();
+    await recomputeRequestDays(dates[0], dates[dates.length - 1]);
+  }
+  return { added: toAdd.length, skipped: unique.length - toAdd.length };
 }
 
 export async function deleteCalendarDayAction(id: string) {
@@ -121,16 +232,14 @@ export async function deleteCalendarDayAction(id: string) {
 
 // ─── Leave types (leave:manage) ───
 
-type LeaveTypeInput = { name: string; yearlyDays: number | null; carryOverMax: number; isPaid: boolean; isActive: boolean };
+type LeaveTypeInput = { name: string; yearlyDays: number | null; isPaid: boolean; isActive: boolean };
 
 function cleanLeaveType(data: LeaveTypeInput) {
   const name = data.name?.trim();
   if (!name) throw new UserError("Leave type name is required.");
   const halfStep = (n: number) => Number.isFinite(n) && n >= 0 && n <= 365 && Number.isInteger(n * 2);
   if (data.yearlyDays !== null && !halfStep(data.yearlyDays)) throw new UserError("Days per year must be 0–365, in steps of 0.5.");
-  if (!halfStep(data.carryOverMax)) throw new UserError("Carry-over must be 0–365, in steps of 0.5.");
-  if (data.yearlyDays === null && data.carryOverMax > 0) throw new UserError("A leave type with no limit can't carry days over.");
-  return { name, yearlyDays: data.yearlyDays, carryOverMax: data.carryOverMax, isPaid: !!data.isPaid, isActive: !!data.isActive };
+  return { name, yearlyDays: data.yearlyDays, isPaid: !!data.isPaid, isActive: !!data.isActive };
 }
 
 export async function createLeaveTypeAction(data: LeaveTypeInput) {
@@ -147,6 +256,41 @@ export async function createLeaveTypeAction(data: LeaveTypeInput) {
   return type;
 }
 
+/**
+ * Before a limit is lowered (or a no-limit type gets one): who would end up
+ * over the new limit this year, counting approved and pending leave.
+ */
+export async function previewLeaveLimitAction(id: string, yearlyDays: number | null) {
+  await requireAuth("leave:manage");
+  if (yearlyDays === null) return { year: 0, over: [] as { name: string; overBy: number }[] };
+  const year = Number(todayKey("Asia/Kolkata").slice(0, 4));
+  const start = fromDateKey(`${year}-01-01`), end = fromDateKey(`${year}-12-31`);
+  const [taken, adjustments] = await Promise.all([
+    db.request.groupBy({
+      by: ["employeeId"],
+      where: { leaveTypeId: id, kind: "LEAVE", status: { in: ["APPROVED", "PENDING"] }, startDate: { gte: start, lte: end } },
+      _sum: { days: true },
+    }),
+    db.leaveBalance.findMany({ where: { leaveTypeId: id, year }, select: { employeeId: true, adjusted: true } }),
+  ]);
+  if (taken.length === 0) return { year, over: [] };
+  const people = await db.employee.findMany({
+    where: { id: { in: taken.map((t) => t.employeeId) }, status: { not: "INACTIVE" } },
+    select: { id: true, firstName: true, lastName: true, joinDate: true },
+  });
+  const over = people
+    .map((p) => {
+      const joinKey = toDateKey(p.joinDate);
+      const allowed = proratedAllowance(yearlyDays, year, joinKey > LEAVE_TRACKING_START ? joinKey : LEAVE_TRACKING_START);
+      const adjusted = adjustments.find((a) => a.employeeId === p.id)?.adjusted ?? 0;
+      const used = taken.find((t) => t.employeeId === p.id)?._sum.days ?? 0;
+      return { name: `${p.firstName} ${p.lastName}`.trim(), overBy: used - allowed - adjusted };
+    })
+    .filter((r) => r.overBy > 0)
+    .sort((a, b) => b.overBy - a.overBy);
+  return { year, over };
+}
+
 /** Leave types are never deleted (requests point at them); set isActive false instead. */
 export async function updateLeaveTypeAction(id: string, data: LeaveTypeInput) {
   const actor = await requireAuth("leave:manage");
@@ -160,7 +304,7 @@ export async function updateLeaveTypeAction(id: string, data: LeaveTypeInput) {
 
   audit({ actorId: actor.id, entity: "LeaveType", entityId: id, action: "update", changes: JSON.parse(JSON.stringify({ before, after: clean })) });
   done(CACHE_TAGS.leaveTypes);
-  if (before.yearlyDays !== clean.yearlyDays || before.carryOverMax !== clean.carryOverMax) {
+  if (before.yearlyDays !== clean.yearlyDays) {
     const year = Number(todayKey("Asia/Kolkata").slice(0, 4));
     await recalculateBalances("ALL", year);
     await recalculateBalances("ALL", year + 1);

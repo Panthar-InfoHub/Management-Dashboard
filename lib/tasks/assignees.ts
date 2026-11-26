@@ -4,7 +4,7 @@ import { UserError } from "@/lib/errors";
 // Internal helper for Server Actions and pages; it does no auth checks itself.
 import { cache } from "react";
 import { db } from "@/lib/db";
-import { getCurrentEmployee } from "@/lib/auth";
+import { checkPermission, getCurrentEmployee } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 
 const assignableSelect = { id: true, firstName: true, lastName: true, avatarUrl: true } as const;
@@ -60,15 +60,35 @@ export const getAssignableEmployees = cache(async (projectId: string | null): Pr
 });
 
 /**
+ * May the signed-in person assign people from outside the project (or, for
+ * General tasks, outside their own teams)? Admins, project and team leads,
+ * and anyone given task:assign or task:update there.
+ */
+export const canAssignOutside = cache(async (projectId: string | null): Promise<boolean> => {
+  const scope = projectId ?? undefined;
+  return (await checkPermission("task:assign", scope)) || (await checkPermission("task:update", scope));
+});
+
+/** Every active person: the choice list once "outside the project" is on. */
+export const getAllAssignable = cache(async (): Promise<AssignableEmployee[]> =>
+  db.employee.findMany({ where: { status: { not: "INACTIVE" } }, select: assignableSelect, orderBy: { firstName: "asc" } })
+);
+
+/**
  * Throw unless every id in `assigneeIds` can be assigned on the project.
+ * With `outside`, anyone active can be assigned, if the caller may do that.
  * Ids in `alreadyAssigned` are allowed through, so editing a task never fails
  * because someone assigned earlier has since left the project.
  */
-export async function assertAssignable(projectId: string | null, assigneeIds: string[], alreadyAssigned: string[] = []) {
+export async function assertAssignable(projectId: string | null, assigneeIds: string[], alreadyAssigned: string[] = [], opts: { outside?: boolean } = {}) {
   const newIds = assigneeIds.filter((id) => !alreadyAssigned.includes(id));
   if (newIds.length === 0) return;
 
-  const allowed = new Set((await getAssignableEmployees(projectId)).map((e) => e.id));
+  if (opts.outside && !(await canAssignOutside(projectId))) {
+    throw new UserError("You can't assign people from outside this project. Ask its lead or an admin.");
+  }
+  const pool = opts.outside ? await getAllAssignable() : await getAssignableEmployees(projectId);
+  const allowed = new Set(pool.map((e) => e.id));
   const rejected = newIds.filter((id) => !allowed.has(id));
   if (rejected.length > 0) {
     const people = await db.employee.findMany({ where: { id: { in: rejected } }, select: { firstName: true, lastName: true } });
@@ -102,4 +122,13 @@ export async function getAssignableIdsByProject(projectIds: string[]): Promise<R
       ])],
     ])
   );
+}
+
+/** For forms: per project id (plus "GENERAL"), may the viewer assign people from outside it? */
+export async function getOutsideAllowed(projectIds: string[]): Promise<Record<string, boolean>> {
+  const ids = [...projectIds, null];
+  // Company-wide rights (admins, presets, global grants) answer for every project in one check.
+  if (await canAssignOutside(null)) return Object.fromEntries(ids.map((id) => [id ?? "GENERAL", true]));
+  const flags = await Promise.all(ids.map((id) => canAssignOutside(id)));
+  return Object.fromEntries(ids.map((id, i) => [id ?? "GENERAL", flags[i]]));
 }

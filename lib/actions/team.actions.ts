@@ -114,8 +114,8 @@ export async function deleteTeamAction(teamId: string) {
     await db.team.delete({
       where: { id: teamId }
     });
-  } catch (error: any) {
-    if (error.code === 'P2003') {
+  } catch (error) {
+    if ((error as { code?: string } | null)?.code === "P2003") {
       throw new UserError("Cannot delete this team because it still has active projects. Please delete or reassign all projects first.");
     }
     throw error;

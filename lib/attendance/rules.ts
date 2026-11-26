@@ -48,6 +48,38 @@ export function checkGeofence(point: GeoPoint | null, office: { latitude: number
 }
 
 /**
+ * What a clock-in counts as, from the day, any WFH request and where they are.
+ * - Not an office day (WFH day, holiday, off): as the day is.
+ * - Office day with WFH approved: WFH, anywhere.
+ * - Inside the office radius: an office day.
+ * - Flexible WFH person outside (or with no usable location): WFH, no request needed.
+ * - WFH request still pending: WFH, awaiting the approver's decision.
+ * - Otherwise blocked, with the geofence reason.
+ */
+export function clockInKind(input: {
+  baseKind: DayKindValue;
+  approvedWfh: boolean;
+  pendingWfh: boolean;
+  flexible: boolean;
+  fence: GeofenceResult;
+}): { kind: DayKindValue; awaitingWfh: boolean } | { blocked: "missing" | "imprecise" | "outside"; distanceMeters?: number } {
+  if (input.baseKind !== "OFFICE") return { kind: input.baseKind, awaitingWfh: false };
+  if (input.approvedWfh) return { kind: "WFH", awaitingWfh: false };
+  if (input.fence.ok) return { kind: "OFFICE", awaitingWfh: false };
+  if (input.flexible) return { kind: "WFH", awaitingWfh: false };
+  if (input.pendingWfh) return { kind: "WFH", awaitingWfh: true };
+  return { blocked: input.fence.reason, distanceMeters: input.fence.distanceMeters };
+}
+
+/**
+ * The status once a late arrival is excused: a Late office day becomes Present,
+ * a half day that was only for lateness becomes Present, a WFH day stays WFH.
+ */
+export function excusedStatus(status: AttendanceStatusValue): AttendanceStatusValue {
+  return status === "LATE" || status === "HALF_DAY" ? "PRESENT" : status;
+}
+
+/**
  * Status for a clock-in.
  * - Office day: on time → Present; after the cut-off → Half Day (pending
  *   review) or Late, as the office is set up.
@@ -79,8 +111,8 @@ export function isSessionExpired(sessionDateKey: string, todayDateKey: string): 
 
 /**
  * Left-early and overtime at clock-out, from office hours (minutes since midnight).
- * - Office or WFH day: overtime = time before office start + time after office
- *   end; clocking out before office end = left early.
+ * - Office or WFH day: overtime = worked minutes beyond a full day (office end −
+ *   office start); left early = out before office end without a full day's work.
  * - Off day or holiday: every worked minute is overtime, never "left early".
  */
 export function checkoutFlags(input: {
@@ -94,10 +126,12 @@ export function checkoutFlags(input: {
   if (input.dayKind === "OFF" || input.dayKind === "HOLIDAY") {
     return { leftEarly: false, earlyMinutes: null, overtimeMinutes: input.workMinutes > 0 ? input.workMinutes : null };
   }
-  const before = Math.max(0, Math.min(input.workStartMinutes, input.checkOutMinutes) - input.checkInMinutes);
-  const after = Math.max(0, input.checkOutMinutes - Math.max(input.workEndMinutes, input.checkInMinutes));
-  const overtime = before + after;
-  const leftEarly = input.checkOutMinutes < input.workEndMinutes;
+  // Overtime is time worked beyond a full day, not time outside office hours:
+  // arriving early and leaving early isn't overtime.
+  const fullDay = Math.max(0, input.workEndMinutes - input.workStartMinutes);
+  const overtime = Math.max(0, input.workMinutes - fullDay);
+  // Left before office end without putting in a full day.
+  const leftEarly = input.checkOutMinutes < input.workEndMinutes && input.workMinutes < fullDay;
   return {
     leftEarly,
     earlyMinutes: leftEarly ? input.workEndMinutes - input.checkOutMinutes : null,
@@ -141,6 +175,20 @@ export function statusForEmptyDay(dayKind: DayKindValue, isPast: boolean): Atten
 }
 
 /** "09:42" in the office timezone. */
+/** "13:17" → "1:17 PM". Times are kept as "HH:mm" inside the app; this is for showing them. */
+export function to12h(hhmm: string | null | undefined): string {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm ?? "");
+  if (!m) return hhmm ?? "";
+  const h = Number(m[1]);
+  return `${h % 12 === 0 ? 12 : h % 12}:${m[2]} ${h >= 12 ? "PM" : "AM"}`;
+}
+
+/** A moment as a 12-hour clock time in a timezone: "9:34 AM". For messages and screens. */
+export function formatClock(at: Date, timeZone: string): string {
+  return to12h(formatTime(at, timeZone));
+}
+
+/** "HH:mm" in a timezone: the app's internal time value (editing, comparing). Show it with to12h. */
 export function formatTime(at: Date, timeZone: string): string {
   return new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(at);
 }

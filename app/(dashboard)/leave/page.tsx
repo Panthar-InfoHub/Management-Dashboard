@@ -9,10 +9,10 @@ import { EmptyState } from "@/components/ui/empty-state";
 
 export default function LeavePage() {
   return (
-    <div className="space-y-6 p-6">
+    <div className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-6">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">Leave</h1>
-        <p className="text-sm text-muted-foreground">Your leave balance and leave requests. WFH and attendance fixes are on My Attendance.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Leave</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Your leave balance and leave requests. WFH and attendance fixes are on My Attendance.</p>
       </div>
       <Suspense fallback={<LeaveSkeleton />}>
         <LeaveBody />
@@ -42,12 +42,16 @@ async function LeaveBody() {
         <h2 className="text-sm font-medium">Balance {leave.year}</h2>
         <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {leave.balances.map((b) => (
-            <div key={b.leaveTypeId} className="rounded-lg border border-border/40 p-4">
+            <div key={b.leaveTypeId} className="rounded-xl border border-border/70 p-4 bg-card shadow-[0_2px_2px_rgba(0,0,0,0.04)]">
               <dt className="text-xs text-muted-foreground">{b.name}</dt>
-              <dd className="mt-1 text-2xl font-semibold tabular-nums">{b.unlimited ? "No limit" : b.available}</dd>
+              <dd className="mt-1 text-2xl font-semibold tabular-nums">
+                {b.unlimited ? "No limit" : (b.available ?? 0) < 0
+                  ? <span className="text-destructive">{Math.abs(b.available ?? 0)} days over</span>
+                  : b.available}
+              </dd>
               {!b.unlimited && (
                 <p className="mt-1 text-[11px] text-muted-foreground tabular-nums">
-                  {b.allowed} allowed{b.carriedOver ? ` + ${b.carriedOver} carried` : ""}{b.adjusted ? ` ${b.adjusted > 0 ? "+" : "−"} ${Math.abs(b.adjusted)} adjusted` : ""} · {b.used} used{b.pending ? ` · ${b.pending} pending` : ""}
+                  {b.allowed} allowed{b.adjusted ? ` ${b.adjusted > 0 ? "+" : "−"} ${Math.abs(b.adjusted)} adjusted` : ""} · {b.used} used{b.pending ? ` · ${b.pending} pending` : ""}
                 </p>
               )}
             </div>

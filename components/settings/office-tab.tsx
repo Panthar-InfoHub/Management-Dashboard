@@ -96,7 +96,7 @@ export function OfficeTab({ office }: { office: OfficeSettings }) {
           <h3 className="text-sm font-medium">Location</h3>
           <p className="text-xs text-muted-foreground">Clock-in on an office day must be within the radius of this point.</p>
         </div>
-        <div className="flex flex-col gap-3 rounded-lg border border-border/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 rounded-xl border border-border/70 p-4 sm:flex-row sm:items-center sm:justify-between bg-card shadow-[0_2px_2px_rgba(0,0,0,0.04)]">
           <div className="flex min-w-0 items-start gap-3">
             <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             <div className="min-w-0">

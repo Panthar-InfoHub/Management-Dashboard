@@ -7,10 +7,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function ApprovalsPage() {
   return (
-    <div className="space-y-6 p-6">
+    <div className="mx-auto w-full max-w-5xl space-y-6 p-4 sm:p-6">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">Approvals</h1>
-        <p className="text-sm text-muted-foreground">Leave, WFH and attendance-fix requests, and late half days to review. Your own requests go to someone else.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Approvals</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Requests from your people that need a decision.</p>
       </div>
       <Suspense fallback={<Skeleton className="h-[360px] w-full rounded-lg" />}>
         <InboxBody />

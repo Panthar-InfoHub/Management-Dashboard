@@ -49,6 +49,6 @@ export async function getLeaveTypes({ includeInactive = false } = {}) {
   return db.leaveType.findMany({
     where: includeInactive ? {} : { isActive: true },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-    select: { id: true, name: true, yearlyDays: true, carryOverMax: true, isPaid: true, isActive: true, sortOrder: true },
+    select: { id: true, name: true, yearlyDays: true, isPaid: true, isActive: true, sortOrder: true },
   });
 }

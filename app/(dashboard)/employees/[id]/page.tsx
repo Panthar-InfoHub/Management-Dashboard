@@ -17,18 +17,10 @@ export default async function EmployeeProfilePage({ params }: { params: Promise<
   const { id } = await params;
 
   return (
-    <div className="space-y-6 p-6 md:p-8 w-full h-full overflow-y-auto selection:bg-primary/10">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-border/40">
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <Link href="/employees" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 text-sm">
-              <ArrowLeft className="h-4 w-4" /> Back to Directory
-            </Link>
-          </div>
-          <h1 className="text-xl font-semibold tracking-tight">Employee Profile</h1>
-          <p className="text-sm text-muted-foreground">Manage profile, role, and view employment ledger.</p>
-        </div>
-      </div>
+    <div className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-6">
+      <Link href="/employees" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="h-3.5 w-3.5" /> Employees
+      </Link>
       <Suspense fallback={<ProfileLoading />}>
         <EmployeeProfileDataAsync id={id} />
       </Suspense>
@@ -39,15 +31,14 @@ export default async function EmployeeProfilePage({ params }: { params: Promise<
 function ProfileLoading() {
   return (
     <div className="space-y-6">
-      <div className="flex items-start gap-6">
-        <Skeleton className="h-24 w-24 rounded-full" />
-        <div className="space-y-2">
-          <Skeleton className="h-6 w-48" />
-          <Skeleton className="h-4 w-32" />
-          <Skeleton className="h-4 w-24" />
-        </div>
+      <div className="flex items-center gap-4">
+        <Skeleton className="h-16 w-16 rounded-full" />
+        <div className="space-y-2"><Skeleton className="h-7 w-56" /><Skeleton className="h-4 w-40" /><Skeleton className="h-5 w-32" /></div>
       </div>
-      <Skeleton className="h-[400px] w-full rounded-xl" />
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2"><Skeleton className="h-72 w-full rounded-xl" /><Skeleton className="h-56 w-full rounded-xl" /></div>
+        <div className="space-y-6"><Skeleton className="h-60 w-full rounded-xl" /><Skeleton className="h-28 w-full rounded-xl" /><Skeleton className="h-36 w-full rounded-xl" /></div>
+      </div>
     </div>
   );
 }
@@ -96,21 +87,16 @@ async function EmployeeProfileDataAsync({ id }: { id: string }) {
   ]);
 
   return (
-    <>
     <EmployeeProfileClient
       employee={JSON.parse(JSON.stringify(employee))}
       canEdit={canUpdate && mayActOn}
+      canSetFlexibleWfh={canUpdate && mayActOn && employee.id !== currentEmployee.id && tracksAttendance(employee.role)}
       canAssignRoles={canAssignRoles(currentEmployee.role) && employee.id !== currentEmployee.id}
       canOffboard={canOffboard && mayActOn && employee.id !== currentEmployee.id}
       access={access}
       teams={teams}
       checklist={checklist}
+      leave={leaveBalances && <LeaveBalancePanel employeeId={employee.id} employeeName={employee.firstName} year={leaveYear} balances={leaveBalances} />}
     />
-    {leaveBalances && (
-      <div className="px-2 pb-20">
-        <LeaveBalancePanel employeeId={employee.id} employeeName={employee.firstName} year={leaveYear} balances={leaveBalances} />
-      </div>
-    )}
-    </>
   );
 }

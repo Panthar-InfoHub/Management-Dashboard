@@ -2,7 +2,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function ProjectDetailLoading() {
   return (
-    <div className="flex flex-col gap-6 p-6 h-full overflow-y-auto">
+    <div className="flex flex-col gap-6 p-4 sm:p-6 h-full overflow-y-auto">
       <div className="flex items-center gap-2">
         <Skeleton className="h-4 w-28" />
       </div>
@@ -12,7 +12,7 @@ export default function ProjectDetailLoading() {
       </div>
       <div className="grid gap-4 md:grid-cols-3">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="rounded-xl border border-border/40 bg-card p-5">
+          <div key={i} className="rounded-xl border border-border/70 bg-card p-5">
             <Skeleton className="h-12 w-full" />
           </div>
         ))}

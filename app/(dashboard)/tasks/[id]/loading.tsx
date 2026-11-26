@@ -4,7 +4,7 @@ export default function TaskDetailLoading() {
   return (
     <div className="h-full flex flex-col bg-background selection:bg-primary/10">
       {/* Breadcrumb & Actions Bar (Sticky Top) */}
-      <div className="px-4 md:px-8 py-3 md:py-5 border-b border-border/40 flex flex-col sm:flex-row sm:items-center justify-between sticky top-0 bg-background/90 backdrop-blur-md z-10 gap-3">
+      <div className="px-4 md:px-8 py-3 md:py-5 border-b border-border/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Skeleton className="h-4 w-12 hidden sm:block" />
           <Skeleton className="h-3 w-3 hidden sm:block rounded-full" />
@@ -58,7 +58,7 @@ export default function TaskDetailLoading() {
 
           {/* Right Sidebar (280px rail) */}
           <div className="space-y-6 shrink-0 w-full md:w-[280px]">
-            <div className="rounded-xl border border-border/40 bg-card/40 p-5 space-y-5">
+            <div className="rounded-xl border border-border/70 bg-card/40 p-5 space-y-5">
               <Skeleton className="h-4 w-20 mb-3" />
               
               <div className="space-y-1.5">

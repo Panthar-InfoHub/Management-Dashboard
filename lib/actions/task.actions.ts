@@ -4,7 +4,6 @@ import { UserError } from "@/lib/errors";
 import { db } from "@/lib/db";
 import { requireAuth, getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
-import { getKanbanTasks } from "@/lib/queries/task.queries";
 import { assertAssignable } from "@/lib/tasks/assignees";
 import { audit, diffFields } from "@/lib/audit";
 import type { TaskStatus, TaskPriority, Prisma } from "@/lib/generated/prisma";
@@ -121,6 +120,8 @@ export async function createTaskAction(data: {
   priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   startDate?: Date;
   dueDate?: Date;
+  /** Allow people outside the project (leads and admins only). */
+  outside?: boolean;
 }) {
   if (!data.title?.trim()) throw new UserError("Task title is required.");
   assertValidPriority(data.priority);
@@ -130,7 +131,7 @@ export async function createTaskAction(data: {
   const projectId = data.projectId?.trim() || null;
   const employee = projectId ? await requireAuth("task:create", projectId) : await getCurrentEmployee();
   const { ownerId, assigneeIds } = ownerAndAssignees(data.ownerId, uniqueIds(data.assigneeIds));
-  await assertAssignable(projectId, assigneeIds);
+  await assertAssignable(projectId, assigneeIds, [], { outside: data.outside });
   const startDate = toDate(data.startDate);
   const dueDate = toDate(data.dueDate);
   if (startDate && dueDate && dueDate < startDate) throw new UserError("The due date is before the start date.");
@@ -177,6 +178,7 @@ export async function updateTaskAction(taskId: string, data: {
   priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   startDate?: Date;
   dueDate?: Date;
+  outside?: boolean;
 }) {
   if (!data.title?.trim()) throw new UserError("Task title is required.");
   assertValidPriority(data.priority);
@@ -207,7 +209,7 @@ export async function updateTaskAction(taskId: string, data: {
 
   const { ownerId, assigneeIds } = ownerAndAssignees(data.ownerId, uniqueIds(data.assigneeIds));
   const sameProject = projectId === existingTask.projectId;
-  await assertAssignable(projectId, assigneeIds, sameProject ? existingTask.assignees.map(a => a.id) : []);
+  await assertAssignable(projectId, assigneeIds, sameProject ? existingTask.assignees.map(a => a.id) : [], { outside: data.outside });
 
   const next = {
     title: data.title.trim(),
@@ -346,7 +348,12 @@ export async function setTaskBlockerAction(taskId: string, blockerTaskId: string
     if (blockerTaskId === taskId) throw new UserError("A task can't block itself.");
     const blocker = await db.task.findUnique({ where: { id: blockerTaskId }, select: { projectId: true, blockedById: true } });
     if (!blocker || blocker.projectId !== task.projectId) throw new UserError("The blocker must be a task in the same project.");
-    if (blocker.blockedById === taskId) throw new UserError("These tasks would block each other. Remove the other blocker first.");
+    // Follow the blocker's own chain: if it leads back here, the tasks would wait on each other forever.
+    let next = blocker.blockedById;
+    for (let hops = 0; next && hops < 50; hops++) {
+      if (next === taskId) throw new UserError("That would make a loop: the chosen task already waits on this one. Remove one of the blockers first.");
+      next = (await db.task.findUnique({ where: { id: next }, select: { blockedById: true } }))?.blockedById ?? null;
+    }
   }
 
   const updatedTask = await db.task.update({
@@ -361,11 +368,13 @@ export async function setTaskBlockerAction(taskId: string, blockerTaskId: string
 
 export async function createSubtaskAction(parentId: string, data: {
   title: string;
+  description?: string;
   priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   assigneeIds?: string[];
   /** @deprecated use assigneeIds */
   assigneeId?: string;
   dueDate?: string | Date | null;
+  outside?: boolean;
 }) {
   if (!data.title?.trim()) throw new UserError("Subtask title is required.");
   assertValidPriority(data.priority);
@@ -388,7 +397,7 @@ export async function createSubtaskAction(parentId: string, data: {
       throw new UserError("You can only assign this subtask to yourself.");
     }
   }
-  await assertAssignable(parentTask.projectId, assigneeIds);
+  await assertAssignable(parentTask.projectId, assigneeIds, [], { outside: data.outside });
 
   const dueDate = toDate(data.dueDate);
   if (dueDate && parentTask.dueDate && dueDate > parentTask.dueDate) {
@@ -399,6 +408,7 @@ export async function createSubtaskAction(parentId: string, data: {
     data: {
       number: await nextTaskNumber(tx, parentTask.projectId),
       title: data.title.trim(),
+      description: data.description?.trim() || null,
       projectId: parentTask.projectId,
       parentId,
       creatorId: employee.id,
@@ -418,7 +428,7 @@ export async function createSubtaskAction(parentId: string, data: {
 }
 
 /** Replace a task's assignees. Only people on the project (or its team) can be added. */
-export async function setTaskAssigneesAction(taskId: string, assigneeIdsInput: string[]) {
+export async function setTaskAssigneesAction(taskId: string, assigneeIdsInput: string[], opts: { outside?: boolean } = {}) {
   const employee = await getCurrentEmployee();
   const existingTask = await db.task.findUnique({
     where: { id: taskId },
@@ -434,7 +444,7 @@ export async function setTaskAssigneesAction(taskId: string, assigneeIdsInput: s
 
   const assigneeIds = uniqueIds(assigneeIdsInput);
   const previousIds = existingTask.assignees.map(a => a.id);
-  await assertAssignable(existingTask.projectId, assigneeIds, previousIds);
+  await assertAssignable(existingTask.projectId, assigneeIds, previousIds, opts);
   // The Owner stays while still assigned; otherwise the first assignee takes over.
   const ownerId = existingTask.ownerId && assigneeIds.includes(existingTask.ownerId) ? existingTask.ownerId : assigneeIds[0] ?? null;
 
@@ -522,10 +532,6 @@ export async function assignTaskAction(taskId: string, assigneeId: string | null
   return setTaskAssigneesAction(taskId, assigneeId ? [assigneeId] : []);
 }
 
-export async function loadMoreTasksAction(filters: { team?: string; project?: string; assignee?: string; search?: string }, skip: number) {
-  // getKanbanTasks internally calls getCurrentEmployee() for auth
-  return await getKanbanTasks(filters, skip, 50);
-}
 
 export async function deleteTaskAction(taskId: string) {
   const existingTask = await db.task.findUnique({

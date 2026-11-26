@@ -45,7 +45,6 @@ if (existingSeed[0].n > 0) {
 
 // ── helpers ──
 const toMin = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
-const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 const istToUtc = (dateKey, minutes) => new Date(Date.parse(`${dateKey}T00:00:00Z`) + (minutes - 330) * 60_000);
 const days = [];
 for (let t = Date.parse(`${FROM}T00:00:00Z`); t <= Date.parse(`${TO}T00:00:00Z`); t += 86_400_000) days.push(new Date(t).toISOString().slice(0, 10));

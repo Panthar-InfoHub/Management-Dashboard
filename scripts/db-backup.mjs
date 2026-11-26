@@ -19,7 +19,6 @@ if (!url) throw new Error("DIRECT_URL or DATABASE_URL must be set in .env.local"
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 const outDir = path.resolve(process.argv[2] ?? path.join("..", "db-backups", stamp));
 const pool = new Pool({ connectionString: url });
-const q = async (sql, params) => (await pool.query(sql, params)).rows;
 
 const client = await pool.connect();
 try {

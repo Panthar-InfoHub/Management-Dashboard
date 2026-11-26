@@ -46,13 +46,8 @@ export function proratedAllowance(yearlyDays: number, year: number, startKey: st
   return Math.floor(((yearlyDays * monthsLeft) / 12) * 2) / 2;
 }
 
-/** Days still free: allowance + carried over + adjustments − used − pending. */
-export function availableDays(b: { allowed: number; carriedOver: number; adjusted: number; used: number }, pending = 0): number {
-  return b.allowed + b.carriedOver + b.adjusted - b.used - pending;
+/** Days still free: allowance + adjustments − used − pending. Unused days don't carry into the next year. */
+export function availableDays(b: { allowed: number; adjusted: number; used: number }, pending = 0): number {
+  return b.allowed + b.adjusted - b.used - pending;
 }
 
-/** Unused days moved into the next year, capped by the leave type. */
-export function carryOver(previous: { allowed: number; carriedOver: number; adjusted: number; used: number } | null, carryOverMax: number): number {
-  if (!previous || carryOverMax <= 0) return 0;
-  return Math.max(0, Math.min(carryOverMax, availableDays(previous)));
-}

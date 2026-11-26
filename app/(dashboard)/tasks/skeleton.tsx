@@ -30,7 +30,7 @@ export function TasksBodySkeleton() {
 
 export default function TasksLoading() {
   return (
-    <div className="flex flex-col gap-6 p-6 h-[calc(100vh-64px)] min-h-0">
+    <div className="flex flex-col gap-6 p-4 sm:p-6 h-full min-h-0">
       <div className="flex items-center justify-between shrink-0">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Tasks</h1>

@@ -13,10 +13,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function AuditPage({ searchParams }: { searchParams: Promise<AuditFilters> }) {
   return (
-    <div className="space-y-6 p-6 md:p-8">
+    <div className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-6">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">Audit Log</h1>
-        <p className="text-sm text-muted-foreground">Who changed what, and when. Newest first.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Audit Log</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Who changed what, and when. Newest first.</p>
       </div>
       <Suspense fallback={<Skeleton className="h-[600px] w-full rounded-xl" />}>
         <AuditBody searchParams={searchParams} />
@@ -77,7 +77,7 @@ async function AuditBody({ searchParams }: { searchParams: Promise<AuditFilters>
       {data.rows.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border/60 p-10 text-center text-sm text-muted-foreground">No entries match these filters.</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border/40">
+        <div className="overflow-x-auto rounded-xl border border-border/70 bg-card shadow-[0_2px_2px_rgba(0,0,0,0.04)]">
           <table className="w-full text-sm">
             <thead className="bg-muted/20 text-left text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
@@ -93,7 +93,7 @@ async function AuditBody({ searchParams }: { searchParams: Promise<AuditFilters>
                 return (
                   <tr key={r.id} className="border-t border-border/40 align-top">
                     <td className="whitespace-nowrap px-4 py-2.5 font-mono text-xs tabular-nums text-muted-foreground">
-                      {new Date(r.at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}
+                      {new Date(r.at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true })}
                     </td>
                     <td className="px-4 py-2.5">
                       {r.actor ? (

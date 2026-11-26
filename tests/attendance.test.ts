@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { dayKindFor, eachDateKey, fromDateKey, minutesOfDay, parseHHmm, todayKey, type WeekPattern } from "../lib/attendance/calendar";
-import { checkGeofence, checkoutFlags, distanceMeters, formatTime, isSessionExpired, statusForCheckIn, statusForDay, statusForEmptyDay, workedMinutes } from "../lib/attendance/rules";
+import { checkGeofence, checkoutFlags, clockInKind, distanceMeters, formatTime, to12h, isSessionExpired, statusForCheckIn, statusForDay, statusForEmptyDay, workedMinutes } from "../lib/attendance/rules";
 
 const week: WeekPattern = ["OFF", "OFFICE", "OFFICE", "OFFICE", "OFFICE", "OFFICE", "WFH"];
 const office = { latitude: 25.45637, longitude: 78.5322, radiusMeters: 100 };
@@ -68,14 +68,16 @@ test("left early and overtime from office hours (10:00–19:00)", () => {
   assert.deepEqual(checkoutFlags({ ...hours, dayKind: "OFFICE", checkInMinutes: at(10), checkOutMinutes: at(17, 40), workMinutes: 460 }), { leftEarly: true, earlyMinutes: 80, overtimeMinutes: null });
   // Exactly office hours → nothing
   assert.deepEqual(checkoutFlags({ ...hours, dayKind: "OFFICE", checkInMinutes: at(10), checkOutMinutes: at(19), workMinutes: 540 }), { leftEarly: false, earlyMinutes: null, overtimeMinutes: null });
-  // In at 09:00, out at 20:15 → 60 + 75 overtime
+  // In at 09:00, out at 20:15 → 11h15m worked, 2h15m beyond the 9h day
   assert.deepEqual(checkoutFlags({ ...hours, dayKind: "WFH", checkInMinutes: at(9), checkOutMinutes: at(20, 15), workMinutes: 675 }), { leftEarly: false, earlyMinutes: null, overtimeMinutes: 135 });
-  // In at 08:30, out at 17:00 → 90 overtime and left 120 early
-  assert.deepEqual(checkoutFlags({ ...hours, dayKind: "OFFICE", checkInMinutes: at(8, 30), checkOutMinutes: at(17), workMinutes: 510 }), { leftEarly: true, earlyMinutes: 120, overtimeMinutes: 90 });
-  // Entirely before office start: 07:00–09:30 → 150 overtime, left early
-  assert.deepEqual(checkoutFlags({ ...hours, dayKind: "OFFICE", checkInMinutes: at(7), checkOutMinutes: at(9, 30), workMinutes: 150 }), { leftEarly: true, earlyMinutes: 570, overtimeMinutes: 150 });
-  // Entirely after office end: 20:00–22:00 → 120 overtime
-  assert.deepEqual(checkoutFlags({ ...hours, dayKind: "OFFICE", checkInMinutes: at(20), checkOutMinutes: at(22), workMinutes: 120 }), { leftEarly: false, earlyMinutes: null, overtimeMinutes: 120 });
+  // In at 09:34, out at 13:17 → left 5h43m early, and arriving early is NOT overtime
+  assert.deepEqual(checkoutFlags({ ...hours, dayKind: "OFFICE", checkInMinutes: at(9, 34), checkOutMinutes: at(13, 17), workMinutes: 223 }), { leftEarly: true, earlyMinutes: 343, overtimeMinutes: null });
+  // In at 08:30, out at 17:00 → 8h30m, short of a full day: left early, no overtime
+  assert.deepEqual(checkoutFlags({ ...hours, dayKind: "OFFICE", checkInMinutes: at(8, 30), checkOutMinutes: at(17), workMinutes: 510 }), { leftEarly: true, earlyMinutes: 120, overtimeMinutes: null });
+  // In at 07:00, out at 18:00 → 11h: a full day and more, so not "left early"; 2h overtime
+  assert.deepEqual(checkoutFlags({ ...hours, dayKind: "OFFICE", checkInMinutes: at(7), checkOutMinutes: at(18), workMinutes: 660 }), { leftEarly: false, earlyMinutes: null, overtimeMinutes: 120 });
+  // Only 20:00–22:00 → 2h, not a full day: no overtime (and they didn't leave before office end)
+  assert.deepEqual(checkoutFlags({ ...hours, dayKind: "OFFICE", checkInMinutes: at(20), checkOutMinutes: at(22), workMinutes: 120 }), { leftEarly: false, earlyMinutes: null, overtimeMinutes: null });
   // Holiday → all overtime
   assert.deepEqual(checkoutFlags({ ...hours, dayKind: "HOLIDAY", checkInMinutes: at(10), checkOutMinutes: at(13), workMinutes: 180 }), { leftEarly: false, earlyMinutes: null, overtimeMinutes: 180 });
 });
@@ -89,4 +91,36 @@ test("short-day rule: off by default, half day when under the minimum on office 
   // Late + LATE outcome + short day → half day; late half day stays half day
   assert.equal(statusForDay({ ...base, checkInMinutes: 700, lateOutcome: "LATE", dayKind: "OFFICE", workMinutes: 60, minFullDayMinutes: 240 }).status, "HALF_DAY");
   assert.equal(statusForDay({ ...base, checkInMinutes: 700, dayKind: "OFFICE", workMinutes: 600, minFullDayMinutes: 240 }).status, "HALF_DAY");
+});
+
+test("clock-in kind: flexible WFH, pending and approved WFH, and the office radius", () => {
+  const inside = { ok: true as const, distanceMeters: 40 };
+  const outside = { ok: false as const, reason: "outside" as const, distanceMeters: 4200 };
+  const none = { ok: false as const, reason: "missing" as const };
+  const base = { baseKind: "OFFICE" as const, approvedWfh: false, pendingWfh: false, flexible: false };
+
+  // Everyone at the office: an office day.
+  assert.deepEqual(clockInKind({ ...base, fence: inside }), { kind: "OFFICE", awaitingWfh: false });
+  // Away with no WFH: refused, with the reason.
+  assert.deepEqual(clockInKind({ ...base, fence: outside }), { blocked: "outside", distanceMeters: 4200 });
+  assert.deepEqual(clockInKind({ ...base, fence: none }), { blocked: "missing", distanceMeters: undefined });
+  // Approved WFH: WFH anywhere, even inside the office.
+  assert.deepEqual(clockInKind({ ...base, approvedWfh: true, fence: inside }), { kind: "WFH", awaitingWfh: false });
+  // Pending WFH: at the office it's an office day; away it waits for the decision.
+  assert.deepEqual(clockInKind({ ...base, pendingWfh: true, fence: inside }), { kind: "OFFICE", awaitingWfh: false });
+  assert.deepEqual(clockInKind({ ...base, pendingWfh: true, fence: outside }), { kind: "WFH", awaitingWfh: true });
+  // Flexible WFH: office when there, WFH anywhere else (no location needed), never awaiting.
+  assert.deepEqual(clockInKind({ ...base, flexible: true, fence: inside }), { kind: "OFFICE", awaitingWfh: false });
+  assert.deepEqual(clockInKind({ ...base, flexible: true, fence: outside }), { kind: "WFH", awaitingWfh: false });
+  assert.deepEqual(clockInKind({ ...base, flexible: true, pendingWfh: true, fence: none }), { kind: "WFH", awaitingWfh: false });
+  // Not an office day: the day decides, whatever the location.
+  assert.deepEqual(clockInKind({ ...base, baseKind: "HOLIDAY", fence: outside }), { kind: "HOLIDAY", awaitingWfh: false });
+});
+
+test("times are shown in 12-hour form", () => {
+  assert.equal(to12h("09:34"), "9:34 AM");
+  assert.equal(to12h("13:17"), "1:17 PM");
+  assert.equal(to12h("00:05"), "12:05 AM");
+  assert.equal(to12h("12:00"), "12:00 PM");
+  assert.equal(to12h(null), "");
 });

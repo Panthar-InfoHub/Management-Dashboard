@@ -1,13 +1,14 @@
 "use client";
+import type { Notification } from "@/lib/generated/prisma";
 import { errorMessage } from "@/lib/errors";
 
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { Bell, Check, CheckCheck, ClipboardCheck, Users, FolderOpen, ArrowRight } from "lucide-react";
+import { Check, CheckCheck, ClipboardCheck, Users, FolderOpen, ArrowRight } from "lucide-react";
 import { markNotificationAsReadAction, markAllNotificationsAsReadAction } from "@/lib/actions/notification.actions";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -19,7 +20,7 @@ const categoryIcons: Record<string, { icon: React.ElementType; color: string }> 
   PROJECT_ADDED: { icon: FolderOpen, color: "text-amber-500 bg-amber-500/10" },
 };
 
-export function NotificationsClient({ initialNotifications }: { initialNotifications: any[] }) {
+export function NotificationsClient({ initialNotifications }: { initialNotifications: Notification[] }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -39,7 +40,7 @@ export function NotificationsClient({ initialNotifications }: { initialNotificat
     });
   };
 
-  const handleNotificationClick = (notification: any) => {
+  const handleNotificationClick = (notification: Notification) => {
     if (!notification.isRead) {
       handleMarkAsRead(notification.id);
     }
@@ -130,7 +131,7 @@ export function NotificationsClient({ initialNotifications }: { initialNotificat
             <CardContent className="p-0 divide-y divide-border">
               {unread.length === 0 && (
                 <div className="p-8 text-center text-muted-foreground text-sm">
-                  You're all caught up!
+                  You&apos;re all caught up
                 </div>
               )}
               {unread.map(n => {

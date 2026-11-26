@@ -1,83 +1,21 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
-export function DashboardBodySkeleton() {
-  return (
-    <>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <Skeleton className="h-7 w-56" />
-          <Skeleton className="h-4 w-72" />
-        </div>
-        <Skeleton className="h-8 w-full sm:w-40" />
-      </div>
-
-      {/* Overview Blocks */}
-      <div className="grid gap-4 md:grid-cols-3">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="overflow-hidden rounded-xl border border-border/40 bg-card shadow-sm">
-            <div className="flex items-center gap-4 border-b border-border/40 p-5">
-              <Skeleton className="h-12 w-12 shrink-0 rounded-xl" />
-              <div className="space-y-2">
-                <Skeleton className="h-3 w-20" />
-                <Skeleton className="h-7 w-12" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4 p-5">
-              <Skeleton className="h-8 w-full" />
-              <Skeleton className="h-8 w-full" />
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Priority Panels */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {[1, 2].map((i) => (
-          <div key={i} className="rounded-xl border border-border/40 bg-card shadow-sm">
-            <div className="space-y-2 border-b border-border/40 p-5">
-              <Skeleton className="h-4 w-32" />
-            </div>
-            <div className="space-y-3 p-4">
-              {[1, 2, 3].map((j) => (
-                <div key={j} className="flex items-center gap-3">
-                  <Skeleton className="h-2 w-2 rounded-full" />
-                  <div className="w-full space-y-1.5">
-                    <Skeleton className="h-3 w-2/3" />
-                    <Skeleton className="h-2.5 w-1/3" />
-                  </div>
-                  <Skeleton className="h-4 w-14 shrink-0" />
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Charts */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="h-[320px] space-y-4 rounded-xl border border-border/40 bg-card p-4 shadow-sm lg:col-span-2">
-          <div className="flex items-center gap-2">
-            <Skeleton className="h-9 w-9 rounded-xl" />
-            <Skeleton className="h-4 w-32" />
-          </div>
-          <Skeleton className="h-[240px] w-full rounded-md" />
-        </div>
-        <div className="h-[320px] space-y-4 rounded-xl border border-border/40 bg-card p-4 shadow-sm">
-          <div className="flex items-center gap-2">
-            <Skeleton className="h-9 w-9 rounded-xl" />
-            <Skeleton className="h-4 w-28" />
-          </div>
-          <Skeleton className="h-[240px] w-full rounded-md" />
-        </div>
-      </div>
-    </>
-  );
-}
-
+/** Route-level loading for every dashboard page: a header and content blocks. */
 export default function DashboardLoading() {
   return (
-    <div className="space-y-8 p-6">
-      <DashboardBodySkeleton />
+    <div className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-6" aria-busy="true" aria-label="Loading">
+      <div className="space-y-2">
+        <Skeleton className="h-3 w-32" />
+        <Skeleton className="h-7 w-64" />
+        <Skeleton className="h-4 w-80" />
+      </div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
+      </div>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Skeleton className="h-72 rounded-xl lg:col-span-2" />
+        <Skeleton className="h-72 rounded-xl" />
+      </div>
     </div>
   );
 }

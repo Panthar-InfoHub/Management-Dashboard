@@ -13,14 +13,16 @@ type Props = {
   presets: PresetRow[] | null;
   office: OfficeSettings | null;
   calendarDays: { id: string; date: string; kind: DayKindValue; name: string | null }[] | null;
-  leaveTypes: { id: string; name: string; yearlyDays: number | null; carryOverMax: number; isPaid: boolean; isActive: boolean }[] | null;
+  /** This year in office time, for the holiday import. */
+  currentYear: number;
+  leaveTypes: { id: string; name: string; yearlyDays: number | null; isPaid: boolean; isActive: boolean }[] | null;
 };
 
 const triggerClass = "gap-2 text-xs h-7";
 const contentClass = "m-0 border-0 p-0 focus-visible:outline-none";
 
 /** Each tab shows only for people allowed to use it (null = not allowed). */
-export function SettingsClient({ presets, office, calendarDays, leaveTypes }: Props) {
+export function SettingsClient({ presets, office, calendarDays, leaveTypes, currentYear }: Props) {
   const first = presets ? "access" : office ? "office" : "calendar";
   return (
     <Tabs defaultValue={first} className="flex flex-col gap-6">
@@ -36,7 +38,7 @@ export function SettingsClient({ presets, office, calendarDays, leaveTypes }: Pr
       <div className="flex-1 min-w-0 pb-10">
         {presets && <TabsContent value="access" className={contentClass}><AccessPresetsTab presets={presets} /></TabsContent>}
         {office && <TabsContent value="office" className={contentClass}><OfficeTab office={office} /></TabsContent>}
-        {calendarDays && <TabsContent value="calendar" className={contentClass}><CalendarTab days={calendarDays} /></TabsContent>}
+        {calendarDays && <TabsContent value="calendar" className={contentClass}><CalendarTab days={calendarDays} currentYear={currentYear} /></TabsContent>}
         {leaveTypes && <TabsContent value="leave-types" className={contentClass}><LeaveTypesTab types={leaveTypes} /></TabsContent>}
       </div>
     </Tabs>

@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { getAssignableIdsByProject, getGeneralAssignable } from "@/lib/tasks/assignees";
+import { getAssignableIdsByProject, getGeneralAssignable, getOutsideAllowed } from "@/lib/tasks/assignees";
 import { getCurrentEmployee, checkPermission } from "@/lib/auth";
 import { NewTaskForm } from "@/components/tasks/new-task-form";
 import { notFound } from "next/navigation";
@@ -26,8 +26,8 @@ export default async function EditTaskPage({ params }: { params: Promise<{ id: s
   // For this project, so project and team leads can edit too.
   const canEditGlobal = await checkPermission("task:update", task.projectId ?? undefined);
   const isCreator = task.creatorId === employee.id;
-  const isAssignee = task.assignees.some((a: any) => a.id === employee.id);
-  const isProjectMember = task.project?.members.some((m: any) => m.employeeId === employee.id);
+  const isAssignee = task.assignees.some((a) => a.id === employee.id);
+  const isProjectMember = task.project?.members.some((m) => m.employeeId === employee.id);
 
   if (!canEditGlobal && !isProjectMember && !isAssignee) {
     // If they don't have global edit and are NO LONGER part of the project/task, they lose all access
@@ -54,17 +54,18 @@ export default async function EditTaskPage({ params }: { params: Promise<{ id: s
     }),
     db.employee.findMany({
       where: { status: "ACTIVE" },
-      select: { id: true, firstName: true, lastName: true },
+      select: { id: true, firstName: true, lastName: true, avatarUrl: true },
       orderBy: { firstName: "asc" }
     })
   ]);
   // Keep the task's own project in the list even if it's completed.
   if (task.project && !projects.some((p) => p.id === task.projectId)) projects.unshift({ id: task.project.id, name: task.project.name });
-  const [assignableByProject, general] = await Promise.all([
+  const [assignableByProject, general, outsideAllowed] = await Promise.all([
     getAssignableIdsByProject(projects.map((p) => p.id)),
     getGeneralAssignable(),
+    getOutsideAllowed(projects.map((p) => p.id)),
   ]);
   assignableByProject.GENERAL = general.map((e) => e.id);
 
-  return <NewTaskForm projects={projects} employees={employees} assignableByProject={assignableByProject} initialData={task} canAssign={canEditGlobal} />;
+  return <NewTaskForm projects={projects} employees={employees} assignableByProject={assignableByProject} outsideAllowed={outsideAllowed} initialData={task} canAssign={canEditGlobal} />;
 }

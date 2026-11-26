@@ -6,7 +6,7 @@ import { getCurrentEmployee } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { getTeamMonth } from "@/lib/attendance/queries";
 import { fromDateKey, WEEKDAYS } from "@/lib/attendance/calendar";
-import { ATTENDANCE_STATUS_LABELS, type AttendanceStatusValue } from "@/lib/attendance/rules";
+import { ATTENDANCE_STATUS_LABELS, type AttendanceStatusValue, to12h } from "@/lib/attendance/rules";
 import { audit } from "@/lib/audit";
 
 const CODES: Record<AttendanceStatusValue, string> = {
@@ -107,8 +107,8 @@ export async function GET(request: Request) {
         name: employee.name,
         status: d.status ? ATTENDANCE_STATUS_LABELS[d.status as AttendanceStatusValue] : "",
         leave: d.leave?.typeName ? `${d.leave.typeName}${d.leave.halfDay ? " (half)" : ""}` : "",
-        in: d.checkIn ?? "",
-        out: d.checkOut ?? "",
+        in: d.checkIn ? to12h(d.checkIn) : "",
+        out: d.checkOut ? to12h(d.checkOut) : "",
         worked: d.workMinutes != null ? hours(d.workMinutes) : "",
         late: d.isLate ? "Yes" : "",
         early: d.earlyMinutes ?? "",

@@ -13,7 +13,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 
 export default function AnnouncementsPage() {
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-6 md:p-8">
+    <div className="mx-auto w-full max-w-4xl space-y-6 p-4 sm:p-6">
       <Suspense fallback={<><Skeleton className="h-10 w-64" /><Skeleton className="h-40 w-full rounded-xl" /><Skeleton className="h-40 w-full rounded-xl" /></>}>
         <AnnouncementsBody />
       </Suspense>
@@ -33,8 +33,8 @@ async function AnnouncementsBody() {
     <>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Announcements</h1>
-          <p className="text-sm text-muted-foreground">News for the company or your teams.</p>
+          <h1 className="text-2xl font-semibold tracking-tight">Announcements</h1>
+          <p className="mt-1 text-sm text-muted-foreground">News for the company or your teams.</p>
         </div>
         {canManage && <AnnouncementDialog teams={teams} trigger={<Button size="sm" className="gap-2"><Plus className="h-4 w-4" /> New Announcement</Button>} />}
       </div>

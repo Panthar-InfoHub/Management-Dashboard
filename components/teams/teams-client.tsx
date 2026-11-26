@@ -1,159 +1,165 @@
 "use client";
-import { errorMessage } from "@/lib/errors";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { UserAvatar } from "@/components/ui/user-avatar";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, Plus, LayoutDashboard } from "lucide-react";
-import { createTeamAction } from "@/lib/actions/team.actions";
+import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { LeadPicker } from "@/components/teams/team-dialogs";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { PageHeader } from "@/components/ui/panel";
+import { UserAvatar } from "@/components/ui/user-avatar";
+import { createTeamAction } from "@/lib/actions/team.actions";
+import { errorMessage } from "@/lib/errors";
+import { cn } from "@/lib/utils";
 
-export function TeamsClient({ initialTeams, employees, canCreate = false }: { initialTeams: any[], employees: any[], canCreate?: boolean }) {
-  const [teamList, setTeamList] = useState(initialTeams);
-  const [newTeamOpen, setNewTeamOpen] = useState(false);
+type Person = { id: string; firstName: string; lastName: string; avatarUrl: string | null; designation?: string | null };
+type Team = {
+  id: string; name: string; description: string | null; leadId: string | null;
+  lead: Person | null; members: Person[]; projects: { id: string }[];
+  openTasks: number; overdueTasks: number; activeProjects: number;
+};
+
+function NewTeamDialog({ employees }: { employees: Person[] }) {
+  const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
-  const router = useRouter();
+  const [form, setForm] = useState({ name: "", description: "", leadId: "" });
 
-  const [newTeam, setNewTeam] = useState({ name: "", description: "", leadId: "" });
-
-  const handleCreateTeam = () => {
-    if (!newTeam.name || !newTeam.leadId) return;
-    
-    startTransition(() => {
-      createTeamAction(newTeam).then((team) => {
-        setNewTeamOpen(false);
-        setNewTeam({ name: "", description: "", leadId: "" });
-      }).catch((err) => toast.error(errorMessage(err, "Failed to create team")));
+  const submit = () => {
+    startTransition(async () => {
+      try {
+        await createTeamAction(form);
+        toast.success(`${form.name} created`);
+        setOpen(false);
+        setForm({ name: "", description: "", leadId: "" });
+      } catch (err) {
+        toast.error(errorMessage(err, "Team not created. Try again."));
+      }
     });
   };
 
   return (
-    <div className="flex-1 overflow-y-auto pr-2">
-      {canCreate && (
-        <div className="flex justify-end mb-6">
-          <Dialog open={newTeamOpen} onOpenChange={setNewTeamOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" className="gap-2 shadow-none"><Plus className="h-4 w-4" /> Create Team</Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Create New Team</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 pt-4">
-                <div className="space-y-1.5 flex flex-col">
-                  <label className="text-xs font-semibold text-muted-foreground">Team Name</label>
-                  <Input value={newTeam.name} onChange={e => setNewTeam({ ...newTeam, name: e.target.value })} placeholder="E.g. Core Infrastructure" />
-                </div>
-                <div className="space-y-1.5 flex flex-col">
-                  <label className="text-xs font-semibold text-muted-foreground">Description (Optional)</label>
-                  <Input value={newTeam.description} onChange={e => setNewTeam({ ...newTeam, description: e.target.value })} placeholder="What does this team do?" />
-                </div>
-                <div className="space-y-1.5 flex flex-col">
-                  <label className="text-xs font-semibold text-muted-foreground">Team Lead</label>
-                  <Select value={newTeam.leadId} onValueChange={val => setNewTeam({ ...newTeam, leadId: val })}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select team lead" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {employees.map(e => (
-                        <SelectItem key={e.id} value={e.id}>{e.firstName} {e.lastName}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button onClick={handleCreateTeam} disabled={isPending || !newTeam.name || !newTeam.leadId} className="w-full mt-2">
-                  {isPending ? "Creating..." : "Create Team"}
-                </Button>
+    <Dialog open={open} onOpenChange={(o) => !isPending && setOpen(o)}>
+      <DialogTrigger asChild>
+        <Button size="sm" className="gap-1.5"><Plus className="h-3.5 w-3.5" /> New Team</Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader><DialogTitle>New Team</DialogTitle><DialogDescription>Name it, say what it owns and choose who leads it. Add members after.</DialogDescription></DialogHeader>
+        <form className="space-y-5" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+          <div className="space-y-1.5">
+            <Label htmlFor="team-name">Team Name</Label>
+            <Input id="team-name" autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Platform" disabled={isPending} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="team-desc">Description <span className="font-normal text-muted-foreground">(optional)</span></Label>
+            <Textarea id="team-desc" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="What does this team own?" disabled={isPending} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Team Lead</Label>
+            <LeadPicker value={form.leadId} people={employees} onChange={(v) => setForm({ ...form, leadId: v })} disabled={isPending} />
+            <p className="text-xs text-muted-foreground">Leads approve their team&apos;s leave and manage its projects.</p>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={isPending}>Cancel</Button>
+            <Button type="submit" disabled={isPending || !form.name.trim() || !form.leadId}>{isPending ? "Creating…" : "Create Team"}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function Stat({ label, value, tone }: { label: string; value: number; tone?: "critical" }) {
+  return (
+    <div>
+      <dt className="text-[11px] text-muted-foreground">{label}</dt>
+      <dd className={cn("text-base font-semibold tabular-nums", tone === "critical" && value > 0 && "text-red-600 dark:text-red-400")}>{value}</dd>
+    </div>
+  );
+}
+
+function TeamCard({ team }: { team: Team }) {
+  const shown = team.members.slice(0, 5);
+  return (
+    <Link
+      href={`/teams/${team.id}`}
+      className="group flex flex-col rounded-xl border border-border/70 bg-card p-5 shadow-[0_2px_2px_rgba(0,0,0,0.04)] transition-colors hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+    >
+      <div className="min-w-0">
+        <h2 className="truncate text-base font-semibold tracking-tight">{team.name}</h2>
+        <p className="mt-1 line-clamp-2 min-h-10 text-sm text-muted-foreground">{team.description || "No description yet."}</p>
+      </div>
+
+      <dl className="mt-4 grid grid-cols-4 gap-2 border-y border-border/60 py-3">
+        <Stat label="Members" value={team.members.length} />
+        <Stat label="Projects" value={team.activeProjects} />
+        <Stat label="Open" value={team.openTasks} />
+        <Stat label="Overdue" value={team.overdueTasks} tone="critical" />
+      </dl>
+
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          {team.lead ? (
+            <>
+              <UserAvatar className="h-7 w-7" user={team.lead} textClassName="text-[10px]" />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{team.lead.firstName} {team.lead.lastName}</p>
+                <p className="text-[11px] text-muted-foreground">Team Lead</p>
               </div>
-            </DialogContent>
-          </Dialog>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">No lead yet</p>
+          )}
+        </div>
+        {shown.length > 0 && (
+          <div className="flex -space-x-1.5">
+            {shown.map((m) => <UserAvatar key={m.id} className="h-6 w-6 ring-2 ring-card" user={m} textClassName="text-[8px]" />)}
+            {team.members.length > shown.length && (
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[9px] font-medium ring-2 ring-card">+{team.members.length - shown.length}</span>
+            )}
+          </div>
+        )}
+      </div>
+    </Link>
+  );
+}
+
+export function TeamsClient({ initialTeams, employees, canCreate = false }: { initialTeams: Team[]; employees: Person[]; canCreate?: boolean }) {
+  const [query, setQuery] = useState("");
+  const teams = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? initialTeams.filter((t) => `${t.name} ${t.description ?? ""} ${t.lead?.firstName ?? ""} ${t.lead?.lastName ?? ""}`.toLowerCase().includes(q)) : initialTeams;
+  }, [initialTeams, query]);
+  const totals = initialTeams.reduce((s, t) => ({ open: s.open + t.openTasks, overdue: s.overdue + t.overdueTasks }), { open: 0, overdue: 0 });
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Teams"
+        description={`${initialTeams.length} team${initialTeams.length === 1 ? "" : "s"} · ${totals.open} open tasks${totals.overdue ? ` · ${totals.overdue} overdue` : ""}`}
+        actions={canCreate ? <NewTeamDialog employees={employees} /> : undefined}
+      />
+
+      {initialTeams.length > 3 && (
+        <div className="relative max-w-sm">
+          <Search className="absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search teams or leads…" className="pl-8" aria-label="Search teams" />
         </div>
       )}
 
-      {teamList.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border/40 p-12 text-center bg-muted/10">
-          <Users className="mx-auto h-8 w-8 text-muted-foreground/50 mb-4" />
-          <h3 className="text-lg font-medium text-foreground mb-1">No teams found</h3>
-          <p className="text-sm text-muted-foreground mb-4">Get started by creating your first team.</p>
-          {canCreate && (
-            <Button variant="outline" onClick={() => setNewTeamOpen(true)}>Create Team</Button>
-          )}
+      {initialTeams.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border p-12 text-center">
+          <p className="text-sm font-medium">No teams yet</p>
+          <p className="mt-1 text-sm text-muted-foreground">{canCreate ? "Create a team, then add people and projects to it." : "You aren't in a team yet. An admin can add you."}</p>
         </div>
+      ) : teams.length === 0 ? (
+        <p className="py-12 text-center text-sm text-muted-foreground">No teams match “{query}”.</p>
       ) : (
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {teamList.map(team => {
-            const lead = team.lead;
-            const members = team.members;
-            
-            return (
-              <div 
-                key={team.id} 
-                onClick={() => router.push(`/teams/${team.id}`)}
-                onMouseEnter={() => router.prefetch(`/teams/${team.id}`)}
-                className="group flex flex-col bg-background rounded-xl border border-border/40 hover:border-border transition-all cursor-pointer overflow-hidden"
-              >
-                <div className="p-5 border-b border-border/40 bg-muted/10 flex items-start gap-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-border/40 bg-background">
-                    <Users className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-base font-semibold text-foreground truncate group-hover:text-primary transition-colors">{team.name}</h3>
-                    <p className="text-xs text-muted-foreground mt-1 truncate">{team.description || "No description provided"}</p>
-                  </div>
-                </div>
-                
-                <div className="p-5 space-y-5 flex-1">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Team Lead</p>
-                      <div className="flex items-center gap-2">
-                        {lead ? (
-                          <>
-                            <UserAvatar className="h-5 w-5" user={lead} textClassName="text-[8px]" />
-                            <span className="text-sm font-medium">{lead.firstName} {lead.lastName}</span>
-                          </>
-                        ) : (
-                          <span className="text-sm text-muted-foreground italic">Unassigned</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Projects</p>
-                      <div className="flex items-center justify-end gap-1.5 text-sm font-medium">
-                        <LayoutDashboard className="h-3.5 w-3.5 text-muted-foreground" />
-                        {team.projects?.length || 0}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Members</p>
-                      <span className="text-[10px] font-medium bg-muted px-1.5 py-0.5 rounded">{members.length}</span>
-                    </div>
-                    <div className="flex -space-x-1.5">
-                      {members.slice(0, 5).map((m: any) => (
-                        <UserAvatar key={m.id} className="h-6 w-6 border-2 border-background ring-1 ring-border/20" user={m} textClassName="text-[8px]" />
-                      ))}
-                      {members.length > 5 && (
-                        <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-background bg-muted text-[8px] font-medium">
-                          +{members.length - 5}
-                        </div>
-                      )}
-                      {members.length === 0 && (
-                        <p className="text-xs text-muted-foreground italic">No members yet</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {teams.map((t) => <TeamCard key={t.id} team={t} />)}
         </div>
       )}
     </div>

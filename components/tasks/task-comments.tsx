@@ -3,7 +3,7 @@
 
 import { useOptimistic, useState, useTransition } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { Loader2, MessageSquare, MoreHorizontal } from "lucide-react";
+import { Loader2, MoreHorizontal } from "lucide-react";
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { UserAvatar } from "@/components/ui/user-avatar";
@@ -91,16 +91,15 @@ export function TaskComments({
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   return (
-    <div className="pt-6 border-t border-border/40">
-      <h3 className="text-sm font-medium mb-3 text-foreground flex items-center gap-2">
-        <MessageSquare className="h-4 w-4 text-muted-foreground" /> Comments
-        <span className="text-xs font-normal text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">{optimisticComments.length}</span>
-      </h3>
+    <section className="rounded-xl border border-border/70 bg-card shadow-[0_2px_2px_rgba(0,0,0,0.04)]">
+      <header className="px-5 pt-4 pb-3">
+        <h2 className="text-sm font-semibold">Comments <span className="font-normal text-muted-foreground tabular-nums">· {optimisticComments.length}</span></h2>
+      </header>
 
       {optimisticComments.length === 0 ? (
-        <p className="text-xs text-muted-foreground mb-4">No comments yet. Start the discussion below.</p>
+        <p className="border-t border-border/60 px-5 py-6 text-center text-sm text-muted-foreground">No comments yet. Ask a question or share an update.</p>
       ) : (
-        <ul className="space-y-4 mb-4">
+        <ul className="space-y-5 border-t border-border/60 px-5 py-5">
           {optimisticComments.map((c) => {
             const isMine = currentEmployee?.id === c.author.id;
             return (
@@ -162,27 +161,31 @@ export function TaskComments({
 
       {canComment && currentEmployee && (
         <form
-          className="space-y-2"
+          className="flex gap-3 border-t border-border/60 px-5 py-4"
           onSubmit={(e) => { e.preventDefault(); submit(); }}
         >
+          <UserAvatar className="h-7 w-7 shrink-0" user={currentEmployee} textClassName="text-[10px]" />
+          <div className="min-w-0 flex-1 space-y-2">
           <Textarea
-            placeholder="Write a comment…"
+            placeholder="Leave a comment…"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); }
             }}
-            rows={3}
+            rows={2}
             maxLength={5000}
             aria-label="New comment"
+            className="min-h-[72px] resize-y"
           />
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] text-muted-foreground">Ctrl + Enter to post</span>
-            <Button type="submit" size="sm" disabled={!draft.trim() || isPending}>Post Comment</Button>
+          <div className="flex items-center justify-end gap-3">
+            <span className="text-[11px] text-muted-foreground">⌘/Ctrl + Enter</span>
+            <Button type="submit" size="sm" disabled={!draft.trim() || isPending}>Comment</Button>
+          </div>
           </div>
         </form>
       )}
-    </div>
+    </section>
   );
 }
 

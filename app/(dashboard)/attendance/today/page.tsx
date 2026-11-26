@@ -14,12 +14,12 @@ type Params = { date?: string };
 
 export default function TeamDayPage({ searchParams }: { searchParams: Promise<Params> }) {
   return (
-    <div className="space-y-6 p-6">
+    <div className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-6">
       <div>
         <Link href="/attendance/team" className="mb-2 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-4 w-4" /> Team Attendance
         </Link>
-        <h1 className="text-xl font-semibold tracking-tight">Team Day</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Team Day</h1>
       </div>
       <Suspense fallback={<Skeleton className="h-[420px] w-full rounded-lg" />}>
         <Board searchParams={searchParams} />

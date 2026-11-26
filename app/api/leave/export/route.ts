@@ -53,7 +53,6 @@ export async function GET(request: Request) {
     { header: "Left On", key: "left", width: 11 },
     { header: "Leave Type", key: "type", width: 16 },
     { header: "Allowed", key: "allowed", width: 9 },
-    { header: "Carried Over", key: "carried", width: 12 },
     { header: "Adjusted", key: "adjusted", width: 9 },
     { header: "Used", key: "used", width: 7 },
     { header: "Pending", key: "pending", width: 8 },
@@ -68,9 +67,9 @@ export async function GET(request: Request) {
     for (const b of await getBalances(p.id, year)) {
       if (b.unlimited) {
         const taken = requests.filter((r) => r.status === "APPROVED" && r.leaveType?.name === b.name && `${r.employee.firstName} ${r.employee.lastName}` === name).reduce((n, r) => n + r.days, 0);
-        balances.addRow({ name, teams, left, type: b.name, allowed: "No limit", carried: "", adjusted: "", used: taken, pending: b.pending, available: "" });
+        balances.addRow({ name, teams, left, type: b.name, allowed: "No limit", adjusted: "", used: taken, pending: b.pending, available: "" });
       } else {
-        balances.addRow({ name, teams, left, type: b.name, allowed: b.allowed, carried: b.carriedOver, adjusted: b.adjusted, used: b.used, pending: b.pending, available: b.available });
+        balances.addRow({ name, teams, left, type: b.name, allowed: b.allowed, adjusted: b.adjusted, used: b.used, pending: b.pending, available: b.available });
       }
     }
   }

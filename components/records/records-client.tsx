@@ -1,4 +1,10 @@
 "use client";
+import type { Prisma } from "@/lib/generated/prisma";
+import type { Jsonify } from "@/lib/types";
+
+type RecordRow = Jsonify<Prisma.EmploymentRecordGetPayload<{
+  include: { employee: { select: { id: true; firstName: true; lastName: true; avatarUrl: true; email: true } } };
+}>>;
 
 const LEDGER_LABELS: Record<string, string> = {
   JOINED: "Joined", PROMOTION: "Promotion", TRANSFER: "Transfer", TITLE_CHANGE: "Title change", REHIRED: "Rehired", EXITED: "Left",
@@ -11,7 +17,6 @@ import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import { cn } from "@/lib/utils";
 
 // Role colors removed as we don't display role anymore
 
@@ -24,7 +29,7 @@ const formatDate = (dateString: string | Date) => {
   return `${day} ${month} ${year}`;
 };
 
-export function RecordsClient({ records }: { records: any[] }) {
+export function RecordsClient({ records }: { records: RecordRow[] }) {
   const [searchQuery, setSearchQuery] = useState("");
 
   const filtered = records.filter(r => 
@@ -92,7 +97,7 @@ export function RecordsClient({ records }: { records: any[] }) {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <span className="text-xs text-foreground truncate max-w-[150px] block" title={record.reason}>
+                    <span className="text-xs text-foreground truncate max-w-[150px] block" title={record.reason ?? undefined}>
                       {record.reason || "—"}
                     </span>
                   </TableCell>

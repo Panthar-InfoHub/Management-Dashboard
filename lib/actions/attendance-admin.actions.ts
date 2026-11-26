@@ -3,6 +3,9 @@ import { UserError } from "@/lib/errors";
 
 // Admins and HR (attendance:edit) set any past or current day for someone:
 // status and, optionally, the times. Always with a reason; never your own day.
+// Late is worked out from the clock-in: Late and Half Day keep it; Present
+// means "full day, on time" (a late clock-in is recorded as excused); WFH keeps
+// it unless the editor excuses it.
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getCurrentEmployee } from "@/lib/auth";
@@ -21,6 +24,8 @@ export async function editAttendanceDayAction(input: {
   checkIn?: string | null; // "HH:mm"
   checkOut?: string | null;
   reason: string;
+  /** WFH day with a late clock-in: don't hold it against them. */
+  excuseLate?: boolean;
 }) {
   const actor = await getCurrentEmployee();
   if (!(await hasPermission(actor, "attendance:edit"))) throw new UserError("You don't have permission to edit attendance.");
@@ -67,11 +72,18 @@ export async function editAttendanceDayAction(input: {
   const arrivedLate = checkIn ? minutesOfDay(office.timezone, checkIn) > parseHHmm(office.lateAfter) : false;
 
   const before = await db.attendance.findUnique({ where: { employeeId_date: { employeeId: input.employeeId, date } } });
+  const isLate = input.status === "LATE"
+    || (input.status === "HALF_DAY" && arrivedLate)
+    || (input.status === "WFH" && arrivedLate && !input.excuseLate);
   const data = {
     officeId: office.id,
     dayKind,
     status: input.status,
-    isLate: input.status === "LATE" || (input.status === "HALF_DAY" && arrivedLate),
+    isLate,
+    // Arrived after the cut-off but not marked late: kept on record as excused.
+    lateExcused: arrivedLate && !isLate && input.status !== "ABSENT",
+    // An admin has settled the day, so it no longer waits on a WFH decision.
+    awaitingWfh: false,
     checkInAt: checkIn,
     checkOutAt: checkOut,
     workMinutes: minutes,

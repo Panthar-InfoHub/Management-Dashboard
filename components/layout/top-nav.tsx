@@ -1,8 +1,10 @@
 "use client";
+import type { Notification } from "@/lib/generated/prisma";
 
 import { useTheme } from "@/components/providers/theme-provider";
 import { UserButton, ClerkLoading, ClerkLoaded } from "@clerk/nextjs";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,36 +12,75 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
-  Bell, ChevronRight, Moon, Sun, Monitor, Plus,
+  Bell, ChevronRight, Moon, Sun, Monitor,
   Menu, CheckCheck
 } from "lucide-react";
-import { useEffect, useState, useTransition } from "react";
+import { Suspense, useEffect, useState, useTransition, useSyncExternalStore } from "react";
 import { getRecentNotificationsAction, markAllNotificationsAsReadAction } from "@/lib/actions/notification.actions";
 import { formatDistanceToNow } from "date-fns";
 import { Sidebar } from "./sidebar";
+import { cn } from "@/lib/utils";
 
-export function TopNav() {
+const SECTIONS: Record<string, string> = {
+  "": "Dashboard", tasks: "Tasks", projects: "Projects", teams: "Teams", employees: "Members", attendance: "Attendance",
+  leave: "Leave", approvals: "Approvals", announcements: "Announcements", records: "Employment Records", audit: "Audit Log",
+  settings: "Settings", notifications: "Notifications",
+};
+const SUBPAGES: Record<string, string> = { my: "My Tasks", new: "New", edit: "Edit", team: "Team Month", today: "Team Day" };
+
+/** "Projects › Details" style location from the URL. */
+function crumbsFor(pathname: string) {
+  const parts = pathname.split("/").filter(Boolean);
+  const crumbs = [{ href: `/${parts[0] ?? ""}`, label: SECTIONS[parts[0] ?? ""] ?? "Dashboard" }];
+  let href = `/${parts[0] ?? ""}`;
+  for (const part of parts.slice(1)) {
+    href += `/${part}`;
+    crumbs.push({ href, label: SUBPAGES[part] ?? "Details" });
+  }
+  return crumbs;
+}
+
+/** Reads the URL, so it sits in its own Suspense boundary. */
+function Crumbs() {
+  const crumbs = crumbsFor(usePathname() ?? "/");
+  return (
+      <nav aria-label="Location" className="flex min-w-0 items-center gap-1 text-sm text-muted-foreground">
+        <span className="hidden font-medium text-foreground sm:inline">Panthar</span>
+        {crumbs.map((c, i) => (
+          <span key={c.href} className="flex min-w-0 items-center gap-1">
+            <ChevronRight className={cn("h-3.5 w-3.5 shrink-0", i === 0 && "hidden sm:inline")} />
+            {i < crumbs.length - 1 ? (
+              <Link href={c.href} className="truncate hover:text-foreground">{c.label}</Link>
+            ) : (
+              <span className="truncate font-medium text-foreground" aria-current="page">{c.label}</span>
+            )}
+          </span>
+        ))}
+      </nav>
+  );
+}
+
+const noop = () => () => {};
+
+export function TopNav({ menuOpen, setMenuOpen }: { menuOpen: boolean; setMenuOpen: (open: boolean) => void }) {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
-  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isPending, startTransition] = useTransition();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  // False during the server render and hydration, true after: avoids a theme-icon mismatch.
+  const mounted = useSyncExternalStore(noop, () => true, () => false);
 
   useEffect(() => {
     const fetchNotifs = async () => {
       try {
         const data = await getRecentNotificationsAction();
         setNotifications(data);
-      } catch (e) {}
+      } catch {
+        // The bell just stays empty if notifications can't load.
+      }
     };
     fetchNotifs();
   }, []);
@@ -47,25 +88,23 @@ export function TopNav() {
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-background/80 backdrop-blur-md px-6">
+    <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-2 border-b border-border bg-background/80 px-3 backdrop-blur-md sm:px-6">
       {/* Mobile Menu & Breadcrumb */}
-      <div className="flex items-center gap-3">
-        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+        <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
           <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="md:hidden -ml-2 text-muted-foreground">
+            <Button variant="ghost" size="icon" className="-ml-1 text-muted-foreground md:hidden" aria-label="Open menu">
               <Menu className="h-5 w-5" />
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="p-0 w-64 border-r border-border">
-            <Sidebar collapsed={false} setCollapsed={() => setMobileMenuOpen(false)} isMobile={true} onNavigate={() => setMobileMenuOpen(false)} />
+            <Sidebar collapsed={false} setCollapsed={() => setMenuOpen(false)} isMobile={true} onNavigate={() => setMenuOpen(false)} />
           </SheetContent>
         </Sheet>
         
-        <nav className="flex items-center gap-1 text-sm text-muted-foreground">
-          <span className="font-medium text-foreground hidden sm:inline">Panthar</span>
-          <ChevronRight className="h-3.5 w-3.5 hidden sm:inline" />
-          <span>Dashboard</span>
-        </nav>
+        <Suspense fallback={<span className="text-sm font-medium">Panthar</span>}>
+          <Crumbs />
+        </Suspense>
       </div>
 
       {/* Actions */}
@@ -82,7 +121,7 @@ export function TopNav() {
               )}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-80">
+          <DropdownMenuContent align="end" className="w-[min(20rem,calc(100vw-1.5rem))]">
             <div className="flex items-center justify-between px-3 py-2">
               <p className="text-sm font-semibold">Notifications</p>
               <div className="flex items-center gap-2">

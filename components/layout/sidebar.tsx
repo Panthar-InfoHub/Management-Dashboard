@@ -2,6 +2,7 @@
 
 import { Suspense } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useAccess } from "@/hooks/use-access";
@@ -15,10 +16,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import {
   LayoutDashboard, FolderKanban, Users, UserCircle,
   FileText, Bell, Settings, ClipboardCheck, ListTodo, CalendarClock, Plane, Inbox, ScrollText, Megaphone,
-  PanelLeftClose, PanelLeft,
+  PanelLeftClose, PanelLeft, type LucideIcon,
 } from "lucide-react";
 
-type NavItem = { label: string; href: string; icon: any; badge?: string };
+type NavItem = { label: string; href: string; icon: LucideIcon; badge?: string };
 
 const navItems: NavItem[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -141,7 +142,7 @@ export function Sidebar({ collapsed, setCollapsed, isMobile, onNavigate }: { col
       <div className={cn("flex h-14 items-center border-b border-border px-3", collapsed ? "justify-center" : "justify-between")}>
         <div className="flex items-center gap-2 overflow-hidden">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white">
-            <img src="/images/black_logo.webp" alt="PantharInfoHub" className="h-6 w-6 object-contain" />
+            <Image src="/images/black_logo.webp" alt="PantharInfoHub" width={24} height={24} className="h-6 w-6 object-contain" />
           </div>
           {!collapsed && (
             <div className="flex flex-col overflow-hidden">

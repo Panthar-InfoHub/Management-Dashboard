@@ -56,6 +56,8 @@ type AttendanceRow = {
   earlyMinutes: number | null;
   overtimeMinutes: number | null;
   reviewStatus: string | null;
+  awaitingWfh: boolean;
+  lateExcused: boolean;
 };
 
 function presentRow(row: AttendanceRow, timeZone: string, today: string) {
@@ -73,17 +75,20 @@ function presentRow(row: AttendanceRow, timeZone: string, today: string) {
     earlyMinutes: row.earlyMinutes,
     overtimeMinutes: row.overtimeMinutes,
     reviewPending: row.reviewStatus === "PENDING",
+    awaitingWfh: row.awaitingWfh,
+    lateExcused: row.lateExcused,
   };
 }
 
 const EMPTY_ROW = {
-  checkIn: null, checkOut: null, workMinutes: null, isLate: false, missedCheckout: false,
+  checkIn: null, checkOut: null, workMinutes: null, isLate: false, missedCheckout: false, awaitingWfh: false, lateExcused: false,
   leftEarly: false, earlyMinutes: null, overtimeMinutes: null, reviewPending: false,
 } as const;
 
 const rowSelect = {
   date: true, status: true, checkInAt: true, checkOutAt: true, workMinutes: true,
   isLate: true, missedCheckout: true, leftEarly: true, earlyMinutes: true, overtimeMinutes: true, reviewStatus: true,
+  awaitingWfh: true, lateExcused: true,
 } as const;
 
 /** Approved WFH turns an office day into a WFH day for that person. */
@@ -115,16 +120,23 @@ export async function getMyToday(employee: AuthEmployee) {
   if (!tracksAttendance(employee.role)) return null;
   const office = await getOfficeFor(employee.id);
   const dateKey = todayKey(office.timezone);
-  const [baseKind, record, coverage] = await Promise.all([
+  const date = fromDateKey(dateKey);
+  const [baseKind, record, coverage, pendingWfh, person] = await Promise.all([
     dayKindOn(office, dateKey),
-    db.attendance.findUnique({ where: { employeeId_date: { employeeId: employee.id, date: fromDateKey(dateKey) } }, select: rowSelect }),
+    db.attendance.findUnique({ where: { employeeId_date: { employeeId: employee.id, date } }, select: rowSelect }),
     getCoverage([employee.id], dateKey, dateKey).then((m) => m.get(employee.id)?.get(dateKey) ?? null),
+    db.request.findFirst({ where: { employeeId: employee.id, kind: "WFH", status: "PENDING", startDate: { lte: date }, endDate: { gte: date } }, select: { id: true } }),
+    db.employee.findUnique({ where: { id: employee.id }, select: { flexibleWfh: true } }),
   ]);
 
   return {
     dateKey,
     dayKind: withCoverage(baseKind, coverage),
     leave: coverage?.kind === "LEAVE" ? { typeName: coverage.typeName, halfDay: coverage.halfDay } : null,
+    /** May work from home without a request (set by an admin). */
+    flexibleWfh: !!person?.flexibleWfh,
+    /** A WFH request for today is waiting for a decision. */
+    wfhPending: !!pendingWfh,
     office: {
       name: office.name, radiusMeters: office.radiusMeters, workStart: office.workStart, workEnd: office.workEnd,
       lateAfter: office.lateAfter, lateOutcome: office.lateOutcome,
@@ -277,6 +289,7 @@ export async function getTodayBoard(viewer: AuthEmployee, dateKey?: string) {
     isToday: day === today,
     canEdit: await hasPermission(viewer, "attendance:edit"),
     viewerId: viewer.id,
+    lateAfter: (offices.find((o) => o.isDefault) ?? offices[0])?.lateAfter ?? "11:00",
     scope: scope.label,
     rows: group.people.map(({ employee, days }) => ({ employee, ...days[0] })),
   };
@@ -294,6 +307,12 @@ export async function getTeamMonth(viewer: AuthEmployee, monthKey: string, teamI
     scopedPeople(scope, teamId, first),
     scope.all ? db.team.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }) : Promise.resolve(scope.teams),
   ]);
-  const group = await groupDays(people, first, last);
-  return { monthKey, scope: scope.label, teams, teamId: teamId ?? null, ...group };
+  const [group, canEdit, offices] = await Promise.all([groupDays(people, first, last), hasPermission(viewer, "attendance:edit"), getOffices()]);
+  return {
+    monthKey, scope: scope.label, teams, teamId: teamId ?? null, ...group,
+    /** Admins and HR can click a day to edit it (never their own). */
+    canEdit,
+    viewerId: viewer.id,
+    lateAfter: (offices.find((o) => o.isDefault) ?? offices[0])?.lateAfter ?? "11:00",
+  };
 }

@@ -11,7 +11,7 @@ import { hasPermission } from "@/lib/permissions";
 import { audit } from "@/lib/audit";
 import { dayKindsBetween, getOfficeFor } from "@/lib/attendance/queries";
 import { eachDateKey, fromDateKey, minutesOfDay, parseHHmm, todayKey, zonedDateTime } from "@/lib/attendance/calendar";
-import { checkoutFlags, statusForDay, workedMinutes } from "@/lib/attendance/rules";
+import { checkoutFlags, statusForDay, workedMinutes, excusedStatus } from "@/lib/attendance/rules";
 import { availableDays, requestDays, MAX_REQUEST_SPAN_DAYS, REQUEST_KIND_LABELS, type RequestKindValue } from "@/lib/leave/rules";
 import { canDecideFor, ensureBalances, getCoverage } from "@/lib/leave/queries";
 import { leaveYearOf } from "@/lib/leave/policy";
@@ -210,6 +210,10 @@ export async function cancelRequestAction(requestId: string) {
   const startKey = request.startDate.toISOString().slice(0, 10);
   const cancellable = request.status === "PENDING" || (request.status === "APPROVED" && startKey > today);
   if (!cancellable) throw new UserError("Only pending requests, or approved ones that haven't started, can be cancelled.");
+  if (request.kind === "WFH" && request.status === "PENDING") {
+    const clockedIn = await db.attendance.count({ where: { employeeId: employee.id, date: { gte: request.startDate, lte: request.endDate }, awaitingWfh: true } });
+    if (clockedIn) throw new UserError("You've already clocked in from home under this request, so it needs a decision. Ask your approver to approve or reject it.");
+  }
 
   await db.$transaction(async (tx) => {
     const updated = await tx.request.updateMany({ where: { id: requestId, status: request.status }, data: { status: "CANCELLED" } });
@@ -251,6 +255,7 @@ async function applyAttendanceFix(request: { employeeId: string; startDate: Date
     // The approver has just reviewed this day, so a half day needs no second review.
     reviewStatus: outcome.needsReview ? ("APPROVED" as const) : null, reviewedById: actorId, reviewedAt: new Date(),
     checkInAt: request.fixCheckIn, checkOutAt: request.fixCheckOut, workMinutes: minutes, missedCheckout: false, ...flags,
+    awaitingWfh: false, lateExcused: false,
     note: `Fixed by request: ${request.reason}`.slice(0, 500),
   };
   const record = await db.attendance.upsert({
@@ -263,7 +268,58 @@ async function applyAttendanceFix(request: { employeeId: string; startDate: Date
   });
 }
 
-export async function decideRequestAction(requestId: string, decision: "APPROVE" | "REJECT", note?: string | null) {
+/**
+ * Clear the late mark on a person's days in a range, keeping a record that it
+ * was excused. A Late day becomes Present; a half day that was only for being
+ * late becomes Present; WFH stays WFH.
+ */
+async function excuseLateDays(employeeId: string, from: Date, to: Date, actorId: string, why: string) {
+  const rows = await db.attendance.findMany({
+    where: { employeeId, date: { gte: from, lte: to }, isLate: true },
+    select: { id: true, status: true },
+  });
+  for (const row of rows) {
+    await db.attendance.update({
+      where: { id: row.id },
+      data: {
+        isLate: false, lateExcused: true, status: excusedStatus(row.status),
+        ...(row.status === "HALF_DAY" ? { reviewStatus: "APPROVED" as const, reviewedById: actorId, reviewedAt: new Date() } : {}),
+      },
+    });
+    await db.attendanceEvent.create({ data: { attendanceId: row.id, employeeId, type: "ADMIN_FIX", at: new Date(), actorId, note: `Late excused: ${why}`.slice(0, 500) } });
+  }
+  return rows.length;
+}
+
+/**
+ * Days someone clocked in from home while their WFH request was pending:
+ * approving confirms them as WFH; rejecting makes them Absent (times kept on record).
+ */
+async function settleAwaitingWfh(employeeId: string, from: Date, to: Date, approved: boolean, actorId: string) {
+  const rows = await db.attendance.findMany({
+    where: { employeeId, date: { gte: from, lte: to }, awaitingWfh: true },
+    select: { id: true },
+  });
+  for (const row of rows) {
+    await db.attendance.update({
+      where: { id: row.id },
+      data: approved
+        ? { awaitingWfh: false }
+        : { awaitingWfh: false, status: "ABSENT", isLate: false, note: "WFH request rejected: worked from home without approval" },
+    });
+    await db.attendanceEvent.create({
+      data: { attendanceId: row.id, employeeId, type: "ADMIN_FIX", at: new Date(), actorId, note: approved ? "WFH approved" : "WFH rejected: marked Absent" },
+    });
+  }
+  return rows.length;
+}
+
+export async function decideRequestAction(
+  requestId: string,
+  decision: "APPROVE" | "REJECT",
+  note?: string | null,
+  opts: { excuseLate?: boolean } = {},
+) {
   const actor = await getCurrentEmployee();
   const request = await db.request.findUnique({ where: { id: requestId }, include: { leaveType: true } });
   if (!request) throw new UserError("Request not found.");
@@ -271,6 +327,8 @@ export async function decideRequestAction(requestId: string, decision: "APPROVE"
   if (!(await canDecideFor(actor, request.employeeId))) throw new UserError("You can't decide requests for this person.");
   if (request.status !== "PENDING") throw new UserError(`This request is already ${request.status.toLowerCase()}.`);
   const decisionNote = note?.trim().slice(0, 500) || null;
+  // Only WFH and attendance fixes can excuse lateness, and only when approving.
+  const excuseLate = decision === "APPROVE" && !!opts.excuseLate && (request.kind === "WFH" || request.kind === "ATTENDANCE_FIX");
   const startKey = request.startDate.toISOString().slice(0, 10);
 
   const endKey = request.endDate.toISOString().slice(0, 10);
@@ -292,7 +350,7 @@ export async function decideRequestAction(requestId: string, decision: "APPROVE"
     // Guarded update: only one approver can move it out of PENDING.
     const updated = await tx.request.updateMany({
       where: { id: requestId, status: "PENDING" },
-      data: { status: decision === "APPROVE" ? "APPROVED" : "REJECTED", decidedById: actor.id, decidedAt: new Date(), decisionNote },
+      data: { status: decision === "APPROVE" ? "APPROVED" : "REJECTED", decidedById: actor.id, decidedAt: new Date(), decisionNote, excuseLate },
     });
     if (updated.count === 0) throw new UserError("Someone else just decided this request.");
 
@@ -312,6 +370,12 @@ export async function decideRequestAction(requestId: string, decision: "APPROVE"
   if (decision === "APPROVE" && request.kind === "ATTENDANCE_FIX") {
     await applyAttendanceFix(request, actor.id);
   }
+  if (request.kind === "WFH") {
+    await settleAwaitingWfh(request.employeeId, request.startDate, request.endDate, decision === "APPROVE", actor.id);
+  }
+  if (excuseLate) {
+    await excuseLateDays(request.employeeId, request.startDate, request.endDate, actor.id, decisionNote ?? REQUEST_KIND_LABELS[request.kind as RequestKindValue]);
+  }
 
   const verb = decision === "APPROVE" ? "approved" : "rejected";
   await notify(
@@ -320,7 +384,7 @@ export async function decideRequestAction(requestId: string, decision: "APPROVE"
     `${actor.firstName} ${actor.lastName} ${verb} your request for ${rangeLabel(startKey, request.endDate.toISOString().slice(0, 10))}${decisionNote ? `: ${decisionNote}` : "."}`,
     "/leave"
   );
-  audit({ actorId: actor.id, entity: "Request", entityId: requestId, action: verb, changes: { note: decisionNote } });
+  audit({ actorId: actor.id, entity: "Request", entityId: requestId, action: verb, changes: { note: decisionNote, excuseLate } });
   refresh();
   return { success: true };
 }
@@ -347,12 +411,26 @@ export async function undoDecisionAction(requestId: string, note: string) {
 
   const updated = await db.request.updateMany({
     where: { id: requestId, status: request.status },
-    data: { status: "PENDING", decidedById: null, decidedAt: null, decisionNote: `Reopened by ${actor.firstName} ${actor.lastName}: ${reason}`.slice(0, 500) },
+    data: { status: "PENDING", excuseLate: false, decidedById: null, decidedAt: null, decisionNote: `Reopened by ${actor.firstName} ${actor.lastName}: ${reason}`.slice(0, 500) },
   });
   if (updated.count === 0) throw new UserError("This request just changed. Reload and try again.");
 
   const startKey = request.startDate.toISOString().slice(0, 10);
   if (request.kind === "LEAVE" && request.status === "APPROVED") await recalculateBalances([request.employeeId], leaveYearOf(startKey));
+  const flexible = request.kind === "WFH" && !!(await db.employee.findUnique({ where: { id: request.employeeId }, select: { flexibleWfh: true } }))?.flexibleWfh;
+  if (request.kind === "WFH" && !flexible) {
+    // Home clock-ins under this request wait for the new decision again.
+    await db.attendance.updateMany({
+      where: { employeeId: request.employeeId, date: { gte: request.startDate, lte: request.endDate }, dayKind: "WFH", checkInAt: { not: null } },
+      data: { awaitingWfh: true },
+    });
+    if (request.status === "REJECTED") {
+      await db.attendance.updateMany({
+        where: { employeeId: request.employeeId, date: { gte: request.startDate, lte: request.endDate }, dayKind: "WFH", checkInAt: { not: null }, status: "ABSENT" },
+        data: { status: "WFH" },
+      });
+    }
+  }
 
   await notify(
     [request.employeeId],
@@ -433,6 +511,18 @@ export async function adjustBalanceAction(input: { employeeId: string; leaveType
     include: { leaveType: { select: { name: true } } },
   });
   if (!balance) throw new UserError("That leave type has no limit, so there's no balance to adjust.");
+  if (delta < 0) {
+    const pending = await db.request.aggregate({
+      where: { employeeId: input.employeeId, leaveTypeId: input.leaveTypeId, kind: "LEAVE", status: "PENDING", startDate: { gte: fromDateKey(`${input.year}-01-01`), lte: fromDateKey(`${input.year}-12-31`) } },
+      _sum: { days: true },
+    });
+    const left = availableDays(balance, pending._sum.days ?? 0);
+    if (left + delta < 0) {
+      throw new UserError(left <= 0
+        ? `${target.firstName} has no ${balance.leaveType.name} left to remove.`
+        : `${target.firstName} has only ${left} ${balance.leaveType.name} day${left === 1 ? "" : "s"} left. Remove ${left} or fewer.`);
+    }
+  }
 
   await db.leaveBalance.update({ where: { id: balance.id }, data: { adjusted: { increment: delta } } });
   await notify(

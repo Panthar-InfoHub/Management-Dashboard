@@ -12,12 +12,11 @@ import { getCurrentEmployee } from "@/lib/auth";
 import { tracksAttendance } from "@/lib/access";
 import { fromDateKey, minutesOfDay, parseHHmm, todayKey, toDateKey } from "@/lib/attendance/calendar";
 import {
-  checkGeofence, checkoutFlags, formatTime, isSessionExpired, statusForCheckIn, statusForDay, workedMinutes,
+  checkGeofence, checkoutFlags, clockInKind, excusedStatus, formatClock, isSessionExpired, to12h, statusForCheckIn, statusForDay, workedMinutes,
   MAX_LOCATION_ACCURACY_M, type GeoPoint,
 } from "@/lib/attendance/rules";
 import { dayKindOn, findOpenSession, getOfficeFor } from "@/lib/attendance/queries";
 import { getCoverage } from "@/lib/leave/queries";
-import type { OfficeSettings } from "@/lib/attendance/settings";
 
 function cleanPoint(point: GeoPoint | null | undefined): GeoPoint | null {
   if (!point) return null;
@@ -53,20 +52,6 @@ async function requireTracked() {
   return employee;
 }
 
-/** Office days need a location inside the geofence; other days just record it if given. */
-function locationFor(dayKind: string, point: GeoPoint | null, office: OfficeSettings) {
-  const base = point ? { lat: point.lat, lng: point.lng, accuracy: point.accuracy ?? null } : null;
-  if (dayKind !== "OFFICE") return base;
-  const fence = checkGeofence(point, office);
-  if (!fence.ok) {
-    if (fence.reason === "outside") {
-      throw new UserError(`You're ${fence.distanceMeters} m from ${office.name}; clock-in works within ${office.radiusMeters} m. If you're working from home today, ask for WFH.`);
-    }
-    throw new UserError(GEOFENCE_MESSAGES[fence.reason]);
-  }
-  return { ...base, distanceMeters: fence.distanceMeters, inside: true };
-}
-
 export async function clockInAction(input: { location?: GeoPoint | null }) {
   const employee = await requireTracked();
   const office = await getOfficeFor(employee.id);
@@ -79,23 +64,52 @@ export async function clockInAction(input: { location?: GeoPoint | null }) {
   const open = await findOpenSession(employee.id);
   if (open?.checkInAt) {
     if (!isSessionExpired(toDateKey(open.date), dateKey)) {
-      throw new UserError(`You already clocked in today at ${formatTime(open.checkInAt, office.timezone)}.`);
+      throw new UserError(`You already clocked in today at ${formatClock(open.checkInAt, office.timezone)}.`);
     }
     await markMissedCheckout(open.id);
     closedMissed = dayLabel(open.date);
   }
 
-  // Approved leave or WFH for today changes what the day is for this person.
-  const [baseKind, coverage] = await Promise.all([
+  // What today is for this person: the office calendar, approved leave or WFH,
+  // a WFH request still waiting, and whether they may work from home freely.
+  const [baseKind, coverage, pending, person, excused] = await Promise.all([
     dayKindOn(office, dateKey),
     getCoverage([employee.id], dateKey, dateKey).then((m) => m.get(employee.id)?.get(dateKey) ?? null),
+    db.request.findFirst({
+      where: { employeeId: employee.id, kind: "WFH", status: "PENDING", startDate: { lte: date }, endDate: { gte: date } },
+      select: { id: true },
+    }),
+    db.employee.findUnique({ where: { id: employee.id }, select: { flexibleWfh: true } }),
+    // An approver may have excused lateness on today in advance (with a WFH approval).
+    db.request.findFirst({
+      where: { employeeId: employee.id, status: "APPROVED", excuseLate: true, kind: { in: ["WFH", "ATTENDANCE_FIX"] }, startDate: { lte: date }, endDate: { gte: date } },
+      select: { id: true },
+    }),
   ]);
   if (coverage?.kind === "LEAVE" && !coverage.halfDay) {
     throw new UserError(`You're on ${coverage.typeName ?? "leave"} today. Cancel the leave first if you're working.`);
   }
   const halfDayLeave = coverage?.kind === "LEAVE" && !!coverage.halfDay;
-  const dayKind = coverage?.kind === "WFH" && baseKind === "OFFICE" ? "WFH" : baseKind;
-  const location = locationFor(dayKind, cleanPoint(input.location), office);
+  const point = cleanPoint(input.location);
+  const fence = checkGeofence(point, office);
+  const decided = clockInKind({
+    baseKind,
+    approvedWfh: coverage?.kind === "WFH",
+    pendingWfh: !!pending,
+    flexible: !!person?.flexibleWfh,
+    fence,
+  });
+  if ("blocked" in decided) {
+    // Returned, not thrown: the card offers "Request WFH for Today" from here.
+    const message = decided.blocked === "outside"
+      ? `You're ${decided.distanceMeters} m from ${office.name}; clock-in works within ${office.radiusMeters} m. Working from home today? Request WFH, then clock in.`
+      : GEOFENCE_MESSAGES[decided.blocked];
+    return { success: false as const, blocked: decided.blocked, message, time: null };
+  }
+  const { kind: dayKind, awaitingWfh } = decided;
+  const location = point
+    ? { lat: point.lat, lng: point.lng, accuracy: point.accuracy ?? null, distanceMeters: fence.distanceMeters ?? null, inside: fence.ok }
+    : null;
 
   // 2. Clocked out earlier today and back again: reopen the day.
   const existing = await db.attendance.findUnique({
@@ -115,9 +129,9 @@ export async function clockInAction(input: { location?: GeoPoint | null }) {
     });
     refresh();
     return {
-      success: true,
-      time: formatTime(now, office.timezone),
-      message: `Clocked in again. Hours count from your first clock-in at ${formatTime(existing.checkInAt, office.timezone)}.`,
+      success: true as const,
+      time: formatClock(now, office.timezone),
+      message: `Clocked in again. Hours count from your first clock-in at ${formatClock(existing.checkInAt, office.timezone)}.`,
     };
   }
 
@@ -131,14 +145,18 @@ export async function clockInAction(input: { location?: GeoPoint | null }) {
         lateAfterMinutes: parseHHmm(office.lateAfter),
         lateOutcome: office.lateOutcome,
       });
+  // Lateness excused in advance: recorded, but not held against them.
+  const excuseNow = !!excused && outcome.isLate && !halfDayLeave;
   const data = {
     officeId: office.id,
-    status: outcome.status,
+    status: excuseNow ? excusedStatus(outcome.status) : outcome.status,
     dayKind,
     checkInAt: now,
     checkInLocation: location ?? undefined,
-    isLate: outcome.isLate,
-    reviewStatus: outcome.needsReview ? ("PENDING" as const) : null,
+    isLate: excuseNow ? false : outcome.isLate,
+    awaitingWfh,
+    lateExcused: excuseNow,
+    reviewStatus: outcome.needsReview && !excuseNow ? ("PENDING" as const) : null,
   };
 
   let recordId: string;
@@ -160,11 +178,14 @@ export async function clockInAction(input: { location?: GeoPoint | null }) {
   });
 
   refresh();
+  const time = formatClock(now, office.timezone);
   const notes = [
+    awaitingWfh && `Clocked in at ${time} as WFH. It's confirmed when your request is approved.`,
+    !awaitingWfh && dayKind === "WFH" && person?.flexibleWfh && coverage?.kind !== "WFH" && `Clocked in at ${time} · working from home.`,
     closedMissed && `${closedMissed} had no clock-out, so it closed as a missed checkout. Ask for an attendance fix.`,
-    outcome.needsReview && `Clocked in after ${office.lateAfter}, so today is a half day for now. An approver can review it.`,
+    outcome.needsReview && !excuseNow && `Clocked in after ${to12h(office.lateAfter)}, so today is a half day for now. An approver can review it.`,
   ].filter(Boolean);
-  return { success: true, time: formatTime(now, office.timezone), message: notes.length ? notes.join(" ") : null };
+  return { success: true as const, time, message: notes.length ? notes.join(" ") : null };
 }
 
 export async function clockOutAction(input: { location?: GeoPoint | null }) {
@@ -180,7 +201,7 @@ export async function clockOutAction(input: { location?: GeoPoint | null }) {
     await markMissedCheckout(open.id);
     refresh();
     throw new UserError(
-      `You clocked in on ${dayLabel(open.date)} at ${formatTime(open.checkInAt, office.timezone)} but didn't clock out before midnight, so that day closed as a missed checkout. Ask for an attendance fix.`
+      `You clocked in on ${dayLabel(open.date)} at ${formatClock(open.checkInAt, office.timezone)} but didn't clock out before midnight, so that day closed as a missed checkout. Ask for an attendance fix.`
     );
   }
 
@@ -233,7 +254,7 @@ export async function clockOutAction(input: { location?: GeoPoint | null }) {
   const shortDay = outcome?.status === "HALF_DAY" && office.minFullDayMinutes != null && minutes < office.minFullDayMinutes;
   return {
     success: true,
-    time: formatTime(now, office.timezone),
+    time: formatClock(now, office.timezone),
     workMinutes: minutes,
     earlyMinutes: flags.earlyMinutes,
     overtimeMinutes: flags.overtimeMinutes,

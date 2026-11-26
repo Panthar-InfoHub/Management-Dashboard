@@ -13,7 +13,7 @@ export function MyRequests({ requests, emptyText }: { requests: RequestView[]; e
   }
 
   return (
-    <ul className="divide-y divide-border/40 rounded-lg border border-border/40">
+    <ul className="divide-y divide-border/40 rounded-xl border border-border/70 bg-card shadow-[0_2px_2px_rgba(0,0,0,0.04)]">
       {requests.map((r) => (
         <li key={r.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0 space-y-0.5">

@@ -1,3 +1,4 @@
+import { STATUS_META, StatusIcon } from "@/components/tasks/task-icons";
 import { Suspense } from "react";
 import Link from "next/link";
 import { LayoutGrid, Plus } from "lucide-react";
@@ -12,14 +13,13 @@ import { UserAvatar } from "@/components/ui/user-avatar";
 import { cn } from "@/lib/utils";
 
 const TZ = "Asia/Kolkata";
-const STATUS_LABELS: Record<string, string> = { TODO: "To Do", IN_PROGRESS: "In Progress", REVIEW: "Review", TESTING: "Testing" };
-const PRIORITY_DOT: Record<string, string> = { CRITICAL: "bg-red-500", HIGH: "bg-orange-500", MEDIUM: "bg-blue-500", LOW: "bg-gray-400" };
+const PRIORITY_DOT: Record<string, string> = { CRITICAL: "bg-red-500", HIGH: "bg-orange-500", MEDIUM: "bg-transparent", LOW: "bg-transparent" };
 
 type Row = Awaited<ReturnType<typeof getMyTasks>>["assigned"][number];
 
 export default function MyTasksPage() {
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-4 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">My Tasks</h1>
@@ -51,7 +51,7 @@ function TaskRow({ task, meId }: { task: Row; meId: string }) {
             {task.project?.name ?? "General"}{task.parent ? ` · ↳ ${task.parent.title}` : ""}
           </span>
         </span>
-        <Badge variant="outline" className="hidden shrink-0 text-[10px] shadow-none sm:inline-flex">{STATUS_LABELS[task.status] ?? task.status}</Badge>
+        <span className="hidden shrink-0 items-center gap-1.5 text-xs text-muted-foreground sm:inline-flex"><StatusIcon status={task.status} className="h-3.5 w-3.5" />{STATUS_META[task.status]?.label ?? task.status}</span>
         {task.ownerId === meId ? (
           <Badge variant="outline" className="shrink-0 text-[10px] shadow-none">Owner</Badge>
         ) : task.owner ? (

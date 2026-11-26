@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { fromDateKey } from "@/lib/attendance/calendar";
-import { ATTENDANCE_STATUS_LABELS, formatDuration, type AttendanceStatusValue } from "@/lib/attendance/rules";
+import { ATTENDANCE_STATUS_LABELS, formatDuration, type AttendanceStatusValue, to12h } from "@/lib/attendance/rules";
 import { STATUS_STYLES } from "@/components/attendance/status-badge";
 import { DayFlags } from "@/components/attendance/day-flags";
 import { MonthNav } from "@/components/attendance/month-nav";
@@ -38,14 +38,14 @@ export function MonthCalendar({ month, basePath }: { month: Month; basePath: str
 
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         {stats.map((s) => (
-          <div key={s.label} className="rounded-lg border border-border/40 bg-card px-4 py-3">
+          <div key={s.label} className="rounded-lg border border-border/70 bg-card px-4 py-3">
             <dt className="text-xs text-muted-foreground">{s.label}</dt>
             <dd className={cn("mt-1 text-xl font-semibold tabular-nums", s.tone)}>{s.value}</dd>
           </div>
         ))}
       </dl>
 
-      <div className="overflow-hidden rounded-xl border border-border/40">
+      <div className="overflow-hidden rounded-xl border border-border/70 bg-card shadow-[0_2px_2px_rgba(0,0,0,0.04)]">
         <div className="grid grid-cols-7 border-b border-border/40 bg-muted/30">
           {WEEK_HEADER.map((d) => (
             <div key={d} className="px-3 py-2 text-xs font-medium text-muted-foreground">
@@ -82,7 +82,7 @@ export function MonthCalendar({ month, basePath }: { month: Month; basePath: str
 
               {d.checkIn && (
                 <p className="font-mono text-[11px] leading-tight text-muted-foreground tabular-nums">
-                  {d.checkIn} – {d.checkOut ?? (d.isToday && !d.missedCheckout ? "now" : "—")}
+                  {to12h(d.checkIn)} – {d.checkOut ? to12h(d.checkOut) : (d.isToday && !d.missedCheckout ? "now" : "—")}
                   {d.workMinutes ? <span className="hidden md:inline"> · {formatDuration(d.workMinutes)}</span> : null}
                 </p>
               )}

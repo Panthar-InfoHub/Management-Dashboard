@@ -6,11 +6,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function NotificationsPage() {
   return (
-    <div className="space-y-6 p-6">
+    <div className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Notifications</h1>
-          <p className="text-sm text-muted-foreground">Stay up to date with your team.</p>
+          <h1 className="text-2xl font-semibold tracking-tight">Notifications</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Stay up to date with your team.</p>
         </div>
       </div>
       

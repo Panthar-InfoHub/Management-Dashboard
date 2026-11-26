@@ -22,6 +22,7 @@ export function ConfirmAction({
   confirmLabel,
   pendingLabel,
   destructive = false,
+  disabled = false,
   onConfirm,
   children,
 }: {
@@ -31,6 +32,8 @@ export function ConfirmAction({
   confirmLabel: string;
   pendingLabel: string;
   destructive?: boolean;
+  /** Keep the confirm button off, e.g. while the fields are invalid. */
+  disabled?: boolean;
   /** Return a success message to toast, or nothing. Throw to show an error. */
   onConfirm: () => Promise<string | void>;
   /** Extra fields shown in the dialog (e.g. a note). */
@@ -62,7 +65,7 @@ export function ConfirmAction({
         {children}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
-          <Button variant={destructive ? "destructive" : "default"} onClick={run} disabled={isPending} aria-busy={isPending}>
+          <Button variant={destructive ? "destructive" : "default"} onClick={run} disabled={isPending || disabled} aria-busy={isPending}>
             {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />}
             {isPending ? pendingLabel : confirmLabel}
           </Button>

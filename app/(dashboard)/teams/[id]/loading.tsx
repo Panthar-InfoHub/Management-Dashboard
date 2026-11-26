@@ -2,7 +2,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function TeamDetailLoading() {
   return (
-    <div className="flex flex-col gap-6 p-6 h-full overflow-y-auto">
+    <div className="flex flex-col gap-6 p-4 sm:p-6 h-full overflow-y-auto">
       <div className="flex items-center gap-2">
         <Skeleton className="h-4 w-28" />
       </div>

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopNav } from "@/components/layout/top-nav";
+import { BottomNav } from "@/components/layout/bottom-nav";
 import dynamic from "next/dynamic";
 import { AccessProvider } from "@/components/providers/access-provider";
 import { cn } from "@/lib/utils";
@@ -16,6 +17,8 @@ const ViewAsBar =
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
+  // The phone menu opens from the top bar and from "More" in the bottom bar.
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <AccessProvider>
@@ -28,8 +31,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               collapsed ? "md:pl-[60px]" : "md:pl-[240px]"
             )}
           >
-            <TopNav />
-            <main className="flex-1 min-h-0 overflow-y-auto bg-background/50">{children}</main>
+            <TopNav menuOpen={menuOpen} setMenuOpen={setMenuOpen} />
+            {/* Room for the bottom bar on phones (plus the iPhone home-indicator area). */}
+            <main className="flex-1 min-h-0 overflow-y-auto bg-muted/40 pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0 dark:bg-background">{children}</main>
+            {/* Reads the URL, so it needs its own Suspense boundary (partial prerendering). */}
+            <Suspense fallback={null}><BottomNav onMore={() => setMenuOpen(true)} /></Suspense>
           </div>
         </div>
         {ViewAsBar && <ViewAsBar />}

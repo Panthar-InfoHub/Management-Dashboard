@@ -18,7 +18,7 @@ const toDate = (key: string | undefined) => {
 const toKey = (date: Date) => format(date, "yyyy-MM-dd");
 
 export const triggerClass =
-  "flex h-8 w-full min-w-0 items-center gap-2 rounded-lg border border-input bg-transparent px-2.5 text-left text-sm transition-colors outline-none hover:bg-accent/40 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive dark:bg-input/30";
+  "flex h-8 w-full min-w-0 items-center gap-2 rounded-lg border border-input bg-background px-2.5 text-left text-sm transition-colors outline-none hover:bg-accent/40 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive dark:bg-input/30";
 
 export function DatePicker({
   id,
@@ -31,6 +31,7 @@ export function DatePicker({
   placeholder = "Pick a date",
   disabled,
   clearable,
+  inline,
   className,
   "aria-label": ariaLabel,
 }: {
@@ -45,6 +46,8 @@ export function DatePicker({
   disabled?: boolean;
   /** Show a button that empties the date. */
   clearable?: boolean;
+  /** Borderless, text-like trigger for property lists; clearing moves into the popup. */
+  inline?: boolean;
   className?: string;
   "aria-label"?: string;
 }) {
@@ -65,14 +68,22 @@ export function DatePicker({
     <Popover open={open} onOpenChange={setOpen}>
       <div className={cn("relative", className)}>
         <PopoverTrigger asChild>
-          <button id={id} type="button" disabled={disabled} aria-label={ariaLabel} className={cn(triggerClass, clearable && current && "pr-8")}>
-            <CalendarIcon className="size-4 shrink-0 text-muted-foreground" />
+          <button
+            id={id}
+            type="button"
+            disabled={disabled}
+            aria-label={ariaLabel}
+            className={inline
+              ? "-mx-2 inline-flex h-8 max-w-full items-center gap-2 rounded-md px-2 text-left text-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none"
+              : cn(triggerClass, clearable && current && "pr-8")}
+          >
+            {!inline && <CalendarIcon className="size-4 shrink-0 text-muted-foreground" />}
             <span className={cn("truncate", !selected && "text-muted-foreground")}>
               {selected ? format(selected, "d MMM yyyy") : placeholder}
             </span>
           </button>
         </PopoverTrigger>
-        {clearable && current && !disabled && (
+        {clearable && current && !disabled && !inline && (
           <button
             type="button"
             aria-label="Clear date"
@@ -98,6 +109,17 @@ export function DatePicker({
             setOpen(false);
           }}
         />
+        {inline && clearable && current && (
+          <div className="border-t border-border/60 p-1.5">
+            <button
+              type="button"
+              onClick={() => { set(""); setOpen(false); }}
+              className="w-full rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              Remove date
+            </button>
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   );

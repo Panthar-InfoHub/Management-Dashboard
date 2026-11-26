@@ -1,4 +1,7 @@
 "use client";
+import type { getEmployees } from "@/lib/queries/employee.queries";
+
+type DirectoryEmployee = Awaited<ReturnType<typeof getEmployees>>[number];
 import { DatePicker } from "@/components/ui/date-picker";
 import { errorMessage } from "@/lib/errors";
 
@@ -10,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Search, Plus, Mail, Shield, Building2, UserPlus, MoreVertical, Calendar, Pencil, Trash2, Eye, EyeOff, Copy } from "lucide-react";
+import { Search, Mail, Building2, UserPlus, MoreVertical, Calendar, Trash2, Eye, EyeOff, Copy } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createEmployeeAction, updateEmployeeAction, deleteEmployeeAction, generateEmployeeCodeAction, reserveEmployeeSequenceAction, getInvitationLinkAction } from "@/lib/actions/employee.actions";
@@ -29,7 +32,7 @@ const roleColors: Record<string, string> = {
   MEMBER: "bg-gray-500/10 text-gray-600 border-gray-500/20",
 };
 
-export function EmployeesClient({ initialEmployees, teams = [], canViewProfiles = false, canAssignRoles = false, canCreate = false, canUpdate = false, canDelete = false }: { initialEmployees: any[], teams?: { id: string; name: string }[], canViewProfiles?: boolean, canAssignRoles?: boolean, canCreate?: boolean, canUpdate?: boolean, canDelete?: boolean }) {
+export function EmployeesClient({ initialEmployees, teams = [], canViewProfiles = false, canAssignRoles = false, canCreate = false, canUpdate = false, canDelete = false }: { initialEmployees: DirectoryEmployee[], teams?: { id: string; name: string }[], canViewProfiles?: boolean, canAssignRoles?: boolean, canCreate?: boolean, canUpdate?: boolean, canDelete?: boolean }) {
   // Only Super Admins pick a role; everyone else adds Members.
   const availableRoles: AccessRole[] = canAssignRoles ? ACCESS_ROLES : ["MEMBER"];
   const [newEmpOpen, setNewEmpOpen] = useState(false);
@@ -46,7 +49,7 @@ export function EmployeesClient({ initialEmployees, teams = [], canViewProfiles 
   const [editingEmp, setEditingEmp] = useState<{ id: string; role: AccessRole; designation: string } | null>(null);
 
   const [codeEmpOpen, setCodeEmpOpen] = useState(false);
-  const [codeEmpTarget, setCodeEmpTarget] = useState<any>(null);
+  const [codeEmpTarget, setCodeEmpTarget] = useState<DirectoryEmployee | null>(null);
   const [codeType, setCodeType] = useState<"PANTHAR" | "KAVACHX">("PANTHAR");
   const [joinDateStr, setJoinDateStr] = useState<string>(new Date().toISOString().split("T")[0]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -71,7 +74,7 @@ export function EmployeesClient({ initialEmployees, teams = [], canViewProfiles 
   const handleGenerateCode = () => {
     if (!codeEmpTarget || !joinDateStr || !reservedSeq) return;
     startTransition(() => {
-      generateEmployeeCodeAction(codeEmpTarget.id, codeType, joinDateStr, reservedSeq)
+      generateEmployeeCodeAction(codeEmpTarget.id, codeType, joinDateStr)
         .then((result) => {
           toast.success("Employee code generated!");
           // Find the updated employee and update the local target to show the code immediately
@@ -271,7 +274,7 @@ export function EmployeesClient({ initialEmployees, teams = [], canViewProfiles 
                     </div>
                   )}
                 </div>
-                <div className="text-[11px] text-muted-foreground bg-muted/30 p-3 rounded-lg border border-border/40 mt-4">
+                <div className="text-[11px] text-muted-foreground bg-muted/30 p-3 rounded-lg border border-border/70 mt-4">
                   If you leave the password blank, an email invitation will be sent instead. If you set a password, the account is created instantly.
                 </div>
                 <Button onClick={handleCreateEmployee} disabled={isPending || !newEmp.firstName || !newEmp.email} className="w-full">
@@ -305,7 +308,7 @@ export function EmployeesClient({ initialEmployees, teams = [], canViewProfiles 
                   </Select>
                 </div>
               )}
-              <div className="text-[11px] text-muted-foreground bg-muted/30 p-3 rounded-lg border border-border/40 mt-4">
+              <div className="text-[11px] text-muted-foreground bg-muted/30 p-3 rounded-lg border border-border/70 mt-4">
                 Updating their role will immediately sync with their Clerk permissions.
               </div>
               <Button onClick={handleUpdateEmployee} disabled={isPending} className="w-full">
@@ -351,7 +354,7 @@ export function EmployeesClient({ initialEmployees, teams = [], canViewProfiles 
                           variant="outline" 
                           size="icon" 
                           className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={() => handleCopyCode(codeEmpTarget.pantharCode)}
+                          onClick={() => handleCopyCode(codeEmpTarget.pantharCode ?? "")}
                         >
                           <Copy className="h-4 w-4" />
                         </Button>
@@ -399,7 +402,7 @@ export function EmployeesClient({ initialEmployees, teams = [], canViewProfiles 
                           variant="outline" 
                           size="icon" 
                           className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={() => handleCopyCode(codeEmpTarget.kavachXCode)}
+                          onClick={() => handleCopyCode(codeEmpTarget.kavachXCode ?? "")}
                         >
                           <Copy className="h-4 w-4" />
                         </Button>

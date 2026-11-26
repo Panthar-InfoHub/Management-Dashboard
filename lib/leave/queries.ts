@@ -7,9 +7,9 @@ import { getLeaveTypes } from "@/lib/attendance/settings";
 import { getOfficeFor } from "@/lib/attendance/queries";
 import { eachDateKey, fromDateKey, todayKey, toDateKey } from "@/lib/attendance/calendar";
 import { formatTime } from "@/lib/attendance/rules";
-import { availableDays, carryOver, proratedAllowance } from "@/lib/leave/rules";
+import { availableDays, proratedAllowance } from "@/lib/leave/rules";
 import { inAnyTeam, teamIdsOf } from "@/lib/teams/membership";
-import { FIRST_CARRY_OVER_FROM_YEAR, LEAVE_TRACKING_START, leaveYearOf } from "@/lib/leave/policy";
+import { LEAVE_TRACKING_START, leaveYearOf } from "@/lib/leave/policy";
 
 export type Coverage = { kind: "LEAVE" | "WFH"; halfDay: "FIRST_HALF" | "SECOND_HALF" | null; typeName: string | null };
 
@@ -41,13 +41,12 @@ export async function getCoverage(employeeIds: string[], fromKey: string, toKey:
   return map;
 }
 
-/** Create any missing balances for a year: prorated allowance + carry-over from last year. */
+/** Create any missing balances for a year with the prorated allowance. */
 export async function ensureBalances(employeeId: string, year: number) {
-  const [types, employee, existing, previous] = await Promise.all([
+  const [types, employee, existing] = await Promise.all([
     getLeaveTypes(),
     db.employee.findUnique({ where: { id: employeeId }, select: { joinDate: true } }),
     db.leaveBalance.findMany({ where: { employeeId, year }, select: { leaveTypeId: true } }),
-    db.leaveBalance.findMany({ where: { employeeId, year: year - 1 } }),
   ]);
   if (!employee) return;
   const have = new Set(existing.map((b) => b.leaveTypeId));
@@ -62,7 +61,6 @@ export async function ensureBalances(employeeId: string, year: number) {
       leaveTypeId: t.id,
       year,
       allowed: proratedAllowance(t.yearlyDays!, year, startKey),
-      carriedOver: year - 1 >= FIRST_CARRY_OVER_FROM_YEAR ? carryOver(previous.find((p) => p.leaveTypeId === t.id) ?? null, t.carryOverMax) : 0,
     })),
     skipDuplicates: true,
   });
@@ -94,7 +92,6 @@ export async function getBalances(employeeId: string, year: number) {
       isPaid: t.isPaid,
       unlimited: t.yearlyDays === null,
       allowed: b?.allowed ?? 0,
-      carriedOver: b?.carriedOver ?? 0,
       adjusted: b?.adjusted ?? 0,
       used: b?.used ?? 0,
       pending: pendingDays,
@@ -240,10 +237,25 @@ export async function getInbox(viewer: AuthEmployee) {
     };
   };
 
+  // For WFH requests: clock-ins already made under them (home days awaiting the decision).
+  const wfh = requests.filter((r) => r.kind === "WFH");
+  const homeRows = wfh.length
+    ? await db.attendance.findMany({
+        where: { OR: wfh.map((r) => ({ employeeId: r.employee.id, date: { gte: r.startDate, lte: r.endDate }, checkInAt: { not: null } })) },
+        select: { employeeId: true, date: true, checkInAt: true, isLate: true, awaitingWfh: true },
+        orderBy: { date: "asc" },
+      })
+    : [];
+  const clockInsFor = (r: (typeof requests)[number]) =>
+    r.kind !== "WFH" ? [] : homeRows
+      .filter((x) => x.employeeId === r.employee.id && x.date >= r.startDate && x.date <= r.endDate)
+      .map((x) => ({ date: toDateKey(x.date), checkIn: x.checkInAt ? formatTime(x.checkInAt, timeZone) : null, isLate: x.isLate, awaiting: x.awaitingWfh }));
+
   return {
     requests: requests.map((r) => ({
       ...presentRequest(r as RequestRow, timeZone, today),
       employee: person(r.employee),
+      clockIns: clockInsFor(r),
       recorded: r.kind === "ATTENDANCE_FIX" ? recordedFor(r.employee.id, r.startDate) : null,
       fixMinutes: r.fixCheckIn && r.fixCheckOut ? Math.round((r.fixCheckOut.getTime() - r.fixCheckIn.getTime()) / 60_000) : null,
     })),

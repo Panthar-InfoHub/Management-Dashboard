@@ -71,7 +71,7 @@ export function PromoteDialog({
   return (
     <Dialog open={open} onOpenChange={(v) => !isPending && setOpen(v)}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="gap-2 border-primary/30 bg-background text-primary hover:bg-primary/5">
+        <Button variant="outline" size="sm" className="gap-1.5">
           <ArrowUpRight className="h-4 w-4" /> Promote / Transfer
         </Button>
       </DialogTrigger>

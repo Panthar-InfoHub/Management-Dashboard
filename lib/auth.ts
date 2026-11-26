@@ -73,14 +73,14 @@ async function resolveSignedInEmployee(): Promise<AuthEmployee> {
           avatarUrl: true, designation: true,
         }
       });
-      console.log(`[JIT Sync] Linked invited profile for ${email} to Clerk ID`);
+      console.info("[auth] Linked an invited profile to its sign-in account");
     } else {
       // Brand new user, not invited. Signups are invite-only — the first ADMIN
       // is provisioned manually (sign up, then set the role directly in the
       // database), so there is no automatic bootstrap path here. Auto-creating
       // an ADMIN whenever the Employee table happened to be empty was a standing
       // account-takeover risk (e.g. after the last employee is removed).
-      console.log(`[Auth Blocked] Rejected uninvited signup attempt from ${email}`);
+      console.warn("[auth] Rejected a sign-up that had no invitation");
       throw new UserError("INVITATION_REQUIRED");
     }
   }

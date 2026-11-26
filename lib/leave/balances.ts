@@ -1,18 +1,17 @@
 // Leave balances are derived from the records, so they can't drift:
 //   allowed     = leave type's yearly days, prorated from the later of the join
 //                 date and LEAVE_TRACKING_START
-//   carriedOver = unused days from last year, capped (from FIRST_CARRY_OVER_FROM_YEAR)
 //   used        = sum of approved leave days of that type in that year
 //   adjusted    = manual HR adjustments (kept as entered)
 // Recalculate after anything that changes those inputs.
 import { db } from "@/lib/db";
 import { fromDateKey, toDateKey } from "@/lib/attendance/calendar";
 import { dayKindsBetween, getOfficeFor } from "@/lib/attendance/queries";
-import { carryOver, proratedAllowance, requestDays, type RequestKindValue } from "@/lib/leave/rules";
-import { FIRST_CARRY_OVER_FROM_YEAR, LEAVE_TRACKING_START, leaveYearOf } from "@/lib/leave/policy";
+import { proratedAllowance, requestDays, type RequestKindValue } from "@/lib/leave/rules";
+import { LEAVE_TRACKING_START, leaveYearOf } from "@/lib/leave/policy";
 import { ensureBalances } from "@/lib/leave/queries";
 
-/** Recalculate one person's balances for a year (and the year before, for carry-over). */
+/** Recalculate one person's balances for a year (and the year before, for late approvals). */
 async function recalcOne(employeeId: string, year: number) {
   const employee = await db.employee.findUnique({ where: { id: employeeId }, select: { joinDate: true } });
   if (!employee) return;
@@ -27,17 +26,12 @@ async function recalcOne(employeeId: string, year: number) {
       where: { employeeId, kind: "LEAVE", status: "APPROVED", startDate: { gte: fromDateKey(`${y}-01-01`), lte: fromDateKey(`${y}-12-31`) } },
       _sum: { days: true },
     });
-    const previous = y - 1 >= FIRST_CARRY_OVER_FROM_YEAR
-      ? await db.leaveBalance.findMany({ where: { employeeId, year: y - 1 } })
-      : [];
-
     for (const b of rows) {
       if (b.leaveType.yearlyDays === null) continue; // unlimited types keep no balance
       await db.leaveBalance.update({
         where: { id: b.id },
         data: {
           allowed: proratedAllowance(b.leaveType.yearlyDays, y, startKey),
-          carriedOver: y - 1 >= FIRST_CARRY_OVER_FROM_YEAR ? carryOver(previous.find((p) => p.leaveTypeId === b.leaveTypeId) ?? null, b.leaveType.carryOverMax) : 0,
           used: approved.find((a) => a.leaveTypeId === b.leaveTypeId)?._sum.days ?? 0,
         },
       });

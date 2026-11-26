@@ -12,6 +12,12 @@ import { setTeams, teamIdsOf } from "@/lib/teams/membership";
 import { recalculateBalances } from "@/lib/leave/balances";
 import { canActOnEmployee, canAssignRoles, type AccessRole, type EmploymentTypeValue } from "@/lib/access";
 
+/** Clerk API errors carry a readable message in errors[0]; anything else gets a generic one. */
+function clerkErrorMessage(error: unknown): string | null {
+  const errors = (error as { errors?: { message?: string }[] } | null)?.errors;
+  return Array.isArray(errors) && errors[0]?.message ? errors[0].message : null;
+}
+
 const ROLE_VALUES: AccessRole[] = ["SUPER_ADMIN", "ADMIN", "MEMBER"];
 const EMPLOYMENT_VALUES: EmploymentTypeValue[] = ["FULL_TIME", "INTERN", "CONTRACT"];
 
@@ -78,7 +84,7 @@ export async function createEmployeeAction(data: {
       await client.users.updateUserMetadata(clerkUserId, {
         publicMetadata: { role, designation: data.designation }
       });
-    } catch (error: any) {
+    } catch {
       throw new UserError("Failed to restore existing user account in authentication provider.");
     }
   } else {
@@ -93,10 +99,9 @@ export async function createEmployeeAction(data: {
           publicMetadata: { role, designation: data.designation }
         });
         clerkUserId = newUser.id;
-      } catch (error: any) {
-        if (error.errors && error.errors.length > 0) {
-          throw new UserError(error.errors[0].message || "Failed to create user in authentication provider.");
-        }
+      } catch (error) {
+        const message = clerkErrorMessage(error);
+        if (message) throw new UserError(message);
         throw new UserError("Failed to create user. Please check the password requirements.");
       }
     } else {
@@ -113,10 +118,9 @@ export async function createEmployeeAction(data: {
           emailAddress: data.email,
           publicMetadata: { role, designation: data.designation }
         });
-      } catch (error: any) {
-        if (error.errors && error.errors.length > 0) {
-          throw new UserError(error.errors[0].message || "Failed to send invitation.");
-        }
+      } catch (error) {
+        const message = clerkErrorMessage(error);
+        if (message) throw new UserError(message);
         throw new UserError("Failed to create invitation.");
       }
     }
@@ -197,7 +201,7 @@ export async function createEmployeeAction(data: {
     audit({ actorId: currentEmployee.id, entity: "Employee", entityId: employee.id, action: "create", changes: { email: employee.email, role: employee.role, teamIds, codeType: data.codeType ?? null } });
     revalidatePath("/employees");
     return employee;
-  } catch (error: any) {
+  } catch {
     // If DB creation fails, attempt to rollback the Clerk user to prevent orphans
     if (data.password && clerkUserId) {
       await client.users.deleteUser(clerkUserId).catch(() => {});
@@ -211,6 +215,8 @@ export async function updateEmployeeAction(id: string, data: {
   employmentType?: EmploymentTypeValue;
   designation?: string;
   joinDate?: string;
+  /** May work from home without a request. Never set on yourself. */
+  flexibleWfh?: boolean;
 }) {
   const currentEmployee = await requireAuth("employee:update");
 
@@ -227,6 +233,10 @@ export async function updateEmployeeAction(id: string, data: {
     if (!canAssignRoles(currentEmployee.role)) throw new UserError("Only Super Admins can change roles.");
   }
   if (data.employmentType !== undefined) assertEmploymentType(data.employmentType);
+  const flexChanged = data.flexibleWfh !== undefined && data.flexibleWfh !== target.flexibleWfh;
+  if (flexChanged && id === currentEmployee.id) {
+    throw new UserError("You can't change your own work-from-home setting. Ask another admin.");
+  }
 
   const employee = await db.$transaction(async (tx) => {
     const updated = await tx.employee.update({
@@ -235,7 +245,8 @@ export async function updateEmployeeAction(id: string, data: {
         ...(roleChanged && { role: data.role }),
         ...(data.employmentType && { employmentType: data.employmentType }),
         designation: data.designation,
-        ...(data.joinDate && { joinDate: new Date(data.joinDate) })
+        ...(data.joinDate && { joinDate: new Date(data.joinDate) }),
+        ...(flexChanged && { flexibleWfh: data.flexibleWfh }),
       }
     });
 
@@ -266,6 +277,20 @@ export async function updateEmployeeAction(id: string, data: {
     await recalculateBalances([id], Number(new Date().toISOString().slice(0, 4)));
   }
   audit({ actorId: currentEmployee.id, entity: "Employee", entityId: id, action: "update", changes: JSON.parse(JSON.stringify(data)) });
+  if (flexChanged) {
+    await db.notification.create({
+      data: {
+        recipientId: id,
+        type: "SYSTEM",
+        title: data.flexibleWfh ? "Flexible WFH turned on" : "Flexible WFH turned off",
+        message: data.flexibleWfh
+          ? `${currentEmployee.firstName} ${currentEmployee.lastName} turned on flexible WFH for you: clock in from anywhere; at the office it records Present, elsewhere WFH.`
+          : `${currentEmployee.firstName} ${currentEmployee.lastName} turned off flexible WFH for you. Ask for WFH when you work from home.`,
+        actionUrl: "/attendance",
+      },
+    });
+    revalidatePath("/attendance");
+  }
   revalidatePath(`/employees/${id}`);
   revalidatePath("/employees");
   return employee;
@@ -347,7 +372,7 @@ async function assignEmployeeCode(employeeId: string, type: "PANTHAR" | "KAVACHX
   });
 }
 
-export async function generateEmployeeCodeAction(employeeId: string, type: "PANTHAR" | "KAVACHX", joinDateStr: string, reservedSeq?: number) {
+export async function generateEmployeeCodeAction(employeeId: string, type: "PANTHAR" | "KAVACHX", joinDateStr: string) {
   const currentEmployee = await requireAuth("employee:update");
 
   const employee = await db.employee.findUnique({ where: { id: employeeId } });

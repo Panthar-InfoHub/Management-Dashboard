@@ -17,10 +17,10 @@ type Params = { month?: string; fix?: string };
 
 export default function AttendancePage({ searchParams }: { searchParams: Promise<Params> }) {
   return (
-    <div className="space-y-6 p-6 md:p-8">
+    <div className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-6">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">My Attendance</h1>
-        <p className="text-sm text-muted-foreground">Your days, times and hours. Ask for WFH or fix a day from here.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">My Attendance</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Your days, times and hours. Ask for WFH or fix a day from here.</p>
       </div>
       <Suspense fallback={<AttendanceSkeleton />}>
         <AttendanceBody searchParams={searchParams} />

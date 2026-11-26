@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { availableDays, carryOver, proratedAllowance, requestDays } from "../lib/leave/rules";
+import { availableDays, proratedAllowance, requestDays } from "../lib/leave/rules";
 import { zonedDateTime } from "../lib/attendance/calendar";
 
 test("leave counts working days only; half day is 0.5", () => {
@@ -20,14 +20,10 @@ test("allowance is prorated from the start month and rounded down to half days",
   assert.equal(proratedAllowance(12, 2026, "2027-01-01"), 0);  // not started yet
 });
 
-test("available days subtract used and pending; carry-over is capped", () => {
-  const b = { allowed: 12, carriedOver: 3, adjusted: -1, used: 4 };
-  assert.equal(availableDays(b), 10);
-  assert.equal(availableDays(b, 2.5), 7.5);
-  assert.equal(carryOver(b, 15), 10);
-  assert.equal(carryOver(b, 5), 5);
-  assert.equal(carryOver(b, 0), 0);
-  assert.equal(carryOver(null, 15), 0);
+test("available days add adjustments and subtract used and pending", () => {
+  const b = { allowed: 12, adjusted: -1, used: 4 };
+  assert.equal(availableDays(b), 7);
+  assert.equal(availableDays(b, 2.5), 4.5);
 });
 
 test("a local time in IST maps to the right UTC instant", () => {

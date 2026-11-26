@@ -51,6 +51,8 @@ export default function OfficeMap({
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  // Set when a result is picked: filling the box with its name must not search again.
+  const pickedRef = useRef<string | null>(null);
   const emitChange = useEffectEvent((place: PickedPlace) => onChange(place));
 
   // Create the map once.
@@ -92,6 +94,8 @@ export default function OfficeMap({
   useEffect(() => {
     const q = query.trim();
     if (q.length < 3) return; // results are hidden below 3 characters
+    if (pickedRef.current === query) return;
+    pickedRef.current = null;
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       setSearching(true);
@@ -109,7 +113,7 @@ export default function OfficeMap({
           const { title, subtitle } = describe(f.properties);
           return { id: `${f.properties.osm_id ?? i}-${i}`, title, subtitle, lng: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] };
         }));
-        setShowResults(true);
+        if (document.activeElement?.getAttribute("aria-label") === "Search for a place") setShowResults(true);
       } catch (err) {
         if ((err as Error).name !== "AbortError") setResults([]);
       } finally {
@@ -126,6 +130,8 @@ export default function OfficeMap({
 
   const pick = (r: SearchResult) => {
     setShowResults(false);
+    setResults([]);
+    pickedRef.current = r.title;
     setQuery(r.title);
     goTo(r.lat, r.lng, [r.title, r.subtitle].filter(Boolean).join(", "));
   };
@@ -133,7 +139,15 @@ export default function OfficeMap({
   const locateMe = () => {
     if (!("geolocation" in navigator)) return toast.error("This browser can't share location.");
     navigator.geolocation.getCurrentPosition(
-      (pos) => goTo(pos.coords.latitude, pos.coords.longitude, null),
+      (pos) => {
+        goTo(pos.coords.latitude, pos.coords.longitude, null);
+        // Desktops without GPS or Wi-Fi often get a city-level guess from the internet provider.
+        const acc = pos.coords.accuracy;
+        if (acc > 200) {
+          const size = acc >= 1000 ? `${Math.round(acc / 1000)} km` : `${Math.round(acc)} m`;
+          toast.warning(`This location is approximate (within ${size}). Search for the address or drag the pin to the exact spot.`);
+        }
+      },
       () => toast.error("Location not shared. Allow location access and try again."),
       { enableHighAccuracy: true, timeout: 10_000 }
     );
@@ -149,6 +163,7 @@ export default function OfficeMap({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onFocus={() => results.length > 0 && setShowResults(true)}
+              onBlur={() => setTimeout(() => setShowResults(false), 150)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") { e.preventDefault(); if (results[0]) pick(results[0]); }
                 if (e.key === "Escape") setShowResults(false);
@@ -182,7 +197,7 @@ export default function OfficeMap({
         )}
       </div>
 
-      <div className="relative h-[420px] w-full overflow-hidden rounded-lg border border-border/40">
+      <div className="relative h-[420px] w-full overflow-hidden rounded-xl border border-border/70 bg-card shadow-[0_2px_2px_rgba(0,0,0,0.04)]">
         <div ref={containerRef} className="h-full w-full" aria-label="Map. Move the map to place the office under the pin." />
         {/* Fixed centre pin: the office is wherever the map is centred. */}
         <div className={cn("pointer-events-none absolute left-1/2 top-1/2 z-[500] -translate-x-1/2 -translate-y-full")} aria-hidden>
