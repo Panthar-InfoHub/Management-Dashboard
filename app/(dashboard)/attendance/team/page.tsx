@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import { connection } from "next/server";
 import Link from "next/link";
 import { ArrowLeft, CalendarDays, Download } from "lucide-react";
@@ -12,6 +11,7 @@ import { TeamMonthGrid } from "@/components/attendance/team-month-grid";
 import { MonthNav } from "@/components/attendance/month-nav";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ParamsSuspense } from "@/components/ui/params-suspense";
 
 type Params = { month?: string; team?: string };
 
@@ -25,9 +25,9 @@ export default function TeamAttendancePage({ searchParams }: { searchParams: Pro
         <h1 className="text-2xl font-semibold tracking-tight">Team Attendance</h1>
         <p className="mt-1 text-sm text-muted-foreground">Everyone&apos;s month at a glance. Hover a cell for details. Admins and HR can click any day to correct it.</p>
       </div>
-      <Suspense fallback={<Skeleton className="h-[520px] w-full rounded-lg" />}>
+      <ParamsSuspense fallback={<Skeleton className="h-[520px] w-full rounded-lg" />}>
         <TeamMonthBody searchParams={searchParams} />
-      </Suspense>
+      </ParamsSuspense>
     </div>
   );
 }

@@ -30,6 +30,7 @@ export function MonthCalendar({ month, basePath }: { month: Month; basePath: str
     { label: "Missed Checkout", value: month.days.filter((d) => d.missedCheckout).length, tone: month.days.some((d) => d.missedCheckout) ? "text-red-700 dark:text-red-400" : undefined },
     { label: "Worked", value: formatDuration(worked) },
     { label: "Overtime", value: formatDuration(overtime), tone: overtime ? "text-emerald-700 dark:text-emerald-400" : undefined },
+    { label: "Daily Updates", value: `${month.days.filter((d) => d.update === "ADDED").length} / ${month.days.filter((d) => d.update).length}` },
   ];
 
   return (
@@ -87,6 +88,12 @@ export function MonthCalendar({ month, basePath }: { month: Month; basePath: str
                 </p>
               )}
               <DayFlags day={d} className="flex-col gap-y-0.5" />
+              {d.update === "ADDED" && <span className="text-[11px] text-muted-foreground">Update added</span>}
+              {d.update === "MISSING" && (
+                <Link href={`/updates?view=mine&date=${d.dateKey}`} className="w-fit text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground" prefetch={false}>
+                  Add update
+                </Link>
+              )}
 
               {d.missedCheckout && (
                 <Link href={`${basePath}?month=${month.monthKey}&fix=${d.dateKey}`} className="mt-auto text-[11px] font-medium text-foreground underline underline-offset-2 hover:no-underline" prefetch={false}>

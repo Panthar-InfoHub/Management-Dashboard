@@ -1,5 +1,5 @@
-import { Suspense } from "react";
 import Link from "next/link";
+import Form from "next/form";
 import { redirect } from "next/navigation";
 import { getCurrentEmployee } from "@/lib/auth";
 import { isAdminRole, isSuperAdmin } from "@/lib/access";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { FormSelect } from "@/components/ui/form-select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ParamsSuspense } from "@/components/ui/params-suspense";
 
 export default function AuditPage({ searchParams }: { searchParams: Promise<AuditFilters> }) {
   return (
@@ -18,9 +19,9 @@ export default function AuditPage({ searchParams }: { searchParams: Promise<Audi
         <h1 className="text-2xl font-semibold tracking-tight">Audit Log</h1>
         <p className="mt-1 text-sm text-muted-foreground">Who changed what, and when. Newest first.</p>
       </div>
-      <Suspense fallback={<Skeleton className="h-[600px] w-full rounded-xl" />}>
+      <ParamsSuspense fallback={<Skeleton className="h-[600px] w-full rounded-xl" />}>
         <AuditBody searchParams={searchParams} />
-      </Suspense>
+      </ParamsSuspense>
     </div>
   );
 }
@@ -52,7 +53,7 @@ async function AuditBody({ searchParams }: { searchParams: Promise<AuditFilters>
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         {/* Plain GET form: filters live in the URL, so they can be shared. */}
-        <form action="/audit" className="flex flex-wrap items-end gap-2">
+        <Form action="/audit" className="flex flex-wrap items-end gap-2">
           <div className="space-y-1 text-[11px] text-muted-foreground">Area
             <FormSelect key={`entity-${filters.entity ?? ""}`} name="entity" aria-label="Area" defaultValue={filters.entity} allLabel="All" options={data.options.entities.map((e) => ({ value: e, label: e }))} />
           </div>
@@ -70,7 +71,7 @@ async function AuditBody({ searchParams }: { searchParams: Promise<AuditFilters>
           </div>
           <Button type="submit" size="sm" variant="outline" className="h-8 text-xs">Apply</Button>
           {keep.toString() && <Button asChild size="sm" variant="ghost" className="h-8 text-xs"><Link href="/audit">Clear</Link></Button>}
-        </form>
+        </Form>
         {isSuperAdmin(me.role) && <PruneAuditButton />}
       </div>
 

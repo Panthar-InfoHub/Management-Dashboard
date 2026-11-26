@@ -5,7 +5,6 @@ import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { SWProvider } from "@/components/providers/sw-provider";
 import { OfflineOverlay } from "@/components/providers/offline-overlay";
-import NextTopLoader from "nextjs-toploader";
 import Image from "next/image";
 import { SplashDismiss } from "@/components/providers/splash-dismiss";
 import { splashStartupImages } from "@/lib/pwa/splash";
@@ -70,7 +69,6 @@ export default function RootLayout({
             <SWProvider />
             <SplashDismiss />
             <OfflineOverlay />
-            <NextTopLoader color="#6366f1" height={3} showSpinner={false} />
             {children}
             <Toaster />
           </ThemeProvider>

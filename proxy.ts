@@ -14,6 +14,7 @@ function isPublicPath(path: string): boolean {
     path === "/sign-up" || path.startsWith("/sign-up/") ||
     path === "/api/webhooks" || path.startsWith("/api/webhooks/") ||
     path === "/api/attendance/punch" || path.startsWith("/api/attendance/punch/") ||
+    path === "/api/updates" ||
     path === "/manifest.json"
   );
 }

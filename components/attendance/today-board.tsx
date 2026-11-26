@@ -7,6 +7,14 @@ import { DAY_KIND_LABELS } from "@/lib/attendance/calendar";
 import { ATTENDANCE_STATUS_LABELS, formatDuration, type AttendanceStatusValue, to12h } from "@/lib/attendance/rules";
 import type { getTodayBoard } from "@/lib/attendance/queries";
 
+/** Daily update for a day worked, in words (not colour alone). */
+function UpdateMark({ update }: { update: "ADDED" | "MISSING" | null }) {
+  if (!update) return <span className="text-xs text-muted-foreground">—</span>;
+  return update === "ADDED"
+    ? <span className="text-xs font-medium">Added</span>
+    : <span className="text-xs text-muted-foreground">Missing</span>;
+}
+
 type Board = NonNullable<Awaited<ReturnType<typeof getTodayBoard>>>;
 type Row = Board["rows"][number];
 
@@ -57,6 +65,7 @@ export function TodayBoard({ board }: { board: Board }) {
                     : <AttendanceStatusBadge status={r.status as AttendanceStatusValue | null} />}
                   {r.checkIn && <span>{to12h(r.checkIn)} – {r.checkOut ? to12h(r.checkOut) : r.missedCheckout ? "no clock-out" : "still in"}</span>}
                   {r.workMinutes != null && <span>· {formatDuration(r.workMinutes)}</span>}
+                  {r.update && <span>· Update {r.update === "ADDED" ? "added" : "missing"}</span>}
                 </p>
                 <DayFlags day={r} className="mt-1" />
               </div>
@@ -75,6 +84,7 @@ export function TodayBoard({ board }: { board: Board }) {
                 <th className="px-4 py-2 font-medium">In</th>
                 <th className="px-4 py-2 font-medium">Out</th>
                 <th className="px-4 py-2 font-medium">Worked</th>
+                <th className="px-4 py-2 font-medium">Daily Update</th>
                 {board.canEdit && <th className="px-4 py-2"><span className="sr-only">Actions</span></th>}
               </tr>
             </thead>
@@ -99,6 +109,7 @@ export function TodayBoard({ board }: { board: Board }) {
                   <td className="px-4 py-2.5 font-mono text-xs tabular-nums">{r.checkIn ? to12h(r.checkIn) : "—"}</td>
                   <td className="px-4 py-2.5 font-mono text-xs tabular-nums">{r.checkOut ? to12h(r.checkOut) : (r.checkIn && !r.missedCheckout ? "still in" : "—")}</td>
                   <td className="px-4 py-2.5 font-mono text-xs tabular-nums">{r.workMinutes != null ? formatDuration(r.workMinutes) : "—"}</td>
+                  <td className="px-4 py-2.5"><UpdateMark update={r.update} /></td>
                   {board.canEdit && (
                     <td className="px-2 py-2.5 text-right">
                       {r.employee.id !== board.viewerId && !(r.leave && !r.leave.halfDay) && (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Check, ChevronsUpDown, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -22,14 +22,27 @@ const MAX_TASKS = 20;
  * Add or edit your update for a day you worked. Changing the date loads that
  * day's update. Used on the Daily Updates page and after clocking out.
  */
-export function UpdateForm({ initial, onDone, onCancel, cancelLabel }: { initial: UpdateFormData; onDone?: () => void; onCancel?: () => void; cancelLabel?: string }) {
+export function UpdateForm({
+  initial,
+  onDone,
+  onCancel,
+  cancelLabel,
+  requestedDate,
+}: {
+  initial: UpdateFormData;
+  onDone?: () => void;
+  onCancel?: () => void;
+  cancelLabel?: string;
+  /** Load this day into the form (e.g. Edit in the history list). */
+  requestedDate?: { dateKey: string; nonce: number } | null;
+}) {
   const [data, setData] = useState(initial);
   const [body, setBody] = useState(initial.update?.body ?? "");
   const [taskIds, setTaskIds] = useState<string[]>(initial.update?.taskIds ?? []);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [isSaving, startSave] = useTransition();
   const [isLoading, startLoad] = useTransition();
-  const busy = isSaving || isLoading;
+  const busy = isLoading;
 
   const byId = new Map(data.taskOptions.map((t) => [t.id, t]));
   const dirty = body.trim() !== (data.update?.body ?? "") || [...taskIds].sort().join() !== [...(data.update?.taskIds ?? [])].sort().join();
@@ -48,19 +61,33 @@ export function UpdateForm({ initial, onDone, onCancel, cancelLabel }: { initial
     });
   };
 
+  // Edit from the history list: load that day here.
+  const lastRequest = useRef<number | null>(null);
+  useEffect(() => {
+    if (!requestedDate || requestedDate.nonce === lastRequest.current) return;
+    lastRequest.current = requestedDate.nonce;
+    load(requestedDate.dateKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when a new request comes in
+  }, [requestedDate]);
+
   const toggle = (id: string) => {
     setTaskIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : ids.length >= MAX_TASKS ? ids : [...ids, id]));
   };
 
+  // Optimistic: show it saved straight away, and put it back if the save fails.
   const save = () => {
+    const previous = data.update;
+    const saved = { body: body.trim(), taskIds, updatedAt: new Date().toISOString() };
+    const dateKey = data.dateKey;
+    setData((d) => ({ ...d, update: saved }));
+    setBody(saved.body);
+    onDone?.();
     startSave(async () => {
       try {
-        await saveDailyUpdateAction({ date: data.dateKey, body, taskIds });
-        toast.success(data.dateKey === data.today ? "Today's update saved" : `Update for ${formatUpdateDay(data.dateKey)} saved`);
-        setData((d) => ({ ...d, update: { body: body.trim(), taskIds, updatedAt: new Date().toISOString() } }));
-        setBody((b) => b.trim());
-        onDone?.();
+        await saveDailyUpdateAction({ date: dateKey, body: saved.body, taskIds: saved.taskIds });
+        toast.success(dateKey === data.today ? "Today's update saved" : `Update for ${formatUpdateDay(dateKey)} saved`);
       } catch (err) {
+        setData((d) => (d.dateKey === dateKey ? { ...d, update: previous } : d));
         toast.error(errorMessage(err, "Update not saved. Try again."));
       }
     });
@@ -76,7 +103,7 @@ export function UpdateForm({ initial, onDone, onCancel, cancelLabel }: { initial
           <DatePicker id="update-date" value={data.dateKey} max={data.today} onChange={load} disabled={busy} className="w-44" />
         </div>
         <p className="text-xs text-muted-foreground" aria-live="polite">
-          {isLoading ? "Loading…" : data.update ? `Saved ${formatEditedAt(data.update.updatedAt)}` : isToday ? "Not added yet today" : "No update for this day yet"}
+          {isLoading ? "Loading…" : isSaving ? "Saving…" : data.update ? `Saved ${formatEditedAt(data.update.updatedAt)}` : isToday ? "Not added yet today" : "No update for this day yet"}
         </p>
       </div>
 
@@ -116,18 +143,18 @@ export function UpdateForm({ initial, onDone, onCancel, cancelLabel }: { initial
                   disabled={busy || data.taskOptions.length === 0}
                   className="h-auto min-h-9 w-full justify-between px-2.5 py-1.5 font-normal"
                 >
-                  <span className="flex flex-wrap gap-1">
+                  <span className="grid min-w-0 flex-1 gap-1 sm:grid-cols-2">
                     {taskIds.length === 0 && (
-                      <span className="py-0.5 text-muted-foreground">{data.taskOptions.length ? "Link tasks you worked on…" : "No tasks assigned to you"}</span>
+                      <span className="py-0.5 text-left text-muted-foreground sm:col-span-2">{data.taskOptions.length ? "Link tasks you worked on…" : "No tasks assigned to you"}</span>
                     )}
                     {taskIds.map((id) => {
                       const t = byId.get(id);
                       if (!t) return null;
                       return (
-                        <span key={id} className="inline-flex max-w-[260px] items-center gap-1 rounded-md border border-border/70 bg-muted/40 py-0.5 pr-1 pl-1.5 text-xs">
-                          {t.key && <span className="font-mono text-[11px] text-muted-foreground">{t.key}</span>}
-                          <span className="truncate">{t.title}</span>
-                          <span role="button" tabIndex={-1} aria-label={`Unlink ${t.title}`} className="rounded p-0.5 hover:bg-muted" onClick={(e) => { e.stopPropagation(); toggle(id); }}>
+                        <span key={id} title={`${t.key ? `${t.key} ` : ""}${t.title}`} className="flex h-7 w-full min-w-0 items-center gap-1 rounded-md border border-border/70 bg-muted/40 pr-1 pl-1.5 text-xs">
+                          {t.key && <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{t.key}</span>}
+                          <span className="min-w-0 flex-1 truncate text-left">{t.title}</span>
+                          <span role="button" tabIndex={-1} aria-label={`Unlink ${t.title}`} className="shrink-0 rounded p-0.5 hover:bg-muted" onClick={(e) => { e.stopPropagation(); toggle(id); }}>
                             <X className="h-3 w-3" />
                           </span>
                         </span>
@@ -164,7 +191,7 @@ export function UpdateForm({ initial, onDone, onCancel, cancelLabel }: { initial
             <div>
               {data.update && (
                 <ConfirmAction
-                  trigger={<Button type="button" variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" disabled={busy}><Trash2 className="h-3.5 w-3.5" /> Delete Update</Button>}
+                  trigger={<Button type="button" variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" disabled={busy || isSaving}><Trash2 className="h-3.5 w-3.5" /> Delete Update</Button>}
                   title="Delete this update?"
                   description={`Your update for ${formatUpdateDay(data.dateKey)} will be removed.`}
                   confirmLabel="Delete Update"
@@ -182,7 +209,7 @@ export function UpdateForm({ initial, onDone, onCancel, cancelLabel }: { initial
             </div>
             <div className="flex items-center gap-2">
               {onCancel && <Button type="button" variant="ghost" onClick={onCancel} disabled={isSaving}>{cancelLabel ?? "Cancel"}</Button>}
-              <Button type="submit" disabled={busy || !body.trim() || !dirty}>{isSaving ? "Saving…" : data.update ? "Save Changes" : "Save Update"}</Button>
+              <Button type="submit" disabled={busy || !body.trim() || !dirty}>{data.update ? "Save Changes" : "Save Update"}</Button>
             </div>
           </div>
         </>

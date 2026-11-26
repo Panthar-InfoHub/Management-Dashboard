@@ -4,6 +4,7 @@ import { StatusIcon, STATUS_META } from "@/components/tasks/task-icons";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { fromDateKey } from "@/lib/attendance/calendar";
 import type { UpdatePerson, UpdateTask } from "@/lib/updates/queries";
+import { monthTitle } from "@/components/attendance/month-nav";
 
 export function formatUpdateDay(dateKey: string) {
   return fromDateKey(dateKey).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
@@ -13,21 +14,27 @@ export function formatEditedAt(iso: string) {
   return new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 }
 
+/** "18 updates · 21 days worked in November 2026" */
+export function historyStat(updates: number, worked: number, month: string) {
+  return `${updates} update${updates === 1 ? "" : "s"} · ${worked} day${worked === 1 ? "" : "s"} worked in ${monthTitle(month)}`;
+}
+
 /** Linked tasks as small chips that open the task. Status shown by icon and text. */
 export function TaskChips({ tasks }: { tasks: UpdateTask[] }) {
   if (tasks.length === 0) return null;
   return (
-    <ul className="flex flex-wrap gap-1.5" aria-label="Linked tasks">
+    // Even grid so every chip is the same size; long titles are cut with "…".
+    <ul className="grid gap-1.5 sm:grid-cols-2" aria-label="Linked tasks">
       {tasks.map((t) => (
-        <li key={t.id}>
+        <li key={t.id} className="min-w-0">
           <Link
             href={`/tasks/${t.id}`}
-            title={`${t.project} · ${STATUS_META[t.status]?.label ?? t.status}`}
-            className="inline-flex max-w-[280px] items-center gap-1.5 rounded-md border border-border/70 bg-background px-2 py-1 text-xs hover:bg-accent/50"
+            title={`${t.key ? `${t.key} ` : ""}${t.title} · ${t.project} · ${STATUS_META[t.status]?.label ?? t.status}`}
+            className="flex h-8 w-full min-w-0 items-center gap-1.5 rounded-md border border-border/70 bg-background px-2 text-xs hover:bg-accent/50"
           >
             <StatusIcon status={t.status} className="h-3.5 w-3.5" />
-            {t.key && <span className="font-mono text-[11px] text-muted-foreground">{t.key}</span>}
-            <span className="truncate">{t.title}</span>
+            {t.key && <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{t.key}</span>}
+            <span className="min-w-0 truncate">{t.title}</span>
             <span className="sr-only">({STATUS_META[t.status]?.label ?? t.status})</span>
           </Link>
         </li>
