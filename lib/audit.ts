@@ -18,7 +18,8 @@ export type AuditEntity =
   | "AuditLog"
   | "Attendance"
   | "EmployeePermission"
-  | "Comment";
+  | "Comment"
+  | "DailyUpdate";
 
 /**
  * Record who changed what. Runs after the response is sent (`after()`), so a

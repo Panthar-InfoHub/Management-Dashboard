@@ -54,6 +54,12 @@ export const PERMISSION_GROUPS = [
     ],
   },
   {
+    label: "Daily Updates",
+    items: [
+      { id: "update:view-all", label: "See everyone's daily updates" },
+    ],
+  },
+  {
     label: "Company",
     items: [
       { id: "announcement:manage", label: "Post and edit announcements" },

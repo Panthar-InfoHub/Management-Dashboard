@@ -122,6 +122,7 @@ model Employee {
   comments  Comment[]
   auditLogs AuditLog[]
   announcements Announcement[]
+  dailyUpdates  DailyUpdate[]
 
   // ── Employment Records ──
   employmentRecords EmploymentRecord[]
@@ -257,6 +258,7 @@ model Task {
   creator    Employee  @relation("TaskCreator", fields: [creatorId], references: [id])
 
   comments Comment[]
+  dailyUpdates DailyUpdate[] @relation("DailyUpdateTasks")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -666,4 +668,22 @@ model Announcement {
 model TaskSequence {
   key  String @id
   last Int    @default(0)
+}
+
+// ── Daily updates ──
+// One per person per day they worked (clocked in), editable any time. The
+// linked tasks are ones assigned to them; nothing is flagged or scored.
+model DailyUpdate {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  /// The attendance day (office time), same key as Attendance.date.
+  date       DateTime @db.Date
+  body       String
+  tasks      Task[]   @relation("DailyUpdateTasks")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([employeeId, date])
+  @@index([date])
 }
