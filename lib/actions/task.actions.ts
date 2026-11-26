@@ -8,6 +8,7 @@ import { assertAssignable } from "@/lib/tasks/assignees";
 import { audit, diffFields } from "@/lib/audit";
 import type { TaskStatus, TaskPriority, Prisma } from "@/lib/generated/prisma";
 import { DONE_NOTE_MIN, GENERAL_TASK_KEY } from "@/lib/tasks/keys";
+import { emailTaskAssigned, emailTasksOwned } from "@/lib/email/notify";
 
 // ─── Validation Helpers ───
 
@@ -94,9 +95,12 @@ function isInvolved(task: TaskWithAccess, employeeId: string) {
   );
 }
 
-async function notifyAssigned(taskId: string, title: string, recipientIds: string[], actorId: string, heading = "Task Assigned") {
-  const recipients = recipientIds.filter((id) => id !== actorId);
+type Actor = { id: string; firstName: string; lastName: string };
+
+async function notifyAssigned(taskId: string, title: string, recipientIds: string[], actor: Actor, heading = "Task Assigned") {
+  const recipients = [...new Set(recipientIds)].filter((id) => id !== actor.id);
   if (recipients.length === 0) return;
+  emailTaskAssigned(taskId, recipients, `${actor.firstName} ${actor.lastName}`, heading === "You Own a Task" ? "owner" : "assigned");
   await db.notification.createMany({
     data: recipients.map((recipientId) => ({
       recipientId,
@@ -161,7 +165,7 @@ export async function createTaskAction(data: {
     }
   }));
 
-  await notifyAssigned(task.id, task.title, assigneeIds, employee.id, "New Task Assigned");
+  await notifyAssigned(task.id, task.title, assigneeIds, employee, "New Task Assigned");
   audit({ actorId: employee.id, entity: "Task", entityId: task.id, action: "create", changes: { title: task.title, projectId: task.projectId, ownerId, assigneeIds } });
 
   revalidateTaskViews(task);
@@ -233,7 +237,7 @@ export async function updateTaskAction(taskId: string, data: {
   }));
 
   const previousIds = existingTask.assignees.map(a => a.id);
-  await notifyAssigned(taskId, updatedTask.title, assigneeIds.filter(id => !previousIds.includes(id)), employee.id);
+  await notifyAssigned(taskId, updatedTask.title, assigneeIds.filter(id => !previousIds.includes(id)), employee);
   audit({
     actorId: employee.id, entity: "Task", entityId: taskId, action: "update",
     changes: { ...(diffFields(existingTask, next) as object), ...(previousIds.sort().join() !== [...assigneeIds].sort().join() ? { assigneeIds: [previousIds, assigneeIds] } : {}) },
@@ -420,7 +424,7 @@ export async function createSubtaskAction(parentId: string, data: {
     }
   }));
 
-  await notifyAssigned(subtask.id, subtask.title, assigneeIds, employee.id);
+  await notifyAssigned(subtask.id, subtask.title, assigneeIds, employee);
   audit({ actorId: employee.id, entity: "Task", entityId: subtask.id, action: "create", changes: { title: subtask.title, parentId, assigneeIds } });
 
   revalidateTaskViews(subtask);
@@ -453,7 +457,7 @@ export async function setTaskAssigneesAction(taskId: string, assigneeIdsInput: s
     data: { ownerId, assignees: { set: assigneeIds.map(id => ({ id })) } },
   });
 
-  await notifyAssigned(task.id, task.title, assigneeIds.filter(id => !previousIds.includes(id)), employee.id);
+  await notifyAssigned(task.id, task.title, assigneeIds.filter(id => !previousIds.includes(id)), employee);
   audit({ actorId: employee.id, entity: "Task", entityId: taskId, action: "assign", changes: { assigneeIds: [previousIds, assigneeIds] } });
 
   revalidateTaskViews(task);
@@ -462,6 +466,15 @@ export async function setTaskAssigneesAction(taskId: string, assigneeIdsInput: s
 
 /** Make one assignee (or anyone assignable) the Owner; they're added as an assignee. */
 export async function setTaskOwnerAction(taskId: string, ownerId: string) {
+  await changeTaskOwner(taskId, ownerId, true);
+  return { success: true };
+}
+
+/**
+ * Change the Owner. `notify: false` skips the notification so bulk edit can
+ * send one summary instead of one per task. Returns whether the Owner changed.
+ */
+async function changeTaskOwner(taskId: string, ownerId: string, notify: boolean) {
   const employee = await getCurrentEmployee();
   const existingTask = await db.task.findUnique({ where: { id: taskId }, include: taskAccessInclude });
   if (!existingTask) throw new UserError("Task not found");
@@ -479,10 +492,11 @@ export async function setTaskOwnerAction(taskId: string, ownerId: string) {
     where: { id: taskId },
     data: { ownerId, assignees: previousIds.includes(ownerId) ? undefined : { connect: { id: ownerId } } },
   });
-  await notifyAssigned(task.id, task.title, ownerId === existingTask.ownerId ? [] : [ownerId], employee.id, "You Own a Task");
+  const changed = ownerId !== existingTask.ownerId;
+  if (notify) await notifyAssigned(task.id, task.title, changed ? [ownerId] : [], employee, "You Own a Task");
   audit({ actorId: employee.id, entity: "Task", entityId: taskId, action: "owner", changes: { ownerId: [existingTask.ownerId, ownerId] } });
   revalidateTaskViews(task);
-  return { success: true };
+  return changed;
 }
 
 /** Take a task off the board with a reason; open subtasks are cancelled with it. */
@@ -589,18 +603,41 @@ export async function bulkUpdateTasksAction(taskIds: string[], change: BulkTaskC
 
   let updated = 0;
   const skipped: string[] = [];
+  const newlyOwned: string[] = [];
   for (const id of ids) {
     try {
       if (change.kind === "status") await updateTaskStatusAction(id, change.status, undefined, change.doneNote);
       else if (change.kind === "priority") await updateTaskPriorityAction(id, change.priority);
-      else if (change.kind === "owner") await setTaskOwnerAction(id, change.ownerId);
+      else if (change.kind === "owner") { if (await changeTaskOwner(id, change.ownerId, false)) newlyOwned.push(id); }
       else await setTaskDueDateAction(id, change.dueDate);
       updated++;
     } catch (err) {
       skipped.push(err instanceof UserError ? err.message : "Couldn't be changed.");
     }
   }
+  if (change.kind === "owner" && newlyOwned.length) await notifyOwnerOfMany(newlyOwned, change.ownerId);
   return { updated, skipped: skipped.length, firstReason: skipped[0] ?? null };
+}
+
+/** One notification and one email for many tasks given to the same Owner. */
+async function notifyOwnerOfMany(taskIds: string[], ownerId: string) {
+  const actor = await getCurrentEmployee();
+  if (ownerId === actor.id) return;
+  if (taskIds.length === 1) {
+    const task = await db.task.findUnique({ where: { id: taskIds[0] }, select: { title: true } });
+    if (task) await notifyAssigned(taskIds[0], task.title, [ownerId], actor, "You Own a Task");
+    return;
+  }
+  await db.notification.create({
+    data: {
+      recipientId: ownerId,
+      type: "TASK_ASSIGNED",
+      title: "You Own Tasks",
+      message: `${actor.firstName} ${actor.lastName} made you the owner of ${taskIds.length} tasks.`,
+      actionUrl: "/tasks/my",
+    },
+  });
+  emailTasksOwned(taskIds, ownerId, `${actor.firstName} ${actor.lastName}`);
 }
 
 /** Set or clear a task's due date ("YYYY-MM-DD" or null). */

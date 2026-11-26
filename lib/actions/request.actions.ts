@@ -17,6 +17,7 @@ import { canDecideFor, ensureBalances, getCoverage } from "@/lib/leave/queries";
 import { leaveYearOf } from "@/lib/leave/policy";
 import { leadsOf } from "@/lib/teams/membership";
 import { recalculateBalances } from "@/lib/leave/balances";
+import { emailRequestDecided, emailRequestSubmitted } from "@/lib/email/notify";
 
 type SubmitInput = {
   kind: RequestKindValue;
@@ -193,6 +194,7 @@ export async function submitRequestAction(input: SubmitInput) {
 
   const approvers = await findApprovers(employee.id);
   await notify(approvers, `${REQUEST_KIND_LABELS[input.kind]} request`, `${employee.firstName} ${employee.lastName} asked for ${REQUEST_KIND_LABELS[input.kind].toLowerCase()} on ${rangeLabel(start, end)}.`, "/approvals");
+  emailRequestSubmitted(request.id, input.kind, approvers);
   audit({ actorId: employee.id, entity: "Request", entityId: request.id, action: "create", changes: { kind: input.kind, start, end, days: count, halfDay } });
   refresh();
   return { success: true, id: request.id, days: count };
@@ -384,6 +386,7 @@ export async function decideRequestAction(
     `${actor.firstName} ${actor.lastName} ${verb} your request for ${rangeLabel(startKey, request.endDate.toISOString().slice(0, 10))}${decisionNote ? `: ${decisionNote}` : "."}`,
     "/leave"
   );
+  emailRequestDecided(requestId, request.kind);
   audit({ actorId: actor.id, entity: "Request", entityId: requestId, action: verb, changes: { note: decisionNote, excuseLate } });
   refresh();
   return { success: true };

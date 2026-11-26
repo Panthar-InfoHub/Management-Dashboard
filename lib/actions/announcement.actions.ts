@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { fromDateKey, todayKey } from "@/lib/attendance/calendar";
+import { emailAnnouncement } from "@/lib/email/notify";
 
 type Input = { title: string; body: string; teamIds: string[]; pinned: boolean; expiresOn?: string | null };
 
@@ -58,6 +59,7 @@ export async function createAnnouncementAction(input: Input) {
         actionUrl: "/announcements",
       })),
     });
+    emailAnnouncement(post.id, audience.map((p) => p.id));
   }
 
   audit({ actorId: author.id, entity: "Announcement", entityId: post.id, action: "create", changes: { title: data.title, teamIds: data.teamIds, notified: audience.length } });
