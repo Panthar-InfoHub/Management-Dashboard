@@ -29,7 +29,10 @@ render() { # w h logo-size bg negate out
   local w=$1 h=$2 size=$3 bg=$4 neg=$5 out=$6
   local logo="[1]scale=${size}:${size}:flags=lanczos"
   [ "$neg" = 1 ] && logo="$logo,negate=negate_alpha=0"
-  ffmpeg -v error -y -f lavfi -i "color=c=${bg}:s=${w}x${h}" -i "$TMP/logo.png" \
+  # The canvas must be RGB: ffmpeg's default (yuv420p) only allows even sizes and
+  # would round 1125 and 1179 down by a pixel; iOS ignores a launch image that
+  # isn't the screen's exact size and shows black instead.
+  ffmpeg -v error -y -f lavfi -i "color=c=${bg}:s=${w}x${h},format=rgb24" -i "$TMP/logo.png" \
     -filter_complex "${logo}[l];[0][l]overlay=(W-w)/2:(H-h)/2:format=auto,format=rgb24" \
     -frames:v 1 -compression_level 9 "$out"
 }
