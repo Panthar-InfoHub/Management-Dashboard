@@ -34,6 +34,10 @@ export const metadata: Metadata = {
     icon: "/icon-192.png",
     apple: "/icon-192.png",
   },
+  // Next.js renders `capable` as "mobile-web-app-capable", but iPhone only uses
+  // the launch images (startupImage) with Apple's own tag. Without it the
+  // installed app opens on a black screen until the first page paints.
+  other: { "apple-mobile-web-app-capable": "yes" },
 };
 
 export const viewport: Viewport = {
