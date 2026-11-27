@@ -1,9 +1,14 @@
 const CACHE_NAME = 'panthar-offline-v1';
 const OFFLINE_URL = '/offline.html';
+// Shown at once when the app opens with no window running yet (cold start), so
+// iPhone doesn't show a black screen while the first page loads. See launch.html.
+const LAUNCH_URL = '/launch.html';
 // Build files under /_next/static/ have a content hash in their name and never
 // change, so they're served from the device after the first visit. That makes
 // the installed app start faster. Capped so old builds don't pile up.
-const STATIC_CACHE = 'panthar-static-v1';
+// v2: drops v1, which in development could hold stale dev files (dev file
+// names don't change between edits). The worker now only registers in production.
+const STATIC_CACHE = 'panthar-static-v2';
 const STATIC_LIMIT = 400;
 
 self.addEventListener('install', (event) => {
@@ -13,6 +18,7 @@ self.addEventListener('install', (event) => {
       // Cache the offline page and the logo
       await cache.addAll([
         OFFLINE_URL,
+        LAUNCH_URL,
         '/images/black_logo.webp'
       ]);
       // Force the waiting service worker to become the active service worker
@@ -67,6 +73,19 @@ self.addEventListener('fetch', (event) => {
   if (isNavigate || isHtml) {
     event.respondWith(
       (async () => {
+        // Cold start: no window yet → the cached launch screen, which then
+        // loads this same page (marked _launch so it isn't caught again).
+        if (isNavigate && !url.searchParams.has('_launch')) {
+          const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+          if (windows.length === 0) {
+            const launch = await (await caches.open(CACHE_NAME)).match(LAUNCH_URL);
+            if (launch) {
+              // Let the unused preload finish quietly.
+              if (event.preloadResponse) event.waitUntil(event.preloadResponse.catch(() => {}));
+              return launch;
+            }
+          }
+        }
         try {
           // First, try to use the navigation preload response if it's supported.
           const preloadResponse = await event.preloadResponse;
