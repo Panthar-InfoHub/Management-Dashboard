@@ -42,7 +42,7 @@ export const PERMISSION_GROUPS = [
     label: "Attendance",
     items: [
       { id: "attendance:view-all", label: "See everyone's attendance" },
-      { id: "attendance:edit", label: "Fix attendance for others" },
+      { id: "attendance:edit", label: "Edit attendance for others" },
       { id: "attendance:export", label: "Export attendance" },
     ],
   },

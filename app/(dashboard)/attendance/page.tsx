@@ -71,15 +71,16 @@ async function AttendanceBody({ searchParams }: { searchParams: Promise<Params> 
       <div className="space-y-6">
         <div className="flex flex-wrap items-center justify-end gap-2">
           <RequestDialog kind="WFH" today={today} variant="outline" />
+          <RequestDialog kind="LATE_ARRIVAL" today={today} variant="outline" graceMinutes={office.graceMinutes} />
           {/* key: a new ?fix= date opens a fresh, pre-filled form */}
-          <RequestDialog key={fixDate ?? "fix"} kind="ATTENDANCE_FIX" today={today} variant="outline" defaultDate={fixDate} defaultOpen={!!fixDate} />
+          <RequestDialog key={fixDate ?? "fix"} kind="ATTENDANCE_FIX" today={today} variant="outline" defaultDate={fixDate} defaultOpen={!!fixDate} lateAfter={office.lateAfter} graceMinutes={office.graceMinutes} />
           {teamLink}
         </div>
         <MonthCalendar month={month} basePath="/attendance" />
       </div>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium">My WFH and Attendance Fix Requests</h2>
+        <h2 className="text-sm font-medium">My Requests</h2>
         <MyRequests requests={requests?.requests ?? []} emptyText="No WFH or fix requests yet." />
       </section>
     </div>

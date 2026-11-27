@@ -37,6 +37,7 @@ export async function updateOfficeAction(officeId: string, data: {
   lateAfter: string;
   lateOutcome: "HALF_DAY" | "LATE";
   minFullDayMinutes: number | null;
+  graceMinutes: number;
   weekPattern: WeekPattern;
 }) {
   const actor = await getCurrentEmployee();
@@ -55,6 +56,9 @@ export async function updateOfficeAction(officeId: string, data: {
   if (data.lateOutcome !== "HALF_DAY" && data.lateOutcome !== "LATE") throw new UserError("Late outcome must be Half Day or Late.");
   if (data.minFullDayMinutes !== null && (!Number.isInteger(data.minFullDayMinutes) || data.minFullDayMinutes < 30 || data.minFullDayMinutes > 16 * 60)) {
     throw new UserError("Minimum hours for a full day must be between 0.5 and 16, or empty to turn the rule off.");
+  }
+  if (!Number.isInteger(data.graceMinutes) || data.graceMinutes < 0 || data.graceMinutes > 120) {
+    throw new UserError("Grace must be a whole number of minutes, 0 to 120.");
   }
   if (data.weekPattern.length !== 7 || data.weekPattern.some((d) => !["OFFICE", "WFH", "OFF"].includes(d))) {
     throw new UserError("Each weekday must be Office, WFH or Off.");
@@ -76,6 +80,7 @@ export async function updateOfficeAction(officeId: string, data: {
       lateAfter: data.lateAfter,
       lateOutcome: data.lateOutcome,
       minFullDayMinutes: data.minFullDayMinutes,
+      graceMinutes: data.graceMinutes,
       weekPattern: data.weekPattern,
     },
   });

@@ -73,7 +73,8 @@ async function Stages({ employee }: { employee: AuthEmployee }) {
           <StatList items={[
             { label: "Leave requests", value: approvals.leave, href: "/approvals" },
             { label: "Work from home", value: approvals.wfh, href: "/approvals" },
-            { label: "Attendance fixes", value: approvals.fixes, href: "/approvals" },
+            { label: "Time corrections", value: approvals.fixes, href: "/approvals" },
+            { label: "Late arrivals", value: approvals.lateArrivals, href: "/approvals" },
           ]} />
         </Panel>
       )}

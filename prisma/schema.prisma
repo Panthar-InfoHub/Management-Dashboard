@@ -455,6 +455,8 @@ enum RequestKind {
   LEAVE
   WFH
   ATTENDANCE_FIX
+  /// "I was / will be late": once approved the day isn't a half day; the clock-in time is kept.
+  LATE_ARRIVAL
 }
 
 enum RequestStatus {
@@ -485,6 +487,8 @@ model Office {
   lateOutcome  LateOutcome @default(HALF_DAY)
   /// Fewer worked minutes than this on an office day = Half Day. Null = off.
   minFullDayMinutes Int?
+  /// Grace after the late cut-off (11:00 + 15 min = late from 11:16) and after an approved Late Arrival's "arrive by" time.
+  graceMinutes Int @default(15) @map("lateArrivalGraceMinutes")
   /// Kind of each weekday, Sunday first (7 values).
   weekPattern  DayKind[]
   isDefault    Boolean     @default(false)
@@ -622,11 +626,14 @@ model Request {
   decidedAt    DateTime?
   decisionNote String?
   /// The approver excused lateness on the request's days, including clock-ins after approval.
+  /// LATE_ARRIVAL: true = approved as Present, false = approved as Late.
   excuseLate   Boolean        @default(false)
   /// ATTENDANCE_FIX only: the corrected times, and where they worked (OFFICE or WFH).
   workMode     DayKind?
   fixCheckIn   DateTime?
   fixCheckOut  DateTime?
+  /// LATE_ARRIVAL asked before clocking in: "I'll arrive by". A later clock-in (past the office grace) isn't covered.
+  arriveBy     DateTime?
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 

@@ -41,6 +41,7 @@ export function OfficeTab({ office }: { office: OfficeSettings }) {
     lateAfter: office.lateAfter,
     lateOutcome: office.lateOutcome as "HALF_DAY" | "LATE",
     minFullDayHours: office.minFullDayMinutes == null ? "" : String(office.minFullDayMinutes / 60),
+    grace: String(office.graceMinutes),
     weekPattern: office.weekPattern as DayKindValue[],
   });
 
@@ -74,6 +75,7 @@ export function OfficeTab({ office }: { office: OfficeSettings }) {
           lateAfter: form.lateAfter,
           lateOutcome: form.lateOutcome,
           minFullDayMinutes: form.minFullDayHours.trim() === "" ? null : Math.round(Number(form.minFullDayHours) * 60),
+          graceMinutes: Number(form.grace),
           weekPattern: form.weekPattern,
         });
         toast.success("Office settings saved");
@@ -176,6 +178,11 @@ export function OfficeTab({ office }: { office: OfficeSettings }) {
             <label htmlFor="office-minhours" className="text-xs font-semibold text-muted-foreground">Half Day If Worked Under (hours)</label>
             <Input id="office-minhours" inputMode="decimal" placeholder="Off" {...field("minFullDayHours")} />
             <p className="text-[11px] text-muted-foreground">Office days only. Leave empty to turn off.</p>
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="office-grace" className="text-xs font-semibold text-muted-foreground">Grace (minutes)</label>
+            <Input id="office-grace" inputMode="numeric" placeholder="15" {...field("grace")} />
+            <p className="text-[11px] text-muted-foreground">A clock-in this many minutes after Late After isn&apos;t late. Also added to an approved late arrival&apos;s “arrive by” time. Not shown to employees.</p>
           </div>
         </div>
       </section>

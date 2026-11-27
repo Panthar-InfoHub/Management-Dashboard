@@ -47,7 +47,6 @@ export async function POST(request: Request) {
         at,
         location,
         ignoreAccuracy: true,
-        reentryNote: null,
       });
       if (!result.success) {
         return NextResponse.json(

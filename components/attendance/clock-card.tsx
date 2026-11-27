@@ -120,7 +120,7 @@ export function ClockCard({ today }: { today: Today }) {
           ) : record?.missedCheckout ? (
             <span>
               In {to12h(record.checkIn)} · no clock-out recorded.{" "}
-              <Link href={`/attendance?fix=${today.dateKey}`} className="font-medium text-foreground underline underline-offset-2">Fix attendance</Link>
+              <Link href={`/attendance?fix=${today.dateKey}`} className="font-medium text-foreground underline underline-offset-2">Correct my time</Link>
             </span>
           ) : record?.checkIn ? (
             <>
@@ -183,10 +183,13 @@ export function ClockCard({ today }: { today: Today }) {
           pendingLabel="Clocking out…"
           onConfirm={clockOut}
         />
+      ) : record?.checkOut ? (
+        // One clock-in and one clock-out per day.
+        <Button disabled variant="outline" className="gap-2"><LogOut className="h-4 w-4" /> Done for Today</Button>
       ) : (
         <Button onClick={clockIn} disabled={isPending} className="gap-2">
           <LogIn className="h-4 w-4" />
-          {isPending ? (needsLocation ? "Checking location…" : "Clocking in…") : record?.checkOut ? "Clock In Again" : "Clock In"}
+          {isPending ? (needsLocation ? "Checking location…" : "Clocking in…") : "Clock In"}
         </Button>
       )}
     </div>

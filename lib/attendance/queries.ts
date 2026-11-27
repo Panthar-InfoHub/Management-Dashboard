@@ -8,7 +8,7 @@ import { tracksAttendance } from "@/lib/access";
 import { hasPermission } from "@/lib/permissions";
 import { getCalendarDays, getOffices, type OfficeSettings } from "@/lib/attendance/settings";
 import { dayKindFor, eachDateKey, fromDateKey, todayKey, toDateKey, type DayKindValue, type WeekPattern } from "@/lib/attendance/calendar";
-import { formatTime, isSessionExpired, statusForEmptyDay, type AttendanceStatusValue } from "@/lib/attendance/rules";
+import { formatTime, isSessionExpired, lastOnTime, statusForEmptyDay, type AttendanceStatusValue } from "@/lib/attendance/rules";
 import { getCoverage, type Coverage } from "@/lib/leave/queries";
 import { trackedFrom } from "@/lib/attendance/policy";
 import { inAnyTeam } from "@/lib/teams/membership";
@@ -158,7 +158,7 @@ export async function getMyToday(employee: AuthEmployee) {
     wfhPending: !!pendingWfh,
     office: {
       name: office.name, radiusMeters: office.radiusMeters, workStart: office.workStart, workEnd: office.workEnd,
-      lateAfter: office.lateAfter, lateOutcome: office.lateOutcome,
+      lateAfter: office.lateAfter, lastOnTime: lastOnTime(office.lateAfter, office.graceMinutes), lateOutcome: office.lateOutcome,
     },
     record: record ? presentRow(record as AttendanceRow, office.timezone, dateKey) : null,
   };
@@ -315,6 +315,7 @@ export async function getTodayBoard(viewer: AuthEmployee, dateKey?: string) {
     canEdit: await hasPermission(viewer, "attendance:edit"),
     viewerId: viewer.id,
     lateAfter: (offices.find((o) => o.isDefault) ?? offices[0])?.lateAfter ?? "11:00",
+    graceMinutes: (offices.find((o) => o.isDefault) ?? offices[0])?.graceMinutes ?? 15,
     scope: scope.label,
     rows: group.people.map(({ employee, days }) => ({ employee, ...days[0] })),
   };
@@ -339,5 +340,6 @@ export async function getTeamMonth(viewer: AuthEmployee, monthKey: string, teamI
     canEdit,
     viewerId: viewer.id,
     lateAfter: (offices.find((o) => o.isDefault) ?? offices[0])?.lateAfter ?? "11:00",
+    graceMinutes: (offices.find((o) => o.isDefault) ?? offices[0])?.graceMinutes ?? 15,
   };
 }

@@ -97,7 +97,7 @@ export function MonthCalendar({ month, basePath }: { month: Month; basePath: str
 
               {d.missedCheckout && (
                 <Link href={`${basePath}?month=${month.monthKey}&fix=${d.dateKey}`} className="mt-auto text-[11px] font-medium text-foreground underline underline-offset-2 hover:no-underline" prefetch={false}>
-                  Fix attendance
+                  Correct time
                 </Link>
               )}
             </div>

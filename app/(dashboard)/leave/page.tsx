@@ -13,7 +13,7 @@ export default function LeavePage() {
     <div className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Leave</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Your leave balance and leave requests. WFH and attendance fixes are on My Attendance.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Your leave balance and leave requests. WFH, late arrival and time correction requests are on My Attendance.</p>
       </div>
       <Suspense fallback={<LeaveSkeleton />}>
         <LeaveBody />

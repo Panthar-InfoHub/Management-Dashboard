@@ -70,7 +70,7 @@ export function TodayBoard({ board }: { board: Board }) {
                 <DayFlags day={r} className="mt-1" />
               </div>
               {board.canEdit && r.employee.id !== board.viewerId && !(r.leave && !r.leave.halfDay) && (
-                <EditDayButton employeeId={r.employee.id} name={r.employee.name} date={board.dateKey} dateLabel={dateLabel} current={r} lateAfter={board.lateAfter} />
+                <EditDayButton employeeId={r.employee.id} name={r.employee.name} date={board.dateKey} dateLabel={dateLabel} current={r} lateAfter={board.lateAfter} graceMinutes={board.graceMinutes} />
               )}
             </li>
           ))}
@@ -113,7 +113,7 @@ export function TodayBoard({ board }: { board: Board }) {
                   {board.canEdit && (
                     <td className="px-2 py-2.5 text-right">
                       {r.employee.id !== board.viewerId && !(r.leave && !r.leave.halfDay) && (
-                        <EditDayButton employeeId={r.employee.id} name={r.employee.name} date={board.dateKey} dateLabel={dateLabel} current={r} lateAfter={board.lateAfter} />
+                        <EditDayButton employeeId={r.employee.id} name={r.employee.name} date={board.dateKey} dateLabel={dateLabel} current={r} lateAfter={board.lateAfter} graceMinutes={board.graceMinutes} />
                       )}
                     </td>
                   )}

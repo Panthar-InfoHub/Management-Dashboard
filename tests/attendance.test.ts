@@ -42,11 +42,11 @@ test("geofence: inside, outside, vague and missing locations", () => {
 
 test("late rule: on time, after the cut-off, Late vs Half Day, WFH and days off", () => {
   const base = { lateAfterMinutes: 660, lateOutcome: "HALF_DAY" as const };
-  assert.deepEqual(statusForCheckIn({ ...base, dayKind: "OFFICE", minutesNow: 660 }), { status: "PRESENT", isLate: false, needsReview: false });
-  assert.deepEqual(statusForCheckIn({ ...base, dayKind: "OFFICE", minutesNow: 661 }), { status: "HALF_DAY", isLate: true, needsReview: true });
-  assert.deepEqual(statusForCheckIn({ ...base, lateOutcome: "LATE", dayKind: "OFFICE", minutesNow: 700 }), { status: "LATE", isLate: true, needsReview: false });
-  assert.deepEqual(statusForCheckIn({ ...base, dayKind: "WFH", minutesNow: 700 }), { status: "WFH", isLate: true, needsReview: false });
-  assert.deepEqual(statusForCheckIn({ ...base, dayKind: "HOLIDAY", minutesNow: 700 }), { status: "PRESENT", isLate: false, needsReview: false });
+  assert.deepEqual(statusForCheckIn({ ...base, dayKind: "OFFICE", minutesNow: 660 }), { status: "PRESENT", isLate: false });
+  assert.deepEqual(statusForCheckIn({ ...base, dayKind: "OFFICE", minutesNow: 661 }), { status: "HALF_DAY", isLate: true });
+  assert.deepEqual(statusForCheckIn({ ...base, lateOutcome: "LATE", dayKind: "OFFICE", minutesNow: 700 }), { status: "LATE", isLate: true });
+  assert.deepEqual(statusForCheckIn({ ...base, dayKind: "WFH", minutesNow: 700 }), { status: "WFH", isLate: true });
+  assert.deepEqual(statusForCheckIn({ ...base, dayKind: "HOLIDAY", minutesNow: 700 }), { status: "PRESENT", isLate: false });
 });
 
 test("worked minutes and empty days", () => {
@@ -86,7 +86,7 @@ test("left early and overtime from office hours (10:00–19:00)", () => {
 test("short-day rule: off by default, half day when under the minimum on office days", () => {
   const base = { lateAfterMinutes: 660, lateOutcome: "HALF_DAY" as const, checkInMinutes: 570 }; // 09:30
   assert.equal(statusForDay({ ...base, dayKind: "OFFICE", workMinutes: 120, minFullDayMinutes: null }).status, "PRESENT");
-  assert.deepEqual(statusForDay({ ...base, dayKind: "OFFICE", workMinutes: 120, minFullDayMinutes: 240 }), { status: "HALF_DAY", isLate: false, needsReview: true });
+  assert.deepEqual(statusForDay({ ...base, dayKind: "OFFICE", workMinutes: 120, minFullDayMinutes: 240 }), { status: "HALF_DAY", isLate: false });
   assert.equal(statusForDay({ ...base, dayKind: "OFFICE", workMinutes: 300, minFullDayMinutes: 240 }).status, "PRESENT");
   assert.equal(statusForDay({ ...base, dayKind: "WFH", workMinutes: 60, minFullDayMinutes: 240 }).status, "WFH");
   // Late + LATE outcome + short day → half day; late half day stays half day

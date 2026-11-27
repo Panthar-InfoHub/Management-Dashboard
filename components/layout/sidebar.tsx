@@ -13,11 +13,11 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { LinkPending } from "@/components/ui/link-pending";
+import { useNavPending } from "@/components/layout/nav-pending";
 import {
   LayoutDashboard, FolderKanban, Users, UserCircle,
   FileText, Bell, Settings, ClipboardCheck, ListTodo, CalendarClock, CalendarDays, NotebookPen, Plane, Inbox, ScrollText, Megaphone,
-  PanelLeftClose, PanelLeft, type LucideIcon,
+  PanelLeftClose, PanelLeft, BookOpen, type LucideIcon,
 } from "lucide-react";
 
 type NavItem = { label: string; href: string; icon: LucideIcon; badge?: string };
@@ -34,6 +34,7 @@ const navItems: NavItem[] = [
   { label: "Attendance", href: "/attendance", icon: CalendarClock },
   { label: "Leave", href: "/leave", icon: Plane },
   { label: "Calendar", href: "/calendar", icon: CalendarDays },
+  { label: "Attendance Rules", href: "/rules", icon: BookOpen },
   { label: "Approvals", href: "/approvals", icon: Inbox },
   { label: "Records", href: "/records", icon: FileText },
 ];
@@ -56,7 +57,9 @@ type NavListsProps = { collapsed: boolean; canViewRecords: boolean; canOpenSetti
 // active highlight, keeping the sidebar in the prerendered shell.
 function ActiveNavLists(props: NavListsProps) {
   const pathname = usePathname();
-  return <NavLists pathname={pathname} {...props} />;
+  // The clicked item lights up at once, before its page arrives.
+  const { pendingHref } = useNavPending();
+  return <NavLists pathname={pendingHref ?? pathname} {...props} />;
 }
 
 function isActivePath(pathname: string | null, href: string) {
@@ -68,10 +71,11 @@ function isActivePath(pathname: string | null, href: string) {
 }
 
 function NavItemLink({ item, active, collapsed, onNavigate }: { item: NavItem; active: boolean; collapsed: boolean; onNavigate?: () => void }) {
+  const { start } = useNavPending();
   const link = (
     <Link
       href={item.href}
-      onClick={onNavigate}
+      onClick={(e) => { start(item.href, e); onNavigate?.(); }}
       aria-current={active ? "page" : undefined}
       className={cn(
         "group relative flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors",
@@ -82,11 +86,9 @@ function NavItemLink({ item, active, collapsed, onNavigate }: { item: NavItem; a
       )}
     >
       <item.icon className={cn("h-4 w-4 shrink-0", active && "text-foreground")} />
-      {collapsed && <LinkPending className="absolute right-1 top-1 size-2" />}
       {!collapsed && (
         <>
           <span className="truncate">{item.label}</span>
-          <LinkPending className="ml-auto" />
           {item.badge && (
             <Badge variant="secondary" className="h-5 min-w-5 justify-center rounded-full px-1.5 text-[10px] font-medium">
               {item.badge}

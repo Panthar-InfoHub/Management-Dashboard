@@ -112,7 +112,7 @@ export function TeamMonthGrid({ data }: { data: TeamMonth }) {
                     return (
                       <td key={d.dateKey} className={cn("border-b border-border/40 px-0.5 py-1.5 text-center", d.dateKey === data.today && "bg-muted/40")} title={tooltip(d) + (editable ? " · click to edit" : "")}>
                         {editable ? (
-                          <EditableDayCell label={`Edit ${employee.name}, ${dateLabel}`} employeeId={employee.id} name={employee.name} date={d.dateKey} dateLabel={dateLabel} current={d} lateAfter={data.lateAfter}>
+                          <EditableDayCell label={`Edit ${employee.name}, ${dateLabel}`} employeeId={employee.id} name={employee.name} date={d.dateKey} dateLabel={dateLabel} current={d} lateAfter={data.lateAfter} graceMinutes={data.graceMinutes}>
                             {cell}
                           </EditableDayCell>
                         ) : cell}

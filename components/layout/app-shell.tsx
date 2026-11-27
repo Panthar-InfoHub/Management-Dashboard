@@ -7,6 +7,7 @@ import { TopNav } from "@/components/layout/top-nav";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import dynamic from "next/dynamic";
 import { AccessProvider } from "@/components/providers/access-provider";
+import { NavPendingOutlet, NavPendingProvider } from "@/components/layout/nav-pending";
 import { cn } from "@/lib/utils";
 
 // Local development only; the condition is constant, so production builds drop it.
@@ -22,6 +23,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <AccessProvider>
+      <NavPendingProvider>
       <TooltipProvider delayDuration={0}>
         <div className="flex h-screen overflow-hidden">
           <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
@@ -33,13 +35,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <TopNav menuOpen={menuOpen} setMenuOpen={setMenuOpen} />
             {/* Room for the bottom bar on phones (plus the iPhone home-indicator area). */}
-            <main className="flex-1 min-h-0 overflow-y-auto bg-muted/40 pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0 dark:bg-background">{children}</main>
+            <main className="flex-1 min-h-0 overflow-y-auto bg-muted/40 pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0 dark:bg-background"><NavPendingOutlet>{children}</NavPendingOutlet></main>
             {/* Reads the URL, so it needs its own Suspense boundary (partial prerendering). */}
             <Suspense fallback={null}><BottomNav onMore={() => setMenuOpen(true)} /></Suspense>
           </div>
         </div>
         {ViewAsBar && <ViewAsBar />}
       </TooltipProvider>
+      </NavPendingProvider>
     </AccessProvider>
   );
 }

@@ -1,6 +1,20 @@
 // Attendance rules as pure functions: no database, no clock. The actions pass
 // in the office settings, the day and the time, and store what comes back.
-import type { DayKindValue } from "@/lib/attendance/calendar";
+import { parseHHmm, type DayKindValue } from "@/lib/attendance/calendar";
+
+/**
+ * The minute of the day after which a clock-in is late: the cut-off plus the
+ * office grace (11:00 + 15 → a clock-in at 11:15 is on time, 11:16 is late).
+ */
+export function lateCutoffMinutes(lateAfter: string, graceMinutes: number): number {
+  return parseHHmm(lateAfter) + graceMinutes;
+}
+
+/** The last on-time clock-in as "HH:mm" (11:00 + 15 → "11:15"), for comparing "HH:mm" times on screens. */
+export function lastOnTime(lateAfter: string, graceMinutes: number): string {
+  const t = Math.min(lateCutoffMinutes(lateAfter, graceMinutes), 23 * 60 + 59);
+  return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+}
 
 export type AttendanceStatusValue =
   | "PRESENT" | "LATE" | "HALF_DAY" | "ABSENT" | "ON_LEAVE" | "WFH" | "HOLIDAY" | "WEEKLY_OFF";
@@ -81,8 +95,9 @@ export function excusedStatus(status: AttendanceStatusValue): AttendanceStatusVa
 
 /**
  * Status for a clock-in.
- * - Office day: on time → Present; after the cut-off → Half Day (pending
- *   review) or Late, as the office is set up.
+ * - Office day: on time → Present; after the cut-off → Half Day or Late, as
+ *   the office is set up. Nothing waits for review: someone who was late for a
+ *   reason sends a Late Arrival request.
  * - WFH day: WFH, flagged late after the cut-off but never cut to a half day.
  * - Off day or holiday: Present (working on a day off is recorded as such).
  */
@@ -91,14 +106,14 @@ export function statusForCheckIn(input: {
   minutesNow: number;
   lateAfterMinutes: number;
   lateOutcome: "HALF_DAY" | "LATE";
-}): { status: AttendanceStatusValue; isLate: boolean; needsReview: boolean } {
+}): { status: AttendanceStatusValue; isLate: boolean } {
   const late = input.minutesNow > input.lateAfterMinutes;
-  if (input.dayKind === "WFH") return { status: "WFH", isLate: late, needsReview: false };
-  if (input.dayKind !== "OFFICE") return { status: "PRESENT", isLate: false, needsReview: false };
-  if (!late) return { status: "PRESENT", isLate: false, needsReview: false };
+  if (input.dayKind === "WFH") return { status: "WFH", isLate: late };
+  if (input.dayKind !== "OFFICE") return { status: "PRESENT", isLate: false };
+  if (!late) return { status: "PRESENT", isLate: false };
   return input.lateOutcome === "HALF_DAY"
-    ? { status: "HALF_DAY", isLate: true, needsReview: true }
-    : { status: "LATE", isLate: true, needsReview: false };
+    ? { status: "HALF_DAY", isLate: true }
+    : { status: "LATE", isLate: true };
 }
 
 /**
@@ -142,7 +157,7 @@ export function checkoutFlags(input: {
 /**
  * Status once the day's hours are known (at clock-out). Starts from the
  * clock-in rule, then the optional short-day rule: on an office day, fewer
- * worked minutes than `minFullDayMinutes` makes it a Half Day (pending review).
+ * worked minutes than `minFullDayMinutes` makes it a Half Day.
  */
 export function statusForDay(input: {
   dayKind: DayKindValue;
@@ -151,14 +166,14 @@ export function statusForDay(input: {
   lateAfterMinutes: number;
   lateOutcome: "HALF_DAY" | "LATE";
   minFullDayMinutes: number | null;
-}): { status: AttendanceStatusValue; isLate: boolean; needsReview: boolean } {
+}): { status: AttendanceStatusValue; isLate: boolean } {
   const base = statusForCheckIn({ dayKind: input.dayKind, minutesNow: input.checkInMinutes, lateAfterMinutes: input.lateAfterMinutes, lateOutcome: input.lateOutcome });
   const short =
     input.dayKind === "OFFICE" &&
     input.minFullDayMinutes != null &&
     input.workMinutes != null &&
     input.workMinutes < input.minFullDayMinutes;
-  if (short && base.status !== "HALF_DAY") return { status: "HALF_DAY", isLate: base.isLate, needsReview: true };
+  if (short && base.status !== "HALF_DAY") return { status: "HALF_DAY", isLate: base.isLate };
   return base;
 }
 
@@ -197,4 +212,74 @@ export function formatDuration(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+// ─── Attendance fix outcome ───
+// Approving a fix records what the approver chose for the day; it never
+// silently works it out again. The choices depend on the day:
+// - Office day: Present · Late · Half Day
+// - WFH day: WFH · WFH, Late · Half Day
+// - Day off or holiday: Present (worked on a day off)
+
+export type FixOutcome = "PRESENT" | "LATE" | "HALF_DAY" | "WFH" | "WFH_LATE";
+
+export const FIX_OUTCOME_LABELS: Record<FixOutcome, string> = {
+  PRESENT: "Present",
+  LATE: "Late",
+  HALF_DAY: "Half Day",
+  WFH: "WFH",
+  WFH_LATE: "WFH, Late",
+};
+
+export function fixOutcomeChoices(dayKind: DayKindValue): FixOutcome[] {
+  if (dayKind === "OFFICE") return ["PRESENT", "LATE", "HALF_DAY"];
+  if (dayKind === "WFH") return ["WFH", "WFH_LATE", "HALF_DAY"];
+  return ["PRESENT"];
+}
+
+/** What the office rules give for the fixed times: the approver's starting choice. */
+export function suggestedFixOutcome(dayKind: DayKindValue, rule: { status: AttendanceStatusValue; isLate: boolean }): FixOutcome {
+  if (dayKind === "WFH") return rule.status === "HALF_DAY" ? "HALF_DAY" : rule.isLate ? "WFH_LATE" : "WFH";
+  if (dayKind !== "OFFICE") return "PRESENT";
+  return rule.status === "HALF_DAY" ? "HALF_DAY" : rule.status === "LATE" ? "LATE" : "PRESENT";
+}
+
+/**
+ * The stored fields for a chosen outcome. A late arrival that the approver
+ * didn't mark late is kept on record as excused.
+ */
+export function fixOutcomeFields(outcome: FixOutcome, arrivedLate: boolean): { status: AttendanceStatusValue; isLate: boolean; lateExcused: boolean } {
+  const status: AttendanceStatusValue = outcome === "WFH" || outcome === "WFH_LATE" ? "WFH" : outcome;
+  const isLate = outcome === "LATE" || outcome === "WFH_LATE" || (outcome === "HALF_DAY" && arrivedLate);
+  return { status, isLate, lateExcused: arrivedLate && !isLate };
+}
+
+// ─── Late Arrival request ───
+// "I was (or will be) late." The clock-in time is never changed. Once approved,
+// a late day isn't a half day: the approver picks Present (late excused, kept
+// on record) or Late. WFH days stay WFH. Approved in advance, it applies when
+// they clock in.
+
+export type LateArrivalOutcome = "PRESENT" | "LATE";
+
+export const LATE_ARRIVAL_OUTCOME_LABELS: Record<LateArrivalOutcome, string> = { PRESENT: "Present", LATE: "Late" };
+
+/** The day's fields under an approved Late Arrival request, or null when it changes nothing (on time, day off). */
+export function lateArrivalFields(
+  dayKind: DayKindValue,
+  outcome: LateArrivalOutcome,
+  arrivedLate: boolean,
+): { status: AttendanceStatusValue; isLate: boolean; lateExcused: boolean } | null {
+  if (!arrivedLate || (dayKind !== "OFFICE" && dayKind !== "WFH")) return null;
+  const late = outcome === "LATE";
+  return { status: dayKind === "WFH" ? "WFH" : late ? "LATE" : "PRESENT", isLate: late, lateExcused: !late };
+}
+
+/**
+ * Does an approved Late Arrival cover this clock-in? With no "arrive by" time
+ * (asked after the day) it covers the day. With one, the clock-in must be no
+ * later than arrive-by + the office grace; a later one follows the normal rules.
+ */
+export function lateArrivalCovers(checkInMinutes: number, arriveByMinutes: number | null, graceMinutes: number): boolean {
+  return arriveByMinutes === null || checkInMinutes <= arriveByMinutes + graceMinutes;
 }

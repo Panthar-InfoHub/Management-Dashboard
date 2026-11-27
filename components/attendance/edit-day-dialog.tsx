@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AttendanceStatusBadge } from "@/components/attendance/status-badge";
 import { DayFlags } from "@/components/attendance/day-flags";
 import { editAttendanceDayAction } from "@/lib/actions/attendance-admin.actions";
-import { ATTENDANCE_STATUS_LABELS, EDITABLE_STATUSES, type AttendanceStatusValue, type EditableStatus, to12h } from "@/lib/attendance/rules";
+import { ATTENDANCE_STATUS_LABELS, EDITABLE_STATUSES, type AttendanceStatusValue, type EditableStatus, to12h, lastOnTime } from "@/lib/attendance/rules";
 import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
@@ -52,6 +52,7 @@ export function EditDayDialog({
   dateLabel,
   current,
   lateAfter,
+  graceMinutes = 0,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -62,6 +63,8 @@ export function EditDayDialog({
   current: DayNow;
   /** The office late cut-off ("11:00"), to say when a time counts as late. */
   lateAfter?: string;
+  /** Office grace after the cut-off: a clock-in within it isn't late. */
+  graceMinutes?: number;
 }) {
   const initial = (EDITABLE_STATUSES as readonly string[]).includes(current.status ?? "") ? (current.status as EditableStatus) : "PRESENT";
   const [status, setStatus] = useState<EditableStatus>(initial);
@@ -72,7 +75,7 @@ export function EditDayDialog({
   const [isPending, startTransition] = useTransition();
 
   const absent = status === "ABSENT";
-  const lateTime = !!lateAfter && !!checkIn && checkIn > lateAfter;
+  const lateTime = !!lateAfter && !!checkIn && checkIn > lastOnTime(lateAfter, graceMinutes);
 
   const save = () => startTransition(async () => {
     try {

@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { CalendarClock, ClipboardCheck, FolderKanban, Inbox, LayoutDashboard, ListTodo, Menu, Plane, type LucideIcon } from "lucide-react";
 import { useAccess } from "@/hooks/use-access";
 import { cn } from "@/lib/utils";
-import { LinkPending } from "@/components/ui/link-pending";
+import { useNavPending } from "@/components/layout/nav-pending";
 
 type Tab = { label: string; href: string; icon: LucideIcon };
 
@@ -21,7 +21,10 @@ function isActive(pathname: string | null, href: string) {
  * full menu. Hidden from tablet width up, where the sidebar shows.
  */
 export function BottomNav({ onMore }: { onMore: () => void }) {
-  const pathname = usePathname();
+  const { pendingHref, start } = useNavPending();
+  const currentPath = usePathname();
+  // The tapped tab lights up at once, before its page arrives.
+  const pathname = pendingHref ?? currentPath;
   const access = useAccess();
   // Super Admins don't clock in or take leave; approvers get their inbox.
   const tracked = access.role !== "SUPER_ADMIN";
@@ -48,6 +51,7 @@ export function BottomNav({ onMore }: { onMore: () => void }) {
             <li key={href}>
               <Link
                 href={href}
+                onClick={(e) => start(href, e)}
                 aria-current={active ? "page" : undefined}
                 className={cn(
                   "relative flex h-16 flex-col items-center justify-center gap-1 text-[11px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50",
@@ -55,7 +59,6 @@ export function BottomNav({ onMore }: { onMore: () => void }) {
                 )}
               >
                 <Icon className={cn("h-5 w-5", active && "stroke-[2.25]")} />
-                <LinkPending className="absolute top-2.5 right-[calc(50%-18px)] size-2" />
                 {label}
               </Link>
             </li>

@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { Prisma } from "@/lib/generated/prisma";
 import { fromDateKey, minutesOfDay, parseHHmm, todayKey, toDateKey } from "@/lib/attendance/calendar";
 import {
-  checkGeofence, checkoutFlags, clockInKind, excusedStatus, formatClock, isSessionExpired, to12h,
+  checkGeofence, checkoutFlags, clockInKind, excusedStatus, formatClock, isSessionExpired, lateArrivalCovers, lateCutoffMinutes, lateArrivalFields, to12h,
   statusForCheckIn, statusForDay, workedMinutes, MAX_LOCATION_ACCURACY_M, type GeoPoint,
 } from "@/lib/attendance/rules";
 import { dayKindOn, findOpenSession, getOfficeFor } from "@/lib/attendance/queries";
@@ -51,10 +51,8 @@ export async function recordClockIn(input: {
   at?: Date;
   location?: GeoPoint | null;
   ignoreAccuracy?: boolean;
-  reentryNote?: string | null;
 }) {
   const { employeeId, ignoreAccuracy = false } = input;
-  const reentryNote = input.reentryNote === undefined ? "Clocked in again" : input.reentryNote;
   const office = await getOfficeFor(employeeId);
   const now = input.at ?? new Date();
   const dateKey = todayKey(office.timezone, now);
@@ -76,7 +74,7 @@ export async function recordClockIn(input: {
 
   // What the day is for this person: office calendar, approved leave or WFH,
   // a WFH request still waiting, and whether they may work from home freely.
-  const [baseKind, coverage, pending, person, excused] = await Promise.all([
+  const [baseKind, coverage, pending, person, excused, lateArrival] = await Promise.all([
     dayKindOn(office, dateKey),
     getCoverage([employeeId], dateKey, dateKey).then((m) => m.get(employeeId)?.get(dateKey) ?? null),
     db.request.findFirst({
@@ -87,6 +85,11 @@ export async function recordClockIn(input: {
     db.request.findFirst({
       where: { employeeId, status: "APPROVED", excuseLate: true, kind: { in: ["WFH", "ATTENDANCE_FIX"] }, startDate: { lte: date }, endDate: { gte: date } },
       select: { id: true },
+    }),
+    // A Late Arrival request approved in advance: a late clock-in isn't a half day.
+    db.request.findFirst({
+      where: { employeeId, status: "APPROVED", kind: "LATE_ARRIVAL", startDate: { lte: date }, endDate: { gte: date } },
+      select: { excuseLate: true, arriveBy: true },
     }),
   ]);
   if (coverage?.kind === "LEAVE" && !coverage.halfDay) {
@@ -113,7 +116,9 @@ export async function recordClockIn(input: {
     ? { lat: point.lat, lng: point.lng, accuracy: point.accuracy ?? null, distanceMeters: fence.distanceMeters ?? null, inside: fence.ok }
     : null;
 
-  // 2. Clocked out earlier on this day and back again: reopen the day.
+  // 2. One clock-in and one clock-out per day. Clocked out already: the day is
+  //    done. (Clocking in again counted the break as work, so it's off for now;
+  //    a wrong clock-out is fixed with Correct My Time.)
   const existing = await db.attendance.findUnique({
     where: { employeeId_date: { employeeId, date } },
     select: { id: true, checkInAt: true, checkOutAt: true },
@@ -122,50 +127,38 @@ export async function recordClockIn(input: {
     throw new UserError(`You already clocked in today at ${formatClock(existing.checkInAt, office.timezone)}.`);
   }
   if (existing?.checkInAt && existing.checkOutAt) {
-    await db.attendance.update({
-      where: { id: existing.id },
-      data: {
-        checkOutAt: null, checkOutLocation: Prisma.DbNull, workMinutes: null, missedCheckout: false,
-        leftEarly: false, earlyMinutes: null, overtimeMinutes: null,
-      },
-    });
-    await db.attendanceEvent.create({
-      data: {
-        attendanceId: existing.id,
-        employeeId,
-        type: "CHECK_IN",
-        at: now,
-        location: location ?? undefined,
-        ...(reentryNote ? { note: reentryNote } : {}),
-      },
-    });
-    return {
-      success: true as const,
-      time: formatClock(now, office.timezone),
-      message: `Clocked in again. Hours count from your first clock-in at ${formatClock(existing.checkInAt, office.timezone)}.`,
-    };
+    throw new UserError(`You clocked out today at ${formatClock(existing.checkOutAt, office.timezone)}, so today is done. Clocked out by mistake? Send a Correct My Time request.`);
   }
 
   // 3. First clock-in of the day.
   const outcome = halfDayLeave
-    ? { status: "HALF_DAY" as const, isLate: false, needsReview: false }
+    ? { status: "HALF_DAY" as const, isLate: false }
     : statusForCheckIn({
         dayKind,
         minutesNow: minutesOfDay(office.timezone, now),
-        lateAfterMinutes: parseHHmm(office.lateAfter),
+        lateAfterMinutes: lateCutoffMinutes(office.lateAfter, office.graceMinutes),
         lateOutcome: office.lateOutcome,
       });
-  const excuseNow = !!excused && outcome.isLate && !halfDayLeave;
+  // Covered only up to "arrive by" + the office grace; later follows the normal rules.
+  const minutesNow = minutesOfDay(office.timezone, now);
+  const arriveByMin = lateArrival?.arriveBy ? minutesOfDay(office.timezone, lateArrival.arriveBy) : null;
+  const covered = !!lateArrival && lateArrivalCovers(minutesNow, arriveByMin, office.graceMinutes);
+  const late = covered && !halfDayLeave
+    ? lateArrivalFields(dayKind, lateArrival!.excuseLate ? "PRESENT" : "LATE", outcome.isLate)
+    : null;
+  const missedArriveBy = !!lateArrival && !covered && outcome.isLate && !halfDayLeave;
+  const excuseNow = !late && !!excused && outcome.isLate && !halfDayLeave;
   const data = {
     officeId: office.id,
-    status: excuseNow ? excusedStatus(outcome.status) : outcome.status,
+    status: late?.status ?? (excuseNow ? excusedStatus(outcome.status) : outcome.status),
     dayKind,
     checkInAt: now,
     checkInLocation: location ?? undefined,
-    isLate: excuseNow ? false : outcome.isLate,
+    isLate: late?.isLate ?? (excuseNow ? false : outcome.isLate),
     awaitingWfh,
-    lateExcused: excuseNow,
-    reviewStatus: outcome.needsReview && !excuseNow ? ("PENDING" as const) : null,
+    lateExcused: late?.lateExcused ?? excuseNow,
+    // Settled by an approval: the clock-out adds hours but doesn't redo the status.
+    reviewStatus: late || excuseNow ? ("APPROVED" as const) : null,
   };
 
   let recordId: string;
@@ -189,8 +182,10 @@ export async function recordClockIn(input: {
   const notes = [
     awaitingWfh && `Clocked in at ${time} as WFH. It's confirmed when your request is approved.`,
     !awaitingWfh && dayKind === "WFH" && person?.flexibleWfh && coverage?.kind !== "WFH" && `Clocked in at ${time} · working from home.`,
-    closedMissed && `${closedMissed} had no clock-out, so it closed as a missed checkout. Ask for an attendance fix.`,
-    outcome.needsReview && !excuseNow && `Clocked in after ${to12h(office.lateAfter)}, so today is a half day for now. An approver can review it.`,
+    closedMissed && `${closedMissed} had no clock-out, so it closed as a missed checkout. Send a time correction with your clock-out time.`,
+    missedArriveBy && lateArrival?.arriveBy && `Your approved late arrival was until ${formatClock(lateArrival.arriveBy, office.timezone)} (plus ${office.graceMinutes} min), and you clocked in later, so the normal late rule applies today.`,
+    !missedArriveBy && outcome.status === "HALF_DAY" && outcome.isLate && !late && !excuseNow && `Clocked in after ${to12h(office.lateAfter)}, so today is a half day. Late for a reason? Send a Late Arrival request.`,
+    late && `Clocked in after ${to12h(office.lateAfter)}. Your approved late arrival counts today as ${late.status === "LATE" ? "Late" : late.status === "WFH" ? "WFH" : "Present"}.`,
   ].filter(Boolean);
   return { success: true as const, time, message: notes.length ? notes.join(" ") : null };
 }
@@ -212,7 +207,7 @@ export async function recordClockOut(input: {
   if (isSessionExpired(toDateKey(open.date), today)) {
     await markMissedCheckout(open.id);
     throw new UserError(
-      `You clocked in on ${dayLabel(open.date)} at ${formatClock(open.checkInAt, office.timezone)} but didn't clock out before midnight, so that day closed as a missed checkout. Ask for an attendance fix.`,
+      `You clocked in on ${dayLabel(open.date)} at ${formatClock(open.checkInAt, office.timezone)} but didn't clock out before midnight, so that day closed as a missed checkout. Send a time correction with your clock-out time.`,
       );
   }
   if (toDateKey(open.date) !== today) {
@@ -244,7 +239,7 @@ export async function recordClockOut(input: {
         dayKind: open.dayKind,
         checkInMinutes: minutesOfDay(office.timezone, open.checkInAt),
         workMinutes: minutes,
-        lateAfterMinutes: parseHHmm(office.lateAfter),
+        lateAfterMinutes: lateCutoffMinutes(office.lateAfter, office.graceMinutes),
         lateOutcome: office.lateOutcome,
         minFullDayMinutes: office.minFullDayMinutes,
       });
@@ -257,7 +252,7 @@ export async function recordClockOut(input: {
       workMinutes: minutes,
       missedCheckout: false,
       ...flags,
-      ...(outcome && { status: outcome.status, isLate: outcome.isLate, reviewStatus: outcome.needsReview ? "PENDING" : null }),
+      ...(outcome && { status: outcome.status, isLate: outcome.isLate }),
     },
   });
   await db.attendanceEvent.create({

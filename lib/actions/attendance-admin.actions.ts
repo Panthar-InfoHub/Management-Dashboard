@@ -13,7 +13,7 @@ import { canActOnEmployee, tracksAttendance } from "@/lib/access";
 import { hasPermission } from "@/lib/permissions";
 import { audit } from "@/lib/audit";
 import { fromDateKey, minutesOfDay, parseHHmm, todayKey, zonedDateTime } from "@/lib/attendance/calendar";
-import { checkoutFlags, workedMinutes, EDITABLE_STATUSES, type EditableStatus } from "@/lib/attendance/rules";
+import { checkoutFlags, lateCutoffMinutes, workedMinutes, EDITABLE_STATUSES, type EditableStatus } from "@/lib/attendance/rules";
 import { dayKindsBetween, getOfficeFor } from "@/lib/attendance/queries";
 import { getCoverage } from "@/lib/leave/queries";
 
@@ -29,7 +29,7 @@ export async function editAttendanceDayAction(input: {
 }) {
   const actor = await getCurrentEmployee();
   if (!(await hasPermission(actor, "attendance:edit"))) throw new UserError("You don't have permission to edit attendance.");
-  if (input.employeeId === actor.id) throw new UserError("You can't edit your own attendance. Ask another admin, or send an attendance fix.");
+  if (input.employeeId === actor.id) throw new UserError("You can't edit your own attendance. Ask another admin, or send a time correction.");
 
   const target = await db.employee.findUnique({ where: { id: input.employeeId }, select: { role: true, firstName: true, lastName: true } });
   if (!target) throw new UserError("Employee not found.");
@@ -69,7 +69,7 @@ export async function editAttendanceDayAction(input: {
         workMinutes: minutes,
       })
     : { leftEarly: false, earlyMinutes: null, overtimeMinutes: null };
-  const arrivedLate = checkIn ? minutesOfDay(office.timezone, checkIn) > parseHHmm(office.lateAfter) : false;
+  const arrivedLate = checkIn ? minutesOfDay(office.timezone, checkIn) > lateCutoffMinutes(office.lateAfter, office.graceMinutes) : false;
 
   const before = await db.attendance.findUnique({ where: { employeeId_date: { employeeId: input.employeeId, date } } });
   const isLate = input.status === "LATE"

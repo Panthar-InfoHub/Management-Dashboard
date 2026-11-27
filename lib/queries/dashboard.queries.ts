@@ -211,5 +211,5 @@ export async function getPendingApprovals(employee: AuthEmployee) {
   const who = { id: { not: employee.id }, ...(scope.all ? {} : inAnyTeam(scope.teamIds)) };
   const groups = await db.request.groupBy({ by: ["kind"], where: { status: "PENDING", employee: who }, _count: true });
   const get = (k: string) => groups.find((g) => g.kind === k)?._count ?? 0;
-  return { leave: get("LEAVE"), wfh: get("WFH"), fixes: get("ATTENDANCE_FIX"), total: groups.reduce((s, g) => s + g._count, 0) };
+  return { leave: get("LEAVE"), wfh: get("WFH"), fixes: get("ATTENDANCE_FIX"), lateArrivals: get("LATE_ARRIVAL"), total: groups.reduce((s, g) => s + g._count, 0) };
 }

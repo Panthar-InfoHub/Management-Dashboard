@@ -1,13 +1,14 @@
 // Leave and request rules as pure functions (no database, no clock).
 import type { DayKindValue } from "@/lib/attendance/calendar";
 
-export type RequestKindValue = "LEAVE" | "WFH" | "ATTENDANCE_FIX";
+export type RequestKindValue = "LEAVE" | "WFH" | "ATTENDANCE_FIX" | "LATE_ARRIVAL";
 export type RequestStatusValue = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
 
 export const REQUEST_KIND_LABELS: Record<RequestKindValue, string> = {
   LEAVE: "Leave",
   WFH: "Work From Home",
-  ATTENDANCE_FIX: "Attendance Fix",
+  ATTENDANCE_FIX: "Time Correction",
+  LATE_ARRIVAL: "Late Arrival",
 };
 
 export const REQUEST_STATUS_LABELS: Record<RequestStatusValue, string> = {
@@ -27,7 +28,7 @@ export const MAX_REQUEST_SPAN_DAYS = 60;
  * - Attendance fix: 0.
  */
 export function requestDays(kind: RequestKindValue, days: { dayKind: DayKindValue }[], halfDay: boolean): number {
-  if (kind === "ATTENDANCE_FIX") return 0;
+  if (kind === "ATTENDANCE_FIX" || kind === "LATE_ARRIVAL") return 0;
   if (kind === "WFH") return days.filter((d) => d.dayKind === "OFFICE").length;
   const working = days.filter((d) => d.dayKind === "OFFICE" || d.dayKind === "WFH").length;
   return halfDay ? Math.min(working, 1) * 0.5 : working;

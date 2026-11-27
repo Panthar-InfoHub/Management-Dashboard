@@ -17,7 +17,7 @@ export async function getOffices() {
     orderBy: [{ isDefault: "desc" }, { name: "asc" }],
     select: {
       id: true, name: true, address: true, latitude: true, longitude: true, radiusMeters: true,
-      timezone: true, workStart: true, workEnd: true, lateAfter: true, lateOutcome: true, minFullDayMinutes: true, weekPattern: true, isDefault: true,
+      timezone: true, workStart: true, workEnd: true, lateAfter: true, lateOutcome: true, minFullDayMinutes: true, graceMinutes: true, weekPattern: true, isDefault: true,
     },
   });
 }

@@ -10,6 +10,7 @@ import { formatTime } from "@/lib/attendance/rules";
 import { availableDays, proratedAllowance } from "@/lib/leave/rules";
 import { inAnyTeam, teamIdsOf } from "@/lib/teams/membership";
 import { LEAVE_TRACKING_START, leaveYearOf } from "@/lib/leave/policy";
+import { planAttendanceFix } from "@/lib/attendance/fix";
 
 export type Coverage = { kind: "LEAVE" | "WFH"; halfDay: "FIRST_HALF" | "SECOND_HALF" | null; typeName: string | null };
 
@@ -102,21 +103,21 @@ export async function getBalances(employeeId: string, year: number) {
 
 const requestSelect = {
   id: true, kind: true, startDate: true, endDate: true, halfDay: true, days: true, reason: true, status: true,
-  decidedAt: true, decisionNote: true, fixCheckIn: true, fixCheckOut: true, workMode: true, createdAt: true,
+  decidedAt: true, decisionNote: true, fixCheckIn: true, fixCheckOut: true, workMode: true, excuseLate: true, arriveBy: true, createdAt: true,
   leaveType: { select: { name: true } },
   decidedBy: { select: { firstName: true, lastName: true } },
 } as const;
 
 type RequestRow = {
   id: string; kind: string; startDate: Date; endDate: Date; halfDay: string | null; days: number; reason: string; status: string;
-  decidedAt: Date | null; decisionNote: string | null; fixCheckIn: Date | null; fixCheckOut: Date | null; workMode: string | null; createdAt: Date;
+  decidedAt: Date | null; decisionNote: string | null; fixCheckIn: Date | null; fixCheckOut: Date | null; workMode: string | null; excuseLate: boolean; arriveBy: Date | null; createdAt: Date;
   leaveType: { name: string } | null; decidedBy: { firstName: string; lastName: string } | null;
 };
 
 function presentRequest(r: RequestRow, timeZone: string, today: string) {
   return {
     id: r.id,
-    kind: r.kind as "LEAVE" | "WFH" | "ATTENDANCE_FIX",
+    kind: r.kind as "LEAVE" | "WFH" | "ATTENDANCE_FIX" | "LATE_ARRIVAL",
     startDate: toDateKey(r.startDate),
     endDate: toDateKey(r.endDate),
     halfDay: r.halfDay as "FIRST_HALF" | "SECOND_HALF" | null,
@@ -130,6 +131,10 @@ function presentRequest(r: RequestRow, timeZone: string, today: string) {
     fixCheckIn: r.fixCheckIn ? formatTime(r.fixCheckIn, timeZone) : null,
     fixCheckOut: r.fixCheckOut ? formatTime(r.fixCheckOut, timeZone) : null,
     workMode: r.workMode as "OFFICE" | "WFH" | null,
+    /** Late arrival approved as Present (true) or Late (false). */
+    excuseLate: r.excuseLate,
+    /** Late arrival asked in advance: "I'll arrive by" ("HH:mm"). */
+    arriveBy: r.arriveBy ? formatTime(r.arriveBy, timeZone) : null,
     createdAt: r.createdAt.toISOString(),
     // Cancel: pending any time; approved only before it starts.
     canCancel: r.status === "PENDING" || (r.status === "APPROVED" && toDateKey(r.startDate) > today),
@@ -156,7 +161,7 @@ export async function getMyAttendanceRequests(employee: AuthEmployee) {
   const office = await getOfficeFor(employee.id);
   const today = todayKey(office.timezone);
   const requests = await db.request.findMany({
-    where: { employeeId: employee.id, kind: { in: ["WFH", "ATTENDANCE_FIX"] } },
+    where: { employeeId: employee.id, kind: { in: ["WFH", "ATTENDANCE_FIX", "LATE_ARRIVAL"] } },
     orderBy: { createdAt: "desc" },
     take: 30,
     select: requestSelect,
@@ -219,23 +224,35 @@ export async function getInbox(viewer: AuthEmployee) {
 
   // For attendance fixes: what is recorded today for that day, to compare.
   const fixes = requests.filter((r) => r.kind === "ATTENDANCE_FIX");
-  const recordedRows = fixes.length
+  const dayRequests = requests.filter((r) => r.kind === "ATTENDANCE_FIX" || r.kind === "LATE_ARRIVAL");
+  const recordedRows = dayRequests.length
     ? await db.attendance.findMany({
-        where: { OR: fixes.map((r) => ({ employeeId: r.employee.id, date: r.startDate })) },
-        select: { employeeId: true, date: true, status: true, checkInAt: true, checkOutAt: true, workMinutes: true, missedCheckout: true },
+        where: { OR: dayRequests.map((r) => ({ employeeId: r.employee.id, date: r.startDate })) },
+        select: { employeeId: true, date: true, status: true, checkInAt: true, checkOutAt: true, workMinutes: true, missedCheckout: true, isLate: true },
       })
     : [];
   const recordedFor = (employeeId: string, date: Date) => {
     const row = recordedRows.find((x) => x.employeeId === employeeId && x.date.getTime() === date.getTime());
-    if (!row) return { status: null, checkIn: null, checkOut: null, workMinutes: null, missedCheckout: false };
+    if (!row) return { status: null, checkIn: null, checkOut: null, workMinutes: null, missedCheckout: false, isLate: false };
     return {
       status: row.status as string,
+      isLate: row.isLate,
       checkIn: row.checkInAt ? formatTime(row.checkInAt, timeZone) : null,
       checkOut: row.checkOutAt ? formatTime(row.checkOutAt, timeZone) : null,
       workMinutes: row.workMinutes,
       missedCheckout: row.missedCheckout || (!!row.checkInAt && !row.checkOutAt && toDateKey(row.date) < today),
     };
   };
+
+  // For attendance fixes: what the office rules make of the fixed times, and
+  // the statuses the approver can choose from.
+  const plans = new Map(await Promise.all(fixes.filter((r) => r.fixCheckIn).map(async (r) => {
+    const plan = await planAttendanceFix({ employeeId: r.employee.id, startDate: r.startDate, fixCheckIn: r.fixCheckIn!, fixCheckOut: r.fixCheckOut, workMode: r.workMode });
+    return [r.id, {
+      choices: plan.choices, suggested: plan.suggested, arrivedLate: plan.arrivedLate, shortDay: plan.shortDay, lateAfter: plan.lateAfter,
+      open: plan.open, isPast: plan.isPast, keptCheckOut: plan.keptRecordedCheckOut && plan.checkOut ? formatTime(plan.checkOut, timeZone) : null,
+    }] as const;
+  })));
 
   // For WFH requests: clock-ins already made under them (home days awaiting the decision).
   const wfh = requests.filter((r) => r.kind === "WFH");
@@ -256,7 +273,8 @@ export async function getInbox(viewer: AuthEmployee) {
       ...presentRequest(r as RequestRow, timeZone, today),
       employee: person(r.employee),
       clockIns: clockInsFor(r),
-      recorded: r.kind === "ATTENDANCE_FIX" ? recordedFor(r.employee.id, r.startDate) : null,
+      recorded: r.kind === "ATTENDANCE_FIX" || r.kind === "LATE_ARRIVAL" ? recordedFor(r.employee.id, r.startDate) : null,
+      fixPlan: plans.get(r.id) ?? null,
       fixMinutes: r.fixCheckIn && r.fixCheckOut ? Math.round((r.fixCheckOut.getTime() - r.fixCheckIn.getTime()) / 60_000) : null,
     })),
     reviews: reviews.map((a) => ({
@@ -268,6 +286,8 @@ export async function getInbox(viewer: AuthEmployee) {
       isLate: a.isLate,
       employee: person(a.employee),
     })),
+    /** Minutes after "arrive by" that an approved late arrival still covers. */
+    grace: office?.graceMinutes ?? 15,
     decided: decided.map((r) => ({ ...presentRequest(r as RequestRow, timeZone, today), employee: person(r.employee) })),
   };
 }
